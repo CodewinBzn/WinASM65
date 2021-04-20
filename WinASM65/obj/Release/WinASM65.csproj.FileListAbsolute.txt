@@ -1,0 +1,10 @@
+C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\bin\Release\WinASM65.exe
+C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\bin\Release\WinASM65.exe.config
+C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\bin\Release\WinASM65.pdb
+C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\obj\Release\WinASM65.csproj.CoreCompileInputs.cache
+C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\obj\Release\WinASM65.exe
+C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\obj\Release\WinASM65.pdb
+C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\obj\Release\WinASM65.csprojAssemblyReference.cache
+C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\bin\Release\Newtonsoft.Json.dll
+C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\bin\Release\Newtonsoft.Json.xml
+C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\obj\Release\WinASM65.csproj.CopyComplete
