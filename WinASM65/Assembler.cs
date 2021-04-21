@@ -123,7 +123,8 @@ namespace WinASM65
                         }
                     }
                     currentAddr++;
-                } else
+                }
+                else
                 {
                     AddError(currentLineNumber, Errors.DATA_BYTE);
                 }
@@ -275,19 +276,26 @@ namespace WinASM65
             }
             else
             {
-                addrMode = instInfo.addrMode;
-                instBytes.Add(addrModesValues[(int)addrMode]);
+                addrMode = instInfo.addrMode;                
                 // instruction with operands
                 if (match != null)
                 {
                     Token token = GetToken(match);
                     TokenResult tokenRes = ResolveToken(token, addrMode);
                     if (tokenRes.Bytes != null)
-                    {
+                    {                        
+                        // convert to zero page if symbol is a single byte
+                        if (CPUDef.isAbsoluteAddr(addrMode) && tokenRes.Bytes.Length == 1)
+                        {
+                            addrMode = addrMode + 3;
+                            instInfo.nbrBytes = 2;
+                        }
+                        instBytes.Add(addrModesValues[(int)addrMode]);
                         instBytes.AddRange(tokenRes.Bytes);
                     }
                     else
                     {
+                        instBytes.Add(addrModesValues[(int)addrMode]);
                         string unsolvedLabel = tokenRes.UnsolvedLabel;
                         if (unsolvedLabel != null)
                         {
@@ -296,8 +304,11 @@ namespace WinASM65
                             AddUnsolvedSymbol(unsolvedLabel, tokenInfo);
                         }
                     }
+                } else
+                {
+                    instBytes.Add(addrModesValues[(int)addrMode]);
                 }
-                currentAddr += instInfo.nbrBytes;
+                currentAddr += instInfo.nbrBytes;               
                 fileOutMemory.AddRange(instBytes.ToArray());
                 MainConsole.WriteLine($"{opcode} mode {addrMode.ToString()}");
             }
@@ -347,38 +358,52 @@ namespace WinASM65
                     {
                         SymbolType labelType = symbolTable[token.Value].Type;
                         dynamic labelValue = symbolTable[token.Value].Value;
-                        if ((addrMode == CPUDef.AddrModes.REL) && (labelType == SymbolType.WORD))
-                        {
-                            int delta = labelValue - (currentAddr + 1);
-                            byte res;
-                            if (delta > 127 || delta < -128)
-                            {
-                                AddError(currentLineNumber, Errors.REL_JUMP);
-                            }
-                            else
-                            {
-                                if (delta < 0)
-                                {
-                                    res = (byte)(255 + delta);
-                                }
-                                else
-                                {
-                                    res = (byte)(delta - 1);
-                                }
-                                return new TokenResult { Bytes = new byte[1] { res } };
-                            }
-
-                        }
-                        else
+                        if (addrMode == CPUDef.AddrModes.REL)
                         {
                             if (labelType == SymbolType.WORD)
                             {
-                                return new TokenResult { Bytes = GetWordBytes(labelValue) };
+                                int delta = labelValue - (currentAddr + 1);
+                                byte res;
+                                if (delta > 127 || delta < -128)
+                                {
+                                    AddError(currentLineNumber, Errors.REL_JUMP);
+                                }
+                                else
+                                {
+                                    if (delta < 0)
+                                    {
+                                        res = (byte)(255 + delta);
+                                    }
+                                    else
+                                    {
+                                        res = (byte)(delta - 1);
+                                    }
+                                    return new TokenResult { Bytes = new byte[1] { res } };
+                                }
                             }
                             else
                             {
                                 return new TokenResult { Bytes = new byte[1] { labelValue } };
                             }
+                        }
+                        else if (CPUDef.isAbsoluteAddr(addrMode) || addrMode == CPUDef.AddrModes.NO)
+                        {
+                            if (labelType == SymbolType.BYTE)
+                            {
+                                return new TokenResult { Bytes = new byte[1] { labelValue }};
+                            }
+                            else
+                            {
+                                return new TokenResult { Bytes = GetWordBytes(labelValue) };
+                            }
+                        }
+                        if (addrMode == CPUDef.AddrModes.IND)
+                        {
+                            return new TokenResult { Bytes = GetWordBytes(labelValue) };
+                        }                       
+                        else
+                        {
+                            return new TokenResult { Bytes = new byte[1] { labelValue } };
                         }
                     }
                     else
@@ -448,7 +473,7 @@ namespace WinASM65
                 switch (tokenInfo.Type)
                 {
                     case SymbolType.WORD:
-                        if (symb.Type == SymbolType.BYTE)
+                        if (symb.Type == SymbolType.BYTE && !CPUDef.isAbsoluteAddr(tokenInfo.addrMode) && (tokenInfo.addrMode != CPUDef.AddrModes.IND))
                         {
                             bytes = new byte[1] { (byte)symb.Value };
                         }

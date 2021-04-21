@@ -183,6 +183,11 @@ namespace WinASM65
             { @"^\(\s*(" + byteRegex + @")\s*,\s*[xX]\s*\)$", new InstructionInfo {addrMode = AddrModes.INX, nbrBytes= 2}},
             { @"^\(\s*(" + byteRegex + @")\s*\)\s*,\s*[yY]$", new InstructionInfo {addrMode = AddrModes.INY, nbrBytes= 2}}
         };
+
+        public static bool isAbsoluteAddr(AddrModes addrMode)
+        {
+            return ((int)addrMode < 6 && (int)addrMode > 2); 
+        }
     }
 
 }
