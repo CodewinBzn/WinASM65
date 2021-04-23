@@ -14,6 +14,6 @@
     <StartArguments>-f test/test.asm -o test/rom.txt</StartArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
-    <StartArguments>-f test/test.asm -o rom.o -m game.json</StartArguments>
+    <StartArguments>-f test/test.asm -o rom.o</StartArguments>
   </PropertyGroup>
 </Project>

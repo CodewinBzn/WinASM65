@@ -56,15 +56,19 @@ namespace WinASM65
         public static string sourceFile;
         private static int currentLineNumber;
         public static Dictionary<string, List<TokenInfo>> unsolvedSymbols;
+        public static Stack<FileInfo> fileStack;
+        public static FileInfo file;
 
         #region directives
         private static Dictionary<string, DelDirectiveHandler> directiveHandlersMap = new Dictionary<string, DelDirectiveHandler>
         {
             { ".org", OrgHandler },
             { ".incbin", IncBinHandler },
+            { ".include", IncludeHandler },
             { ".byte", DataByteHandler },
             { ".word", DataWordHandler }
         };
+
         private static void DirectiveHandler(Match lineReg)
         {
             string directive = lineReg.Groups["directive"].Value;
@@ -85,7 +89,8 @@ namespace WinASM65
 
         private static void IncBinHandler(string fileName)
         {
-            string directoryName = Path.GetDirectoryName(sourceFile);
+            fileName = fileName.Replace("\"", String.Empty);
+            string directoryName = Path.GetDirectoryName(file.sourceFile);
             string toInclude = directoryName + '/' + fileName;
             if (File.Exists(toInclude))
             {
@@ -95,6 +100,22 @@ namespace WinASM65
             {
                 AddError(currentLineNumber, Errors.FILE_NOT_EXISTS);
             }
+        }
+        private static void IncludeHandler(string fileName)
+        {
+            fileName = fileName.Replace("\"", String.Empty);
+            string directoryName = Path.GetDirectoryName(file.sourceFile);
+            string toInclude = directoryName + '/' + fileName;
+            if (File.Exists(toInclude))
+            {
+                fileStack.Push(file);
+                file = new FileInfo() { fp = new StreamReader(toInclude), sourceFile = toInclude };
+            }
+            else
+            {
+                AddError(currentLineNumber, Errors.FILE_NOT_EXISTS);
+            }
+
         }
 
         private static void DataByteHandler(string bytesIn)
@@ -276,14 +297,14 @@ namespace WinASM65
             }
             else
             {
-                addrMode = instInfo.addrMode;                
+                addrMode = instInfo.addrMode;
                 // instruction with operands
                 if (match != null)
                 {
                     Token token = GetToken(match);
                     TokenResult tokenRes = ResolveToken(token, addrMode);
                     if (tokenRes.Bytes != null)
-                    {                        
+                    {
                         // convert to zero page if symbol is a single byte
                         if (CPUDef.isAbsoluteAddr(addrMode) && tokenRes.Bytes.Length == 1)
                         {
@@ -304,11 +325,12 @@ namespace WinASM65
                             AddUnsolvedSymbol(unsolvedLabel, tokenInfo);
                         }
                     }
-                } else
+                }
+                else
                 {
                     instBytes.Add(addrModesValues[(int)addrMode]);
                 }
-                currentAddr += instInfo.nbrBytes;               
+                currentAddr += instInfo.nbrBytes;
                 fileOutMemory.AddRange(instBytes.ToArray());
                 MainConsole.WriteLine($"{opcode} mode {addrMode.ToString()}");
             }
@@ -390,7 +412,7 @@ namespace WinASM65
                         {
                             if (labelType == SymbolType.BYTE)
                             {
-                                return new TokenResult { Bytes = new byte[1] { labelValue }};
+                                return new TokenResult { Bytes = new byte[1] { labelValue } };
                             }
                             else
                             {
@@ -400,7 +422,7 @@ namespace WinASM65
                         if (addrMode == CPUDef.AddrModes.IND)
                         {
                             return new TokenResult { Bytes = GetWordBytes(labelValue) };
-                        }                       
+                        }
                         else
                         {
                             return new TokenResult { Bytes = new byte[1] { labelValue } };
@@ -410,7 +432,6 @@ namespace WinASM65
                     {
                         return new TokenResult { UnsolvedLabel = token.Value, VType = SymbolType.WORD };
                     }
-                    break;
                 case "loLabel":
                     if (symbolTable.ContainsKey(token.Value))
                     {
@@ -535,6 +556,7 @@ namespace WinASM65
             symbolTable = new Dictionary<string, Symbol>();
             fileOutMemory = new List<byte>();
             errorList = new List<Error>();
+            fileStack = new Stack<FileInfo>();
 
             Boolean contextError = false;
             if (sourceFile == null)
@@ -602,11 +624,16 @@ namespace WinASM65
 
         private static void Process()
         {
-            using (StreamReader reader = new StreamReader(sourceFile))
-            {
+            file = new FileInfo();
+            file.fp = new StreamReader(sourceFile);
+            file.sourceFile = sourceFile;
+
+            fileStack.Push(file);
+            while (fileStack.Count > 0) {
+                file = fileStack.Pop();
                 string line;
                 currentLineNumber = -1;
-                while ((line = reader.ReadLine()) != null)
+                while ((line = file.fp.ReadLine()) != null)
                 {
                     currentLineNumber++;
                     string originalLine = line;
@@ -634,6 +661,7 @@ namespace WinASM65
                         // MainConsole.WriteLine("[{0}] Syntax Error - {1}", lineNumber, originalLine);
                     }
                 }
+                file.fp.Close();
             }
         }
 
@@ -741,5 +769,11 @@ namespace WinASM65
         public ushort Position { get; set; }
         public SymbolType Type { get; set; }
         public CPUDef.AddrModes addrMode { get; set; }
+    }
+
+    struct FileInfo
+    {
+       public StreamReader fp { get; set; }
+        public string sourceFile { get; set; }
     }
 }

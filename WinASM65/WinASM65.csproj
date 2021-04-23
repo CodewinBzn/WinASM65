@@ -61,11 +61,11 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Assembler.cs" />
-    <Compile Include="Combine.cs" />
-    <Compile Include="CPUDef.cs" />
-    <Compile Include="MultiSegment.cs" />
-    <Compile Include="Program.cs" />
+    <Compile Include="src\Assembler.cs" />
+    <Compile Include="src\Combine.cs" />
+    <Compile Include="src\CPUDef.cs" />
+    <Compile Include="src\MultiSegment.cs" />
+    <Compile Include="src\Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
