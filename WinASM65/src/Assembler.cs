@@ -52,9 +52,7 @@ namespace WinASM65
         private static ushort currentAddr;
         private static ushort originAddr;
         private delegate void DelDirectiveHandler(string value);
-
         public static string sourceFile;
-        private static int currentLineNumber;
         public static Dictionary<string, List<TokenInfo>> unsolvedSymbols;
         public static Stack<FileInfo> fileStack;
         public static FileInfo file;
@@ -98,7 +96,7 @@ namespace WinASM65
             }
             else
             {
-                AddError(currentLineNumber, Errors.FILE_NOT_EXISTS);
+                AddError(Errors.FILE_NOT_EXISTS);
             }
         }
         private static void IncludeHandler(string fileName)
@@ -113,7 +111,7 @@ namespace WinASM65
             }
             else
             {
-                AddError(currentLineNumber, Errors.FILE_NOT_EXISTS);
+                AddError(Errors.FILE_NOT_EXISTS);
             }
 
         }
@@ -147,7 +145,7 @@ namespace WinASM65
                 }
                 else
                 {
-                    AddError(currentLineNumber, Errors.DATA_BYTE);
+                    AddError(Errors.DATA_BYTE);
                 }
             }
         }
@@ -181,7 +179,7 @@ namespace WinASM65
                 }
                 else
                 {
-                    AddError(currentLineNumber, Errors.DATA_WORD);
+                    AddError(Errors.DATA_WORD);
                 }
             }
         }
@@ -219,7 +217,7 @@ namespace WinASM65
             }
             else
             {
-                AddError(currentLineNumber, Errors.LABEL_EXISTS);
+                AddError(Errors.LABEL_EXISTS);
             }
         }
 
@@ -234,7 +232,7 @@ namespace WinASM65
             {
                 if (symbolTable.ContainsKey(label))
                 {
-                    AddError(currentLineNumber, Errors.LABEL_EXISTS);
+                    AddError(Errors.LABEL_EXISTS);
                 }
                 else
                 {
@@ -388,7 +386,7 @@ namespace WinASM65
                                 byte res;
                                 if (delta > 127 || delta < -128)
                                 {
-                                    AddError(currentLineNumber, Errors.REL_JUMP);
+                                    AddError(Errors.REL_JUMP);
                                 }
                                 else
                                 {
@@ -471,7 +469,7 @@ namespace WinASM65
             string label = lineReg.Groups["label"].Value;
             if (symbolTable.ContainsKey(label))
             {
-                AddError(currentLineNumber, Errors.LABEL_EXISTS);
+                AddError(Errors.LABEL_EXISTS);
             }
             else
             {
@@ -506,7 +504,7 @@ namespace WinASM65
                                 byte res;
                                 if (delta > 127 || delta < -128)
                                 {
-                                    AddError(-1, Errors.REL_JUMP);
+                                    AddError(Errors.REL_JUMP);
                                 }
                                 else
                                 {
@@ -545,9 +543,9 @@ namespace WinASM65
             handler(lineReg);
         }
 
-        public static void AddError(int line, string type)
+        public static void AddError(string type)
         {
-            errorList.Add(new Error(line, type));
+            errorList.Add(new Error(file.currentLineNumber, file.sourceFile, type));
         }
 
         public static void Assemble()
@@ -629,13 +627,14 @@ namespace WinASM65
             file.sourceFile = sourceFile;
 
             fileStack.Push(file);
-            while (fileStack.Count > 0) {
+            while (fileStack.Count > 0)
+            {
                 file = fileStack.Pop();
                 string line;
-                currentLineNumber = -1;
+                file.currentLineNumber = -1;
                 while ((line = file.fp.ReadLine()) != null)
                 {
-                    currentLineNumber++;
+                    file.currentLineNumber++;
                     string originalLine = line;
                     line = Regex.Replace(line, ";(.)*", "").Trim();
                     if (String.IsNullOrWhiteSpace(line))
@@ -657,7 +656,7 @@ namespace WinASM65
                     }
                     if (syntaxError)
                     {
-                        AddError(currentLineNumber, Errors.SYNTAX);
+                        AddError(Errors.SYNTAX);
                         // MainConsole.WriteLine("[{0}] Syntax Error - {1}", lineNumber, originalLine);
                     }
                 }
@@ -719,11 +718,13 @@ namespace WinASM65
     struct Error
     {
         public int line { get; set; }
+        public string sourceFile { get; set; }
         public string type { get; set; }
-        public Error(int line, string type)
+        public Error(int line, string sourceFile, string type)
         {
             this.line = line;
             this.type = type;
+            this.sourceFile = sourceFile;
         }
     }
 
@@ -773,7 +774,8 @@ namespace WinASM65
 
     struct FileInfo
     {
-       public StreamReader fp { get; set; }
+        public StreamReader fp { get; set; }
         public string sourceFile { get; set; }
+        public int currentLineNumber { get; set; }
     }
 }

@@ -67,7 +67,7 @@ namespace WinASM65
                         Console.WriteLine($"{seg.FileName} - No Symbol to resolve");
                         continue;
                     }
-
+                    Assembler.file = new FileInfo() { sourceFile = unsolvedFile, currentLineNumber = -1};
                     string objectFile = seg.FileName.Split('.')[0] + ".o";
                     Assembler.fileOutMemory = new List<byte>(File.ReadAllBytes(objectFile));
                     foreach (string dependence in seg.Dependencies)
