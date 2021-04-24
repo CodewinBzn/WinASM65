@@ -1,6 +1,6 @@
 # WinASM65
 Assembler for 6502 based systems
-by codewin (Abdelghani BOUZIANE)
+by codewin (Abdelghani BOUZIANE).
 
 ## Command line 
 
@@ -97,13 +97,13 @@ label:
 		bne label
 ```		
 
-## Numbers
+### Numbers
 
 Hexadecimal numbers begin with '$'.
 Binary numbers begin with '%'
 
 
-## Assembler directives
+### Assembler directives
 
 - .ORG / .org
 Set the starting address of a segment.
