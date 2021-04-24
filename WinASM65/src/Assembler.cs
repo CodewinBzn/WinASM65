@@ -1,25 +1,8 @@
 ﻿/**********************************************************************************/
 /*                                                                                */
 /*                                                                                */
-/* Copyright (c) 2021 Abdelghani BOUZIANE                                         */
+/* 2021 Abdelghani BOUZIANE                                                       */
 /*                                                                                */
-/* Permission is hereby granted, free of charge, to any person obtaining a copy   */
-/* of this software and associated documentation files (the "Software"), to deal  */
-/* in the Software without restriction, including without limitation the rights   */
-/* to use, copy, modify, merge, publish, distribute, sublicense, and/or sell      */
-/* copies of the Software, and to permit persons to whom the Software is          */
-/* furnished to do so, subject to the following conditions:                       */
-/*                                                                                */
-/* The above copyright notice and this permission notice shall be included in all */
-/* copies or substantial portions of the Software.                                */
-/*                                                                                */
-/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR     */
-/* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,       */
-/* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE    */
-/* AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER         */
-/* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,  */
-/* OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE  */
-/* SOFTWARE.                                                                      */
 /*                                                                                */
 /**********************************************************************************/
 
@@ -45,8 +28,9 @@ namespace WinASM65
             {CPUDef.LABEL, LabelHandler },
             {CPUDef.DIRECTIVE, DirectiveHandler },
             {CPUDef.INSTRUCTION, InstructionHandler },
-            {CPUDef.CONSTANT, ConstantHandler }
-        };
+            {CPUDef.CONSTANT, ConstantHandler },
+            {CPUDef.MEM_RESERVE, MemResHandler }
+        };       
 
         public static Dictionary<string, Symbol> symbolTable;
         private static ushort currentAddr;
@@ -56,11 +40,13 @@ namespace WinASM65
         public static Dictionary<string, List<TokenInfo>> unsolvedSymbols;
         public static Stack<FileInfo> fileStack;
         public static FileInfo file;
+        public static MemArea memArea;
 
         #region directives
         private static Dictionary<string, DelDirectiveHandler> directiveHandlersMap = new Dictionary<string, DelDirectiveHandler>
         {
             { ".org", OrgHandler },
+            { ".memarea", MemAreaHandler },
             { ".incbin", IncBinHandler },
             { ".include", IncludeHandler },
             { ".byte", DataByteHandler },
@@ -83,6 +69,29 @@ namespace WinASM65
             value = value.Trim().Replace("$", string.Empty);
             originAddr = ushort.Parse(value, NumberStyles.HexNumber);
             currentAddr = originAddr;
+        }
+
+        private static void MemAreaHandler(string value)
+        {
+            Match match = Regex.Match(value, @"^(" + CPUDef.hbRegex + @")$");
+            if (match.Success)
+            {
+                memArea.val = byte.Parse(match.Groups["HB"].Value, NumberStyles.HexNumber);
+                memArea.type = SymbolType.BYTE;
+            }
+            else
+            {
+                match = Regex.Match(value, @"^(" + CPUDef.hwRegex + @")$");
+                if (match.Success)
+                {
+                    memArea.val = ushort.Parse(match.Groups["HW"].Value, NumberStyles.HexNumber);
+                    memArea.type = SymbolType.WORD;
+                }
+                else
+                {
+                    AddError(Errors.DATA_TYPE);
+                }
+            }
         }
 
         private static void IncBinHandler(string fileName)
@@ -334,6 +343,30 @@ namespace WinASM65
             }
         }
 
+        private static void MemResHandler(Match lineReg)
+        {
+            string label = lineReg.Groups["label"].Value;
+            string value = lineReg.Groups["value"].Value;
+            int val = int.Parse(value);
+            Symbol variable = new Symbol() { Type= memArea.type, Value = memArea.val };
+            if (!symbolTable.ContainsKey(label))
+            {
+                symbolTable.Add(label, variable);
+                if(memArea.type == SymbolType.BYTE)
+                {
+                    memArea.val += (byte)val;
+                }else
+                {
+                    memArea.val += (ushort)val;
+                }
+                MainConsole.WriteLine($"{label} {variable.Value.ToString("x")}");
+            }
+            else
+            {
+                AddError(Errors.LABEL_EXISTS);
+            }
+        }
+
         private static void AddUnsolvedSymbol(string unsolvedLabel, TokenInfo tokenInfo)
         {
             if (unsolvedSymbols.ContainsKey(unsolvedLabel))
@@ -555,6 +588,7 @@ namespace WinASM65
             fileOutMemory = new List<byte>();
             errorList = new List<Error>();
             fileStack = new Stack<FileInfo>();
+            memArea = new MemArea();
 
             Boolean contextError = false;
             if (sourceFile == null)
@@ -763,6 +797,7 @@ namespace WinASM65
         public static string FILE_NOT_EXISTS = "File doesn't exist";
         public static string DATA_BYTE = "Error in insert data byte";
         public static string DATA_WORD = "Error in insert data word";
+        public static string DATA_TYPE = "Error in data type";
     }
 
     struct TokenInfo
@@ -777,5 +812,11 @@ namespace WinASM65
         public StreamReader fp { get; set; }
         public string sourceFile { get; set; }
         public int currentLineNumber { get; set; }
+    }
+
+    struct MemArea
+    {
+        public SymbolType type;
+        public dynamic val;
     }
 }
