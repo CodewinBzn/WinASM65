@@ -1,0 +1,14 @@
+[
+	{
+		FileName: "engine/headers.asm",
+		Dependencies: []
+	},
+	{
+		FileName: "engine/background.asm",
+		Dependencies: []
+	},
+	{
+		FileName: "engine/vectors.asm",
+		Dependencies: ["engine/background.asm"]
+	}
+]

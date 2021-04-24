@@ -1,0 +1,21 @@
+{
+	
+	ObjectFile: "generated_Nes_Rom/game.nes",
+	Files: 
+	[
+		{
+			FileName: "engine/headers.o",
+			Size: "$10"
+		},
+		{
+			FileName: "engine/background.o",
+			Size: "$3FFA"
+		},
+		{
+			FileName: "engine/vectors.o"
+		},
+		{
+			FileName: "chr/mario.chr"
+		},
+	]
+}
