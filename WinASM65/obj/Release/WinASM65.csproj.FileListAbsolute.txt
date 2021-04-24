@@ -8,3 +8,7 @@ C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\obj\Release\Win
 C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\bin\Release\Newtonsoft.Json.dll
 C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\bin\Release\Newtonsoft.Json.xml
 C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\obj\Release\WinASM65.csproj.CopyComplete
+C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\bin\Release\WinASM65.exe.manifest
+C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\bin\Release\WinASM65.application
+C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\obj\Release\WinASM65.exe.manifest
+C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\obj\Release\WinASM65.application
