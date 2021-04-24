@@ -1,14 +1,14 @@
 # WinASM65
 Assembler for 6502 based systems
-By codewin (Abdelghani BOUZIANE)
+by codewin (Abdelghani BOUZIANE)
 
 ## Command line 
 
-### Usage: 
+### Usage 
 
 		WinASM65 [-option] sourcefile
 		
-### Options:
+### Options
 		-m 			Assemble one or several segments
 		-c 			Combine assembled segments/binary files
 		
@@ -35,12 +35,12 @@ By codewin (Abdelghani BOUZIANE)
 
 ```
 
-### Dependencies: 
-if a segment refers to labels, variables ... or to routines declared in other segments 
+### Dependencies
+If a segment refers to labels, variables ... or to routines declared in other segments 
 then it must mention them in this array as ["path_to_main_file_seg1", .....]
 
 
-##Combine assembled segments/Binary files:
+## Combine assembled segments/Binary files
 ### JSON File format:
 ```
 {
@@ -66,7 +66,7 @@ then it must mention them in this array as ["path_to_main_file_seg1", .....]
 
 Segment are declared by order of insertion in the final object file.
 
-### Size: 
+### Size
 The size of the segment object file.
 If the size of the assembled segment is less then the declared size then the assembler will 
 fill the rest of bytes with the value $00 .
