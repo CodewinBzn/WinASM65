@@ -98,9 +98,8 @@ label:
 ```		
 
 ### Numbers
-
-Hexadecimal numbers begin with '$'.
-Binary numbers begin with '%'
+- Hexadecimal numbers begin with '$'.
+- Binary numbers begin with '%'.
 
 
 ### Assembler directives
