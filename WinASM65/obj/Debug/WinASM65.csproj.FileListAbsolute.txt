@@ -7,3 +7,8 @@ C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\bin\Debug\Newto
 C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\obj\Debug\WinASM65.csproj.CopyComplete
 C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\obj\Debug\WinASM65.exe
 C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\obj\Debug\WinASM65.pdb
+C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\bin\Debug\WinASM65.exe.manifest
+C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\bin\Debug\WinASM65.application
+C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\obj\Debug\WinASM65.exe.manifest
+C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\obj\Debug\WinASM65.application
+C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\obj\Debug\WinASM65.csprojAssemblyReference.cache
