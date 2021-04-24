@@ -88,7 +88,7 @@ lda #$00 	; this is a comment
 			cpx #$10
 			bne label
 ```			
-- Alone in the line, A colon (:) following a label is mandatory
+- Alone in a line, A colon (:) following a label is mandatory
 ```
 		ldx #$00
 label:
