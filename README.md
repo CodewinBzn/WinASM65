@@ -142,7 +142,7 @@ ennemies_pos_y .res 15  ; to store posy of ennemies (15 ennemies)
 
 - .INCBIN / .incbin
 
-Add the contents of a binary file to the assembly output.
+Add the content of a binary file to the assembly output.
 ```
 .incbin "path_to_binary_file"
 ```
