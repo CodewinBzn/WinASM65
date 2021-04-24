@@ -84,7 +84,7 @@ lda #$00 	; this is a comment
 - before an instruction 
 ```
 			ldx #$00
-	label 	lda $4000, x
+	label 	        lda $4000, x
 			cpx #$10
 			bne label
 ```			
