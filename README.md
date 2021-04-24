@@ -97,7 +97,7 @@ label:
 		bne label
 ```		
 
-- In this first version the names of labels, variable and constants don't contain numeric numbers
+- In this first version the names of labels, variables and constants don't contain numeric numbers
 ```
 pos_x .res 1       ; correct
 pos_x_123 .res 1   ; wrong
