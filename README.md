@@ -37,7 +37,7 @@ by codewin (Abdelghani BOUZIANE).
 
 ### Dependencies
 If a segment refers to labels, variables ... or to routines declared in other segments 
-then it must mention them in this array as ["path_to_main_file_seg1", .....]
+then it must mention them in this array as ["path_to_main_file_seg1", .....].
 
 
 ## Combine assembled segments / Binary files
@@ -74,12 +74,12 @@ fill the rest of bytes with the value $00 .
 
 ## Syntax
 
-- Comments begin with a semicolon (;)
+- Comments begin with a semicolon (;).
 ```
 lda #$00 	; this is a comment
 ```
 
-- Labels are declared in two ways 
+- Labels are declared in two ways. 
 
 - before an instruction 
 ```
