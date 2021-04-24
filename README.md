@@ -99,8 +99,8 @@ label:
 
 - In this first version the names of labels, variable and constants don't contain numeric numbers
 ```
-	pos_x .res 1       ; correct
-	pos_x_123 .res 1   ; wrong
+pos_x .res 1       ; correct
+pos_x_123 .res 1   ; wrong
 
 my_label    lda #$00	; correct
 my_bale_01  lda #$00    ; wrong
