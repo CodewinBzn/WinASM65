@@ -13,9 +13,9 @@ by codewin (Abdelghani BOUZIANE).
 		-c 			Combine assembled segments/binary files
 		
 		
-## Assemble segments: 
+## Assemble segments
 
-### JSON File format :
+### JSON File format 
 ```
 [
 	{
@@ -40,7 +40,7 @@ If a segment refers to labels, variables ... or to routines declared in other se
 then it must mention them in this array as ["path_to_main_file_seg1", .....]
 
 
-## Combine assembled segments/Binary files
+## Combine assembled segments / Binary files
 ### JSON File format:
 ```
 {
