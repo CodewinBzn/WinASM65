@@ -153,9 +153,9 @@ palette:
 
 ### Expressions
 ```
- - <Label   Returns the low byte of label.
- - >Label   Returns the high byte of label.
- - #label   Immidate addressing.
+ - <        Returns the low byte of a value (ex: <label).
+ - >        Returns the high byte of a value (ex: >label).
+ - #   	    Immidate addressing (ex: #label).
  - ]label   Force the zero page addressing (usefull when reffering to a symbol in another segment).
 ```
  
