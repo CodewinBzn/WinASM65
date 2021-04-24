@@ -143,7 +143,8 @@ Assemble another source file as if it were part of the current source.
 ```
 
 - .BYTE / .byte, .WORD / .word
-- Emit byte(s) or word(s).  Multiple arguments are separated by commas.
+
+Emit byte(s) or word(s).  Multiple arguments are separated by commas.
 ```
 RED = $06
 palette:
