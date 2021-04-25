@@ -11,9 +11,9 @@ RESET:
   STX $2001    ; disable rendering
   STX $4010    ; disable DMC IRQs
 
-vblankwaitf:       ; First wait for vblank to make sure PPU is ready
+vblankwait1:       ; First wait for vblank to make sure PPU is ready
   BIT $2002
-  BPL vblankwaitf
+  BPL vblankwait1
 
 clrmem:
   LDA #$00
@@ -29,9 +29,9 @@ clrmem:
   INX
   BNE clrmem
    
-vblankwaits:      ; Second wait for vblank, PPU is ready after this
+vblankwait2:      ; Second wait for vblank, PPU is ready after this
   BIT $2002
-  BPL vblankwaits
+  BPL vblankwait2
 
 
   ; ************** NEW CODE ****************
