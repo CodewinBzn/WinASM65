@@ -40,7 +40,7 @@ namespace WinASM65
         private static readonly string hex = @"[0-9a-fA-f]";
         private static readonly string hexByte = hex + @"{2}";
         private static readonly string hexWord = hex + @"{4}";
-        private static readonly string label = @"[A-Za-z]\w*";
+        private static readonly string label = @"[A-Za-z][a-zA-Z_0-9]*";
 
         // hex byte regex
         public static readonly string hbRegex = @"(\$(?<HB>" + hexByte + "))";
