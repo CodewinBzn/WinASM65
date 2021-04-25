@@ -1,6 +1,6 @@
 # WinASM65
 Assembler for 6502 based systems
-by codewin (Abdelghani BOUZIANE).
+by codewinBzn (Abdelghani BOUZIANE).
 
 ## This project is under development, new features will be added as things progress. 
 ------------------------------
