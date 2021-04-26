@@ -15,6 +15,9 @@
     <StartArguments>-f test/test.asm -o test/rom.txt</StartArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
-    <StartArguments>-f test/test.asm -o rom.o</StartArguments>
+    <StartArguments>-f test/test.asm -o test/rom.o</StartArguments>
+  </PropertyGroup>
+  <PropertyGroup>
+    <EnableSecurityDebugging>false</EnableSecurityDebugging>
   </PropertyGroup>
 </Project>
