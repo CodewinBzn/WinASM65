@@ -29,8 +29,9 @@ namespace WinASM65
             {CPUDef.DIRECTIVE, DirectiveHandler },
             {CPUDef.INSTRUCTION, InstructionHandler },
             {CPUDef.CONSTANT, ConstantHandler },
-            {CPUDef.MEM_RESERVE, MemResHandler }
-        };       
+            {CPUDef.MEM_RESERVE, MemResHandler },
+            {CPUDef.CALL_MACRO, CallMacroHandler }
+        };
 
         public static Dictionary<string, Symbol> symbolTable;
         private static ushort currentAddr;
@@ -38,10 +39,12 @@ namespace WinASM65
         private delegate void DelDirectiveHandler(string value);
         public static string sourceFile;
         public static Dictionary<string, List<TokenInfo>> unsolvedSymbols;
+        public static Dictionary<string, MacroDef> macros;
         public static Stack<FileInfo> fileStack;
         public static FileInfo file;
         public static MemArea memArea;
-
+        public static bool startMacroDef;
+        public static string currentMacro;
         #region directives
         private static Dictionary<string, DelDirectiveHandler> directiveHandlersMap = new Dictionary<string, DelDirectiveHandler>
         {
@@ -50,8 +53,40 @@ namespace WinASM65
             { ".incbin", IncBinHandler },
             { ".include", IncludeHandler },
             { ".byte", DataByteHandler },
-            { ".word", DataWordHandler }
+            { ".word", DataWordHandler },
+            { ".macro", StartMacroDefHandler },
+            { ".endmacro", EndMacroDefHandler }
         };
+
+        private static void StartMacroDefHandler(string value)
+        {
+            
+            Match mReg  = Regex.Match(value, CPUDef.macroReg);
+            string macroName = currentMacro = mReg.Groups["label"].Value;
+            string defParts = mReg.Groups["value"].Value;
+            MacroDef macroDef = new MacroDef();
+            macroDef.lines = new List<string>();
+            
+            startMacroDef = true;
+            if (!string.IsNullOrEmpty(defParts))
+            {
+                macroDef.listParam = Regex.Replace(defParts, @"\s+", "").Split(',');
+            }
+            if (macros.ContainsKey(macroName))
+            {
+                AddError(Errors.MACRO_EXISTS);
+            }
+            else
+            {
+                macros.Add(macroName, macroDef);
+            }
+        }
+
+        private static void EndMacroDefHandler(string value)
+        {
+            startMacroDef = false;
+            currentMacro = string.Empty;
+        }
 
         private static void DirectiveHandler(Match lineReg)
         {
@@ -232,11 +267,18 @@ namespace WinASM65
 
         private static void InstructionHandler(Match lineReg)
         {
-            string label = lineReg.Groups["label"].Value;
-            string opcode = lineReg.Groups["opcode"].Value.ToUpper();
+            string opcode = lineReg.Groups["opcode"].Value;
             string operands = lineReg.Groups["operands"].Value;
-            ushort opcodeAddr = currentAddr;
-
+            if (macros.ContainsKey(opcode))
+            {
+                Match macroReg = Regex.Match($"{opcode} {operands}", CPUDef.macroReg);
+                CallMacroHandler(macroReg);
+                return;
+            }
+            string label = lineReg.Groups["label"].Value;          
+            
+            ushort opcodeAddr = currentAddr;    
+            opcode = lineReg.Groups["opcode"].Value.ToUpper();
             if (!string.IsNullOrWhiteSpace(label))
             {
                 if (symbolTable.ContainsKey(label))
@@ -348,14 +390,15 @@ namespace WinASM65
             string label = lineReg.Groups["label"].Value;
             string value = lineReg.Groups["value"].Value;
             int val = int.Parse(value);
-            Symbol variable = new Symbol() { Type= memArea.type, Value = memArea.val };
+            Symbol variable = new Symbol() { Type = memArea.type, Value = memArea.val };
             if (!symbolTable.ContainsKey(label))
             {
                 symbolTable.Add(label, variable);
-                if(memArea.type == SymbolType.BYTE)
+                if (memArea.type == SymbolType.BYTE)
                 {
                     memArea.val += (byte)val;
-                }else
+                }
+                else
                 {
                     memArea.val += (ushort)val;
                 }
@@ -365,6 +408,49 @@ namespace WinASM65
             {
                 AddError(Errors.LABEL_EXISTS);
             }
+        }
+
+        private static void CallMacroHandler(Match lineReg)
+        {
+            string macroName = lineReg.Groups["label"].Value;
+            string value = lineReg.Groups["value"].Value;
+
+            if (!macros.ContainsKey(macroName))
+            {
+                AddError(Errors.MACRO_NOT_EXISTS);
+                return;
+            }
+            MacroDef macroDef = macros[macroName];
+            if (!string.IsNullOrEmpty(value))
+            {
+                string[] paramValues = Regex.Replace(value, @"\s+", "").Split(',');
+                foreach (string line in macroDef.lines)
+                {
+                    string finalLine = line;
+                    for (int i = 0; i < paramValues.Length; i++)
+                    {
+                        string paramValue = paramValues[i];
+                        string paramName = macroDef.listParam[i];
+                        finalLine = finalLine.Replace(paramName, paramValue);
+                    }
+                    ParseLine(finalLine, finalLine);
+                }
+            }
+            else
+            {
+                if (macroDef.listParam.Length > 0)
+                {
+                    AddError(Errors.MACRO_CALL_WITHOUT_PARAMS);
+                    return;
+                }
+                foreach (string line in macroDef.lines)
+                {
+                    ParseLine(line, line);
+                }
+            }
+
+
+
         }
 
         private static void AddUnsolvedSymbol(string unsolvedLabel, TokenInfo tokenInfo)
@@ -589,6 +675,8 @@ namespace WinASM65
             errorList = new List<Error>();
             fileStack = new Stack<FileInfo>();
             memArea = new MemArea();
+            macros = new Dictionary<string, MacroDef>();
+            startMacroDef = false;
 
             Boolean contextError = false;
             if (sourceFile == null)
@@ -676,25 +764,37 @@ namespace WinASM65
                         MainConsole.WriteLine(originalLine);
                         continue;
                     }
-                    bool syntaxError = true;
-                    foreach (KeyValuePair<string, string> entry in CPUDef.regMap)
+                    if (startMacroDef && !line.ToLower().Equals(".endmacro"))
                     {
-                        Match match = Regex.Match(line, entry.Key);
-                        if (match.Success)
-                        {
-                            syntaxError = false;
-                            MainConsole.WriteLine(string.Format("{0}   --- {1}", originalLine, entry.Value));
-                            ProcessLine(match, entry.Value);
-                            break;
-                        }
+                        macros[currentMacro].lines.Add(line);
                     }
-                    if (syntaxError)
+                    else
                     {
-                        AddError(Errors.SYNTAX);
-                        // MainConsole.WriteLine("[{0}] Syntax Error - {1}", lineNumber, originalLine);
+                        ParseLine(line, originalLine);
                     }
                 }
                 file.fp.Close();
+            }
+        }
+
+        private static void ParseLine(string line, string originalLine)
+        {
+            bool syntaxError = true;
+            foreach (KeyValuePair<string, string> entry in CPUDef.regMap)
+            {
+                Match match = Regex.Match(line, entry.Key);
+                if (match.Success)
+                {
+                    syntaxError = false;
+                    MainConsole.WriteLine(string.Format("{0}   --- {1}", originalLine, entry.Value));
+                    ProcessLine(match, entry.Value);
+                    break;
+                }
+            }
+            if (syntaxError)
+            {
+                AddError(Errors.SYNTAX);
+                // MainConsole.WriteLine("[{0}] Syntax Error - {1}", lineNumber, originalLine);
             }
         }
 
@@ -798,6 +898,9 @@ namespace WinASM65
         public static string DATA_BYTE = "Error in insert data byte";
         public static string DATA_WORD = "Error in insert data word";
         public static string DATA_TYPE = "Error in data type";
+        public static string MACRO_EXISTS = "Macro with the same name already defined";
+        public static string MACRO_NOT_EXISTS = "Undefined Macro";
+        public static string MACRO_CALL_WITHOUT_PARAMS = "Macro called without params";
     }
 
     struct TokenInfo
@@ -818,5 +921,10 @@ namespace WinASM65
     {
         public SymbolType type;
         public dynamic val;
+    }
+    struct MacroDef
+    {
+        public string[] listParam;
+        public List<string> lines;
     }
 }
