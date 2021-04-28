@@ -54,14 +54,14 @@
     </dependentAssembly>
   </dependency>
   <dependency>
-    <dependentAssembly dependencyType="install" allowDelayedBinding="true" codebase="WinASM65.exe" size="41360">
+    <dependentAssembly dependencyType="install" allowDelayedBinding="true" codebase="WinASM65.exe" size="41872">
       <assemblyIdentity name="WinASM65" version="1.0.0.0" language="neutral" processorArchitecture="msil" />
       <hash>
         <dsig:Transforms>
           <dsig:Transform Algorithm="urn:schemas-microsoft-com:HashTransforms.Identity" />
         </dsig:Transforms>
         <dsig:DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha256" />
-        <dsig:DigestValue>8HT94193MgSZbXocuQ7l0x/qCCxv1MVWcAgu29XFcy4=</dsig:DigestValue>
+        <dsig:DigestValue>87IWz3zpsuXYfoYlCDMQpLkIL/Yixr/UXg5btkVRT/k=</dsig:DigestValue>
       </hash>
     </dependentAssembly>
   </dependency>

@@ -60,13 +60,13 @@ namespace WinASM65
 
         private static void StartMacroDefHandler(string value)
         {
-            
-            Match mReg  = Regex.Match(value, CPUDef.macroReg);
+
+            Match mReg = Regex.Match(value, CPUDef.macroReg);
             string macroName = currentMacro = mReg.Groups["label"].Value;
             string defParts = mReg.Groups["value"].Value;
             MacroDef macroDef = new MacroDef();
             macroDef.lines = new List<string>();
-            
+
             startMacroDef = true;
             if (!string.IsNullOrEmpty(defParts))
             {
@@ -166,30 +166,41 @@ namespace WinASM65
             foreach (string db in bytes)
             {
                 string data = db.Trim();
-                Match match = Regex.Match(data, @"^(" + CPUDef.byteRegex + @")$");
-                if (match.Success)
+                if (CPUDef.isString(data)) // handle strings 
                 {
-                    Token token = GetToken(match);
-                    TokenResult tokenRes = ResolveToken(token, CPUDef.AddrModes.NO);
-                    if (tokenRes.Bytes != null)
+                    data = data.Substring(1, data.Length -2);
+                    foreach(char c in data)
                     {
-                        fileOutMemory.AddRange(tokenRes.Bytes);
+                        fileOutMemory.Add(Convert.ToByte(c));
+                        currentAddr++;
+                    }
+                } else {                   
+                    Match match = Regex.Match(data, @"^(" + CPUDef.byteRegex + @")$");
+                    if (match.Success)
+                    {
+                        Token token = GetToken(match);
+                        TokenResult tokenRes = ResolveToken(token, CPUDef.AddrModes.NO);
+                        if (tokenRes.Bytes != null)
+                        {
+                            fileOutMemory.AddRange(tokenRes.Bytes);
+                        }
+                        else
+                        {
+                            string unsolvedLabel = tokenRes.UnsolvedLabel;
+                            if (unsolvedLabel != null)
+                            {
+                                fileOutMemory.Add(0);
+                                ushort position = (ushort)(currentAddr - originAddr);
+                                TokenInfo tokenInfo = new TokenInfo { Position = position, Type = tokenRes.VType, addrMode = CPUDef.AddrModes.NO };
+                                AddUnsolvedSymbol(unsolvedLabel, tokenInfo);
+                            }
+                        }
+                        currentAddr++;
                     }
                     else
                     {
-                        string unsolvedLabel = tokenRes.UnsolvedLabel;
-                        if (unsolvedLabel != null)
-                        {
-                            ushort position = (ushort)(currentAddr - originAddr);
-                            TokenInfo tokenInfo = new TokenInfo { Position = position, Type = tokenRes.VType, addrMode = CPUDef.AddrModes.NO };
-                            AddUnsolvedSymbol(unsolvedLabel, tokenInfo);
-                        }
+                        AddError(Errors.DATA_BYTE);
                     }
-                    currentAddr++;
-                }
-                else
-                {
-                    AddError(Errors.DATA_BYTE);
                 }
             }
         }
@@ -214,6 +225,7 @@ namespace WinASM65
                         string unsolvedLabel = tokenRes.UnsolvedLabel;
                         if (unsolvedLabel != null)
                         {
+                            fileOutMemory.AddRange(new byte[2] { 0, 0 });
                             ushort position = (ushort)(currentAddr - originAddr);
                             TokenInfo tokenInfo = new TokenInfo { Position = position, Type = tokenRes.VType, addrMode = CPUDef.AddrModes.NO };
                             AddUnsolvedSymbol(unsolvedLabel, tokenInfo);
@@ -275,9 +287,9 @@ namespace WinASM65
                 CallMacroHandler(macroReg);
                 return;
             }
-            string label = lineReg.Groups["label"].Value;          
-            
-            ushort opcodeAddr = currentAddr;    
+            string label = lineReg.Groups["label"].Value;
+
+            ushort opcodeAddr = currentAddr;
             opcode = lineReg.Groups["opcode"].Value.ToUpper();
             if (!string.IsNullOrWhiteSpace(label))
             {
@@ -369,6 +381,14 @@ namespace WinASM65
                         string unsolvedLabel = tokenRes.UnsolvedLabel;
                         if (unsolvedLabel != null)
                         {
+                            if (instInfo.nbrBytes == 2)
+                            {
+                                instBytes.AddRange(new byte[1] { 0 });
+                            }
+                            else // 3 bytes instr
+                            {
+                                instBytes.AddRange(new byte[2] { 0, 0 });
+                            }
                             ushort position = (ushort)(opcodeAddr - originAddr + 1);
                             TokenInfo tokenInfo = new TokenInfo { Position = position, Type = tokenRes.VType, addrMode = addrMode };
                             AddUnsolvedSymbol(unsolvedLabel, tokenInfo);
@@ -448,9 +468,6 @@ namespace WinASM65
                     ParseLine(line, line);
                 }
             }
-
-
-
         }
 
         private static void AddUnsolvedSymbol(string unsolvedLabel, TokenInfo tokenInfo)
@@ -651,7 +668,7 @@ namespace WinASM65
                         bytes = new byte[1] { GetHighByte((ushort)symb.Value) };
                         break;
                 }
-
+                fileOutMemory.RemoveRange(tokenInfo.Position, bytes.Length);
                 fileOutMemory.InsertRange(tokenInfo.Position, bytes);
             }
         }
@@ -767,6 +784,7 @@ namespace WinASM65
                     if (startMacroDef && !line.ToLower().Equals(".endmacro"))
                     {
                         macros[currentMacro].lines.Add(line);
+                        MainConsole.WriteLine(string.Format("{0}   --- {1}", originalLine, "MACRO DEF"));
                     }
                     else
                     {
