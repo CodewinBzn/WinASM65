@@ -39,7 +39,7 @@ namespace WinASM65
         }
         private static readonly string binByte = @"[01]{8}";
         private static readonly string hex = @"[0-9a-fA-f]";
-        private static readonly string hexByte = hex + @"{2}";
+        private static readonly string hexByte = @"(" + hex + @"{2}|"+ hex + @"{1})";
         private static readonly string hexWord = hex + @"{4}";
         private static readonly string label = @"[A-Za-z_][a-zA-Z_0-9]*";
 
@@ -181,6 +181,11 @@ namespace WinASM65
         {
             return ((int)addrMode < 6 && (int)addrMode > 2);
         }
+        public static bool isString(string value)
+        {
+            return value.StartsWith("\"") && value.EndsWith("\"");
+        }
+    
     }
 
 }
