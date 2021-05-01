@@ -45,6 +45,8 @@ namespace WinASM65
         public static MemArea memArea;
         public static bool startMacroDef;
         public static string currentMacro;
+        public static ConditionalAsm cAsm;
+
         #region directives
         private static Dictionary<string, DelDirectiveHandler> directiveHandlersMap = new Dictionary<string, DelDirectiveHandler>
         {
@@ -55,8 +57,35 @@ namespace WinASM65
             { ".byte", DataByteHandler },
             { ".word", DataWordHandler },
             { ".macro", StartMacroDefHandler },
-            { ".endmacro", EndMacroDefHandler }
+            { ".endmacro", EndMacroDefHandler },
+            { ".ifdef", IfDefHandler },
+            { ".ifndef", IfnDefHandler },
+            { ".else", ElseHandler },
+            { ".endif", EndIfHandler },
         };
+
+        private static void IfDefHandler(string value)
+        {
+            cAsm.inCondition = true;
+            string label = value.Trim();
+            cAsm.val = symbolTable.ContainsKey(label);
+        }
+
+        private static void IfnDefHandler(string value)
+        {
+            cAsm.inCondition = true;
+            string label = value.Trim();
+            cAsm.val = !symbolTable.ContainsKey(label);
+        }
+        private static void ElseHandler(string value)
+        {
+            cAsm.val = !cAsm.val;
+        }
+
+        private static void EndIfHandler(string value)
+        {
+            cAsm.inCondition = false;
+        }
 
         private static void StartMacroDefHandler(string value)
         {
@@ -168,13 +197,15 @@ namespace WinASM65
                 string data = db.Trim();
                 if (CPUDef.isString(data)) // handle strings 
                 {
-                    data = data.Substring(1, data.Length -2);
-                    foreach(char c in data)
+                    data = data.Substring(1, data.Length - 2);
+                    foreach (char c in data)
                     {
                         fileOutMemory.Add(Convert.ToByte(c));
                         currentAddr++;
                     }
-                } else {                   
+                }
+                else
+                {
                     Match match = Regex.Match(data, @"^(" + CPUDef.byteRegex + @")$");
                     if (match.Success)
                     {
@@ -262,6 +293,19 @@ namespace WinASM65
                         case "binByte":
                             constant.Value = Convert.ToByte(lineReg.Groups[tt].Value, 2);
                             constant.Type = SymbolType.BYTE;
+                            break;
+                        case "DEC":
+                            int val = int.Parse(lineReg.Groups[tt].Value);
+                            if (val <= 255)
+                            {
+                                constant.Value = (byte)val;
+                                constant.Type = SymbolType.BYTE;
+                            }
+                            else
+                            {
+                                constant.Value = (ushort)val;
+                                constant.Type = SymbolType.WORD;
+                            }
                             break;
                     }
                     break;
@@ -354,7 +398,7 @@ namespace WinASM65
             }
             if (syntaxError)
             {
-                Console.WriteLine("Operands Syntax Error {0}", operands);
+                AddError(Errors.OPERANDS);
             }
             else
             {
@@ -505,6 +549,16 @@ namespace WinASM65
         {
             switch (token.Type)
             {
+                case "DEC":
+                    int val = int.Parse(token.Value);
+                    if (val <= 255)
+                    {
+                        return new TokenResult { Bytes = new byte[1] { (byte)val } };
+                    }
+                    else
+                    {
+                        return new TokenResult { Bytes = GetWordBytes((ushort)val) };
+                    }
                 case "HB":
                     return new TokenResult { Bytes = new byte[1] { Byte.Parse(token.Value, NumberStyles.HexNumber) } };
                 case "HW":
@@ -694,6 +748,11 @@ namespace WinASM65
             memArea = new MemArea();
             macros = new Dictionary<string, MacroDef>();
             startMacroDef = false;
+            cAsm = new ConditionalAsm()
+            {
+                inCondition = false,
+                val = false
+            };
 
             Boolean contextError = false;
             if (sourceFile == null)
@@ -774,6 +833,11 @@ namespace WinASM65
                 while ((line = file.fp.ReadLine()) != null)
                 {
                     file.currentLineNumber++;
+                    if (cAsm.inCondition && !cAsm.val)
+                    {
+                        MainConsole.WriteLine(string.Format("{0}   --- {1}", line, "NOT Assembled"));
+                        continue;
+                    }
                     string originalLine = line;
                     line = Regex.Replace(line, ";(.)*", "").Trim();
                     if (String.IsNullOrWhiteSpace(line))
@@ -812,7 +876,6 @@ namespace WinASM65
             if (syntaxError)
             {
                 AddError(Errors.SYNTAX);
-                // MainConsole.WriteLine("[{0}] Syntax Error - {1}", lineNumber, originalLine);
             }
         }
 
@@ -919,6 +982,7 @@ namespace WinASM65
         public static string MACRO_EXISTS = "Macro with the same name already defined";
         public static string MACRO_NOT_EXISTS = "Undefined Macro";
         public static string MACRO_CALL_WITHOUT_PARAMS = "Macro called without params";
+        public static string OPERANDS = "Error in operands";
     }
 
     struct TokenInfo
@@ -944,5 +1008,11 @@ namespace WinASM65
     {
         public string[] listParam;
         public List<string> lines;
+    }
+
+    struct ConditionalAsm
+    {
+        public bool val;
+        public bool inCondition;
     }
 }
