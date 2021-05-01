@@ -103,24 +103,25 @@ label:
 - Hexadecimal numbers begin with '$'.
 - Binary numbers begin with '%'.
 
-
 ### Assembler directives
 
-- .ORG / .org
+#### .ORG / .org
 
-Set the starting address of a segment.
-To use only once in each segment.
+- Set the starting address of a segment.
+- To use only once in each segment.
+- To use only with hex numbers.
 ```
 	.org $c000
 lda #$00	
 ```
 
-- .MEMAREA / .memarea  .
+#### .MEMAREA / .memarea  .
 
-Set the starting address of a memory area for 
+- Set the starting address of a memory area for 
 memory reservation.
+- To use only with hex numbers.
 
-- .RES / .res 
+#### .RES / .res 
 Reserve a number of bytes (to use with decimal number).
 
 ```
@@ -132,26 +133,59 @@ ennemies_pos_x .res 15 	; to store posx of ennemies (15 ennemies)
 ennemies_pos_y .res 15  ; to store posy of ennemies (15 ennemies) 
 ```
 
-- .INCBIN / .incbin
-
-Add the content of a binary file to the assembly output.
+#### .INCBIN / .incbin
+- Add the content of a binary file to the assembly output.
 ```
 .incbin "path_to_binary_file"
 ```
-- .INCLUDE / .include
-
-Assemble another source file as if it were part of the current source.
+#### .INCLUDE / .include
+- Assemble another source file as if it were part of the current source.
 ```
 .include "path_to_source_file"
 ```
 
-- .BYTE / .byte, .WORD / .word
+#### .BYTE/.byte, .WORD/.word
 
 Emit byte(s) or word(s).  Multiple arguments are separated by commas.
 ```
 RED = $06
 palette:
 .byte $00, $10, RED, $5d
+```
+
+#### Strings
+```
+.byte "A", "B"
+.byte "NES"
+myString: 
+	.byte "Hello World"
+```
+#### .IFDEF/.ifdef,  .IFNDEF/.ifndef
+- Process a block of code if a symbol has been defined / not defined.
+```
+.ifdef _debug_
+	.
+	.
+	.
+.else 
+	.
+	.
+	.
+.endif
+
+```
+#### .MACRO/.macro
+-  Define a macro.  Macro arguments are comma separated.
+- .macro name args...
+```
+.macro add @a, @b
+	clc 
+	lda @a
+	adc @b
+.endmacro
+
+red_color = $85
+add #red_color, #$00	
 ```
 
 ### Expressions
@@ -162,7 +196,6 @@ palette:
  - ]label   Force the zero page addressing (usefull when reffering to a symbol in another segment).
 ```
  
-
 
  	
 
