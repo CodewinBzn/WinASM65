@@ -63,8 +63,6 @@ namespace WinASM65
                     Combine.Process();
                     break;
             }
-     
-            Console.In.ReadLine();
         }
     }
 

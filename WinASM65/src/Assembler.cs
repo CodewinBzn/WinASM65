@@ -25,6 +25,8 @@ namespace WinASM65
         public delegate void DelHandler(Match lineReg);
         private static Dictionary<string, DelHandler> mapLineHandlers = new Dictionary<string, DelHandler>
         {
+            {CPUDef.START_LOCAL_SCOPE, StartLocalScopeHandler },
+            {CPUDef.END_LOCAL_SCOPE, EndLocalScopeHandler },
             {CPUDef.LABEL, LabelHandler },
             {CPUDef.DIRECTIVE, DirectiveHandler },
             {CPUDef.INSTRUCTION, InstructionHandler },
@@ -32,7 +34,6 @@ namespace WinASM65
             {CPUDef.MEM_RESERVE, MemResHandler },
             {CPUDef.CALL_MACRO, CallMacroHandler }
         };
-
         public static Dictionary<string, Symbol> symbolTable;
         private static ushort currentAddr;
         private static ushort originAddr;
@@ -46,6 +47,32 @@ namespace WinASM65
         public static bool startMacroDef;
         public static string currentMacro;
         public static ConditionalAsm cAsm;
+        public static LocalScope localScope;
+
+
+        private static void StartLocalScopeHandler(Match lineReg)
+        {
+            localScope.isLocalScope = true;
+        }
+
+        private static void EndLocalScopeHandler(Match lineReg)
+        {
+            foreach (string symb in localScope.unsolvedSymbols.Keys)
+            {
+                if (unsolvedSymbols.ContainsKey(symb))
+                {
+                    unsolvedSymbols[symb].AddRange(localScope.unsolvedSymbols[symb]);
+                }
+                else
+                {
+                    unsolvedSymbols.Add(symb, localScope.unsolvedSymbols[symb]);
+                }
+
+            }
+            localScope.isLocalScope = false;
+            localScope.symbolTable.Clear();
+            localScope.unsolvedSymbols.Clear();
+        }
 
         #region directives
         private static Dictionary<string, DelDirectiveHandler> directiveHandlersMap = new Dictionary<string, DelDirectiveHandler>
@@ -68,14 +95,14 @@ namespace WinASM65
         {
             cAsm.inCondition = true;
             string label = value.Trim();
-            cAsm.val = symbolTable.ContainsKey(label);
+            cAsm.val = symbolTable.ContainsKey(label) || (localScope.isLocalScope && localScope.symbolTable.ContainsKey(label));
         }
 
         private static void IfnDefHandler(string value)
         {
             cAsm.inCondition = true;
             string label = value.Trim();
-            cAsm.val = !symbolTable.ContainsKey(label);
+            cAsm.val = !symbolTable.ContainsKey(label) && (!localScope.isLocalScope || !localScope.symbolTable.ContainsKey(label));
         }
         private static void ElseHandler(string value)
         {
@@ -138,18 +165,31 @@ namespace WinASM65
         private static void MemAreaHandler(string value)
         {
             Match match = Regex.Match(value, @"^(" + CPUDef.hbRegex + @")$");
+            MemArea ma;
+            if (!localScope.isLocalScope)
+            {
+                ma = memArea;
+            }
+            else
+            {
+                ma = localScope.memArea;
+            }
             if (match.Success)
             {
-                memArea.val = byte.Parse(match.Groups["HB"].Value, NumberStyles.HexNumber);
-                memArea.type = SymbolType.BYTE;
+                SymbolType symbType = SymbolType.BYTE;
+                byte val = byte.Parse(match.Groups["HB"].Value, NumberStyles.HexNumber);
+                ma.val = val;
+                ma.type = symbType;
             }
             else
             {
                 match = Regex.Match(value, @"^(" + CPUDef.hwRegex + @")$");
                 if (match.Success)
                 {
-                    memArea.val = ushort.Parse(match.Groups["HW"].Value, NumberStyles.HexNumber);
-                    memArea.type = SymbolType.WORD;
+                    SymbolType symbType = SymbolType.WORD;
+                    ushort val = ushort.Parse(match.Groups["HW"].Value, NumberStyles.HexNumber);
+                    ma.val = val;
+                    ma.type = symbType;
                 }
                 else
                 {
@@ -311,14 +351,8 @@ namespace WinASM65
                     break;
                 }
             }
-            if (!symbolTable.ContainsKey(label))
-            {
-                symbolTable.Add(label, constant);
-            }
-            else
-            {
-                AddError(Errors.LABEL_EXISTS);
-            }
+
+            AddSymbol(label, constant);
         }
 
         private static void InstructionHandler(Match lineReg)
@@ -337,14 +371,8 @@ namespace WinASM65
             opcode = lineReg.Groups["opcode"].Value.ToUpper();
             if (!string.IsNullOrWhiteSpace(label))
             {
-                if (symbolTable.ContainsKey(label))
-                {
-                    AddError(Errors.LABEL_EXISTS);
-                }
-                else
-                {
-                    symbolTable.Add(label, new Symbol { Type = SymbolType.WORD, Value = currentAddr });
-                }
+                Symbol lSymb = new Symbol { Type = SymbolType.WORD, Value = currentAddr };
+                AddSymbol(label, lSymb);
             }
 
             Byte[] addrModesValues = CPUDef.OPC_TABLE[opcode];
@@ -454,17 +482,29 @@ namespace WinASM65
             string label = lineReg.Groups["label"].Value;
             string value = lineReg.Groups["value"].Value;
             int val = int.Parse(value);
-            Symbol variable = new Symbol() { Type = memArea.type, Value = memArea.val };
-            if (!symbolTable.ContainsKey(label))
+            MemArea ma;
+            Dictionary<string, Symbol> symbTable;
+            if (localScope.isLocalScope)
             {
-                symbolTable.Add(label, variable);
-                if (memArea.type == SymbolType.BYTE)
+                ma = localScope.memArea;
+                symbTable = localScope.symbolTable;
+            }
+            else
+            {
+                ma = memArea;
+                symbTable = symbolTable;
+            }
+            Symbol variable = new Symbol() { Type = ma.type, Value = ma.val };
+            if (!symbTable.ContainsKey(label))
+            {
+                AddSymbol(label, variable);
+                if (ma.type == SymbolType.BYTE)
                 {
-                    memArea.val += (byte)val;
+                    ma.val += (byte)val;
                 }
                 else
                 {
-                    memArea.val += (ushort)val;
+                    ma.val += (ushort)val;
                 }
                 MainConsole.WriteLine($"{label} {variable.Value.ToString("x")}");
             }
@@ -472,6 +512,7 @@ namespace WinASM65
             {
                 AddError(Errors.LABEL_EXISTS);
             }
+
         }
 
         private static void CallMacroHandler(Match lineReg)
@@ -516,15 +557,24 @@ namespace WinASM65
 
         private static void AddUnsolvedSymbol(string unsolvedLabel, TokenInfo tokenInfo)
         {
-            if (unsolvedSymbols.ContainsKey(unsolvedLabel))
+            Dictionary<string, List<TokenInfo>> unsolvedSymb;
+            if (localScope.isLocalScope)
             {
-                unsolvedSymbols[unsolvedLabel].Add(tokenInfo);
+                unsolvedSymb = localScope.unsolvedSymbols;
+            }
+            else
+            {
+                unsolvedSymb = unsolvedSymbols;
+            }
+            if (unsolvedSymb.ContainsKey(unsolvedLabel))
+            {
+                unsolvedSymb[unsolvedLabel].Add(tokenInfo);
             }
             else
             {
                 List<TokenInfo> l = new List<TokenInfo>();
                 l.Add(tokenInfo);
-                unsolvedSymbols.Add(unsolvedLabel, l);
+                unsolvedSymb.Add(unsolvedLabel, l);
             }
         }
 
@@ -547,6 +597,18 @@ namespace WinASM65
         }
         private static TokenResult ResolveToken(Token token, CPUDef.AddrModes addrMode)
         {
+            Dictionary<string, Symbol> symbTable = null;
+            if (token.Type.Equals("label") || token.Type.Equals("loLabel") || token.Type.Equals("hiLabel"))
+            {
+                if (localScope.isLocalScope && localScope.symbolTable.ContainsKey(token.Value))
+                {
+                    symbTable = localScope.symbolTable;
+                }
+                else
+                {
+                    symbTable = symbolTable;
+                }
+            }
             switch (token.Type)
             {
                 case "DEC":
@@ -564,10 +626,10 @@ namespace WinASM65
                 case "HW":
                     return new TokenResult { Bytes = GetWordBytes(token.Value) };
                 case "label":
-                    if (symbolTable.ContainsKey(token.Value))
+                    if (symbTable.ContainsKey(token.Value))
                     {
-                        SymbolType labelType = symbolTable[token.Value].Type;
-                        dynamic labelValue = symbolTable[token.Value].Value;
+                        SymbolType labelType = symbTable[token.Value].Type;
+                        dynamic labelValue = symbTable[token.Value].Value;
                         if (addrMode == CPUDef.AddrModes.REL)
                         {
                             if (labelType == SymbolType.WORD)
@@ -621,9 +683,9 @@ namespace WinASM65
                         return new TokenResult { UnsolvedLabel = token.Value, VType = SymbolType.WORD };
                     }
                 case "loLabel":
-                    if (symbolTable.ContainsKey(token.Value))
+                    if (symbTable.ContainsKey(token.Value))
                     {
-                        ushort addr = symbolTable[token.Value].Value;
+                        ushort addr = symbTable[token.Value].Value;
                         return new TokenResult { Bytes = new byte[1] { GetLowByte(addr) } };
                     }
                     else
@@ -631,9 +693,9 @@ namespace WinASM65
                         return new TokenResult { UnsolvedLabel = token.Value, VType = SymbolType.LO };
                     }
                 case "hiLabel":
-                    if (symbolTable.ContainsKey(token.Value))
+                    if (symbTable.ContainsKey(token.Value))
                     {
-                        ushort addr = symbolTable[token.Value].Value;
+                        ushort addr = symbTable[token.Value].Value;
                         return new TokenResult { Bytes = new byte[1] { GetHighByte(addr) } };
 
                     }
@@ -657,26 +719,33 @@ namespace WinASM65
         private static void LabelHandler(Match lineReg)
         {
             string label = lineReg.Groups["label"].Value;
-            if (symbolTable.ContainsKey(label))
-            {
-                AddError(Errors.LABEL_EXISTS);
-            }
-            else
-            {
-                Symbol symb = new Symbol { Value = currentAddr, Type = SymbolType.WORD };
-                symbolTable.Add(label, symb);
-            }
+            Symbol symb = new Symbol { Value = currentAddr, Type = SymbolType.WORD };
+            AddSymbol(label, symb);
         }
 
         private static void ResolveSymbol(string label, Symbol symb)
         {
-            if (!unsolvedSymbols.ContainsKey(label))
+            Dictionary<string, List<TokenInfo>> unsolvedSymbs;
+            if (localScope.isLocalScope)
+            {
+                unsolvedSymbs = localScope.unsolvedSymbols;
+            }
+            else
+            {
+                unsolvedSymbs = unsolvedSymbols;
+            }
+            if (!unsolvedSymbs.ContainsKey(label))
             {
                 return;
             }
-            List<TokenInfo> tokensInfo = unsolvedSymbols[label];
-            byte[] bytes = null;
+            List<TokenInfo> tokensInfo = unsolvedSymbs[label];
+            ResolveTokens(tokensInfo, symb);         
+            unsolvedSymbs.Remove(label);
+        }
 
+        private static void ResolveTokens(List<TokenInfo> tokensInfo, Symbol symb)
+        {
+            byte[] bytes = null;
             foreach (TokenInfo tokenInfo in tokensInfo)
             {
                 switch (tokenInfo.Type)
@@ -726,7 +795,6 @@ namespace WinASM65
                 fileOutMemory.InsertRange(tokenInfo.Position, bytes);
             }
         }
-
         public static void ProcessLine(Match lineReg, string type)
         {
             DelHandler handler = mapLineHandlers[type];
@@ -742,6 +810,13 @@ namespace WinASM65
         {
             unsolvedSymbols = new Dictionary<string, List<TokenInfo>>();
             symbolTable = new Dictionary<string, Symbol>();
+            localScope = new LocalScope()
+            {
+                symbolTable = new Dictionary<string, Symbol>(),
+                unsolvedSymbols = new Dictionary<string, List<TokenInfo>>(),
+                isLocalScope = false,
+                memArea = new MemArea()
+            };
             fileOutMemory = new List<byte>();
             errorList = new List<Error>();
             fileStack = new Stack<FileInfo>();
@@ -808,7 +883,8 @@ namespace WinASM65
                     continue;
                 }
                 Symbol symb = symbolTable[symbName];
-                ResolveSymbol(symbName, symb);
+                List<TokenInfo> tokensInfo = unsolvedSymbols[symbName];
+                ResolveTokens(tokensInfo, symb);
                 resolved.Add(symbName);
 
             }
@@ -929,6 +1005,28 @@ namespace WinASM65
         {
             return (byte)(word >> 8);
         }
+
+        private static void AddSymbol(string label, Symbol symb)
+        {
+            Dictionary<string, Symbol> symbTable;
+            if (localScope.isLocalScope)
+            {
+                symbTable = localScope.symbolTable;
+            }
+            else
+            {
+                symbTable = symbolTable;
+            }
+            if (symbTable.ContainsKey(label))
+            {
+                AddError(Errors.LABEL_EXISTS);
+            }
+            else
+            {
+                symbTable.Add(label, symb);
+                ResolveSymbol(label, symb);
+            }
+        }
     }
     struct Error
     {
@@ -1014,5 +1112,13 @@ namespace WinASM65
     {
         public bool val;
         public bool inCondition;
+    }
+
+    struct LocalScope
+    {
+        public Dictionary<string, Symbol> symbolTable;
+        public Dictionary<string, List<TokenInfo>> unsolvedSymbols;
+        public bool isLocalScope;
+        public MemArea memArea;
     }
 }

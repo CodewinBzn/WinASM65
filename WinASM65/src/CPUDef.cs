@@ -19,6 +19,8 @@ namespace WinASM65
         public static readonly string CONSTANT = "CONSTANT";
         public static readonly string MEM_RESERVE = "MEM_RESERVE";
         public static readonly string CALL_MACRO = "CALL_MACRO";
+        public static readonly string START_LOCAL_SCOPE = "START_LOCAL_SCOPE";
+        public static readonly string END_LOCAL_SCOPE = "END_LOCAL_SCOPE";
 
         public enum AddrModes
         {
@@ -141,9 +143,13 @@ namespace WinASM65
         public static readonly string constantReg = @"^\s*" + labelRegex + @"\s*=\s*(" + hbRegex + "|" + hwRegex + "|" + binByteRegex + "|" + decRegex + ")$";
         public static readonly string memResReg = @"^\s*" + labelRegex + @"\s+\.(RES|res)\s+(?<value>[0-9]+)$";
         public static readonly string macroReg = @"^(\s*" + labelRegex + @")(\s+(?<value>(.)+))?";
+        private static readonly string startLocalScopeRegex = @"^\s*\{\s*";
+        private static readonly string endLocalScopeRegex = @"^\s*\}\s*";
 
         public static readonly Dictionary<string, string> regMap = new Dictionary<string, string>
         {
+            { startLocalScopeRegex, START_LOCAL_SCOPE},
+            { endLocalScopeRegex, END_LOCAL_SCOPE},
             { labelDeclareReg, LABEL},
             { memResReg, MEM_RESERVE },
             { directiveReg, DIRECTIVE},

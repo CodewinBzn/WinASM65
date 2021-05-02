@@ -11,3 +11,4 @@ C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\bin\Debug\WinAS
 C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\bin\Debug\WinASM65.application
 C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\obj\Debug\WinASM65.exe.manifest
 C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\obj\Debug\WinASM65.application
+C:\Users\Ghani\Documents\Projets Visual Studio\WinASM65\WinASM65\obj\Debug\WinASM65.csprojAssemblyReference.cache
