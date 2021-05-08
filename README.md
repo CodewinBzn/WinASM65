@@ -208,7 +208,7 @@ add #red_color, #$00
 .
  { ; All new symbols from now on are in the local lexical level and are not accessible from outside.
    ; Symbols defined outside this local level may be accessed as long as their names are not used for new symbols inside the level.
-   ;  Macro names are always in the global level.
+   ; Macro names are always in the global level.
    
    vblank vblankwait, $2002
  }
