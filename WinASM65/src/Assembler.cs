@@ -246,7 +246,7 @@ namespace WinASM65
                 }
                 else
                 {
-                    Match match = Regex.Match(data, @"^(" + CPUDef.byteRegex + @")$");
+                    Match match = Regex.Match(data, @"^(" + CPUDef.byteExp + @")$");
                     if (match.Success)
                     {
                         Token token = GetToken(match);
@@ -282,7 +282,7 @@ namespace WinASM65
             foreach (string dw in words)
             {
                 string data = dw.Trim();
-                Match match = Regex.Match(data, @"^(" + CPUDef.wordRegex + @")$");
+                Match match = Regex.Match(data, @"^(" + CPUDef.wordExp + @")$");
                 if (match.Success)
                 {
                     Token token = GetToken(match);
@@ -401,7 +401,7 @@ namespace WinASM65
                 // 2 bytes opcode
                 if (Array.Exists(CPUDef.REL_OPC, opc => opc.Equals(opcode)))
                 {
-                    match = Regex.Match(operands, @"^(" + CPUDef.byteRegex + @")$");
+                    match = Regex.Match(operands, @"^(" + CPUDef.byteExp + @")$");
                     if (match.Success)
                     {
                         syntaxError = false;

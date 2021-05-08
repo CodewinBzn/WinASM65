@@ -41,11 +41,11 @@ namespace WinASM65
         }
         private static readonly string dec = @"[0-9]+";
         private static readonly string binByte = @"[01]{8}";
-        private static readonly string hex = @"[0-9a-fA-f]";
+        private static readonly string hex = @"[a-fA-F0-9]";
         private static readonly string hexByte = @"(" + hex + @"{2}|" + hex + @"{1})";
         private static readonly string hexWord = hex + @"{4}";
-        private static readonly string label = @"[A-Za-z_][a-zA-Z_0-9]*";
-        private static readonly string arOp = @"[+-*/]";
+        private static readonly string label = @"[a-zA-Z_][a-zA-Z_0-9]*";
+        private static readonly string arOp = @"[+*/-]";
 
         public static readonly string decRegex = @"(?<DEC>" + dec + ")";
         // hex byte regex
@@ -130,17 +130,31 @@ namespace WinASM65
             { "TYA", new byte[] {0x98,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff}}
         };
 
-        public static readonly string wordRegex = decRegex + @"|" + hwRegex + @"|" + labelRegex;
-        public static readonly string byteRegex = decRegex + @"|" + hbRegex + @"|" + zpLabelRegex + @"|" + labelRegex + @"|" + loLabelRegex + @"|" + hiLabelRegex + @"|" + loHexWordRegex + @"|" + hiHexWordRegex + @"|" + binByteRegex;
-        private static readonly string zpByteRegex = decRegex + @"|" + hbRegex + @"|" + binByteRegex + @"|" + zpLabelRegex + @"|" + loLabelRegex + @"|" + hiLabelRegex + @"|" + loHexWordRegex + @"|" + hiHexWordRegex;
-        private static readonly string immRegex = decRegex + @"|" + binByteRegex + @"|" + loHexWordRegex + @"|" + hiHexWordRegex + @"|" + hbRegex + @"|" + labelRegex + @"|" + loLabelRegex + @"|" + hiLabelRegex;
+
+        // token definitions
+        private static readonly string wordToken = decRegex + @"|" + hwRegex + @"|" + labelRegex;
+        private static readonly string byteToken = decRegex + @"|" + hbRegex + @"|" + zpLabelRegex + @"|" + labelRegex + @"|" + loLabelRegex + @"|" + hiLabelRegex + @"|" + loHexWordRegex + @"|" + hiHexWordRegex + @"|" + binByteRegex;
+        private static readonly string zpByteToken = decRegex + @"|" + hbRegex + @"|" + binByteRegex + @"|" + zpLabelRegex + @"|" + loLabelRegex + @"|" + hiLabelRegex + @"|" + loHexWordRegex + @"|" + hiHexWordRegex;
+        private static readonly string immToken = decRegex + @"|" + binByteRegex + @"|" + loHexWordRegex + @"|" + hiHexWordRegex + @"|" + hbRegex + @"|" + labelRegex + @"|" + loLabelRegex + @"|" + hiLabelRegex;
+        private static readonly string constantToken = hbRegex + "|" + hwRegex + "|" + binByteRegex + "|" + decRegex +"|" + labelRegex;
+        // expressions
+        public static readonly string wordExp = @"(" + wordToken + "(" + arOpRegex + "(" + wordToken + ")" + ")*" + @")";
+        public static readonly string byteExp = @"(" + byteToken + "(" + arOpRegex + "(" + byteToken + ")" + ")*" + @")";
+        private static readonly string zpByteExp = @"(" + zpByteToken + "(" + arOpRegex + "(" + zpByteToken + ")" + ")*" + @")";
+        private static readonly string immExp = @"(" + immToken + "(" + arOpRegex + "(" + immToken + ")" + ")*" + @")";
+        private static readonly string constantExp = @"(" + constantToken + "(" + arOpRegex + "(" + constantToken + ")" + ")*" + @")";
+        //// regex
+        //public static readonly string wordRegex = decRegex + @"|" + hwRegex + @"|" + labelRegex;
+        //public static readonly string byteRegex = decRegex + @"|" + hbRegex + @"|" + zpLabelRegex + @"|" + labelRegex + @"|" + loLabelRegex + @"|" + hiLabelRegex + @"|" + loHexWordRegex + @"|" + hiHexWordRegex + @"|" + binByteRegex;
+        //private static readonly string zpByteRegex = decRegex + @"|" + hbRegex + @"|" + binByteRegex + @"|" + zpLabelRegex + @"|" + loLabelRegex + @"|" + hiLabelRegex + @"|" + loHexWordRegex + @"|" + hiHexWordRegex;
+        //private static readonly string immRegex = decRegex + @"|" + binByteRegex + @"|" + loHexWordRegex + @"|" + hiHexWordRegex + @"|" + hbRegex + @"|" + labelRegex + @"|" + loLabelRegex + @"|" + hiLabelRegex;
 
 
         public static readonly string labelDeclareReg = @"\s*" + labelRegex + @":\s*";
         public static readonly string directiveReg = @"\s*(?<directive>\.[a-zA-Z]+)(\s+(?<value>(.)+))?";
         // instruction = label? opcode operands?
         public static readonly string instrReg = @"^(\s*" + labelRegex + @"\s+)?(?<opcode>[a-zA-Z]{3})((\s+(?<operands>(.)+))|$)";
-        public static readonly string constantReg = @"^\s*" + labelRegex + @"\s*=\s*(" + hbRegex + "|" + hwRegex + "|" + binByteRegex + "|" + decRegex + ")$";
+        public static readonly string constantReg = @"^\s*" + labelRegex + @"\s*=\s*(" + constantExp + ")$";
         public static readonly string memResReg = @"^\s*" + labelRegex + @"\s+\.(RES|res)\s+(?<value>[0-9]+)$";
         public static readonly string macroReg = @"^(\s*" + labelRegex + @")(\s+(?<value>(.)+))?";
         private static readonly string startLocalScopeRegex = @"^\s*\{\s*";
@@ -177,16 +191,16 @@ namespace WinASM65
         // IMP, ACC, REL are managed outside
         public static readonly Dictionary<string, InstructionInfo> addrModesRegMap = new Dictionary<string, InstructionInfo>
         {
-            { @"^#(" + immRegex + @")$", new InstructionInfo {addrMode = AddrModes.IMM, nbrBytes= 2}},
-            { @"^(" + wordRegex + @")$", new InstructionInfo {addrMode =AddrModes.ABS, nbrBytes= 3}},
-            { @"^(" + wordRegex + @")\s*,\s*[xX]$", new InstructionInfo {addrMode = AddrModes.ABX, nbrBytes= 3}},
-            { @"^(" +wordRegex + @")\s*,\s*[yY]$", new InstructionInfo {addrMode = AddrModes.ABY, nbrBytes= 3}},
-            { @"^(" + byteRegex + @")$", new InstructionInfo {addrMode = AddrModes.ZPG, nbrBytes= 2}},
-            { @"^(" + zpByteRegex + @")\s*,\s*[xX]$", new InstructionInfo {addrMode = AddrModes.ZPX, nbrBytes= 2}},
-            { @"^(" + zpByteRegex + @")\s*,\s*[yY]$", new InstructionInfo {addrMode = AddrModes.ZPY, nbrBytes= 2}},
-            { @"^(\(\s*(" + wordRegex + @")\s*\)$)", new InstructionInfo {addrMode = AddrModes.IND, nbrBytes= 3}},
-            { @"^\(\s*(" + byteRegex + @")\s*,\s*[xX]\s*\)$", new InstructionInfo {addrMode = AddrModes.INX, nbrBytes= 2}},
-            { @"^\(\s*(" + byteRegex + @")\s*\)\s*,\s*[yY]$", new InstructionInfo {addrMode = AddrModes.INY, nbrBytes= 2}}
+            { @"^#(" + immExp + @")$", new InstructionInfo {addrMode = AddrModes.IMM, nbrBytes= 2}},
+            { @"^(" + wordExp + @")$", new InstructionInfo {addrMode =AddrModes.ABS, nbrBytes= 3}},
+            { @"^(" + wordExp + @")\s*,\s*[xX]$", new InstructionInfo {addrMode = AddrModes.ABX, nbrBytes= 3}},
+            { @"^(" +wordExp + @")\s*,\s*[yY]$", new InstructionInfo {addrMode = AddrModes.ABY, nbrBytes= 3}},
+            { @"^(" + byteExp + @")$", new InstructionInfo {addrMode = AddrModes.ZPG, nbrBytes= 2}},
+            { @"^(" + zpByteExp + @")\s*,\s*[xX]$", new InstructionInfo {addrMode = AddrModes.ZPX, nbrBytes= 2}},
+            { @"^(" + zpByteExp + @")\s*,\s*[yY]$", new InstructionInfo {addrMode = AddrModes.ZPY, nbrBytes= 2}},
+            { @"^(\(\s*(" + wordExp + @")\s*\)$)", new InstructionInfo {addrMode = AddrModes.IND, nbrBytes= 3}},
+            { @"^\(\s*(" + byteExp + @")\s*,\s*[xX]\s*\)$", new InstructionInfo {addrMode = AddrModes.INX, nbrBytes= 2}},
+            { @"^\(\s*(" + byteExp + @")\s*\)\s*,\s*[yY]$", new InstructionInfo {addrMode = AddrModes.INY, nbrBytes= 2}}
         };
 
         public static bool isAbsoluteAddr(AddrModes addrMode)
