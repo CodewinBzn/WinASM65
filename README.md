@@ -196,6 +196,30 @@ add #red_color, #$00
  - ]label   Force the zero page addressing (usefull when reffering to a symbol in another segment).
 ```
  
+ ### Local lexical level
+ ```
+ .macro vblank label, register
+	label: 
+		BIT register
+		BPL label
+.endmacro
+.
+.
+.
+ { ; All new symbols from now on are in the local lexical level and are not accessible from outside.
+   ; Symbols defined outside this local level may be accessed as long as their names are not used for new symbols inside the level.
+   ; Macro names are always in the global level.
+   
+   vblank vblankwait, $2002
+ }
+ .
+ .
+ .
+ {   
+	vblank vblankwait, $2002   ; Second wait for vblank, PPU is ready after this
+ }
+ ```
+ 
 
  	
 
