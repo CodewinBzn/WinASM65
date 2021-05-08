@@ -66,7 +66,7 @@ then it must mention them in this array as ["path_to_main_file_seg1", .....].
 }
 ```
 
-Segment are declared by order of insertion in the final object file.
+The Segments are declared by the order of their insertion in the final object file.
 
 ### Size
 The size of the segment object file.
