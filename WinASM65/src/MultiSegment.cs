@@ -42,7 +42,7 @@ namespace WinASM65
                     {
                         using (StreamReader file = File.OpenText(unsolvedFile))
                         {
-                            Assembler.unsolvedSymbols = (Dictionary<string, List<TokenInfo>>)serializer.Deserialize(file, typeof(Dictionary<string, List<TokenInfo>>));
+                            Assembler.unsolvedSymbols = (Dictionary<string, UnresolvedSymbol>)serializer.Deserialize(file, typeof(Dictionary<string, UnresolvedSymbol>));
                         }
                     }
                     else
