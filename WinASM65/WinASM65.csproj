@@ -80,6 +80,7 @@
     <Compile Include="src\MultiSegment.cs" />
     <Compile Include="src\Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="src\Tokenizer.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
