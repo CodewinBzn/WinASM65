@@ -1120,13 +1120,6 @@ namespace WinASM65
         public string Value { get; set; }
     }
 
-    public struct TokenResult
-    {
-        public Byte[] Bytes { get; set; }
-        public string UnsolvedLabel { get; set; }
-        public SymbolType VType { get; set; }
-    }
-
     public struct ExprResult
     {
         public dynamic Result { get; set; }
@@ -1143,9 +1136,7 @@ namespace WinASM65
     public enum SymbolType
     {
         BYTE = 0,
-        WORD = 1,
-        LO = 2,
-        HI = 3
+        WORD = 1
     }
 
     public struct Errors
