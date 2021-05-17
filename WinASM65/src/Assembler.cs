@@ -78,10 +78,13 @@ namespace WinASM65
                             glUnsolvedSymbol.ExprList.Add(expr);
                         }
                     }
+                    unsolvedSymbols[symb] = glUnsolvedSymbol;
                 }
                 else
                 {
-                    unsolvedSymbols.Add(symb, localScope.unsolvedSymbols[symb]);
+                    UnresolvedSymbol localUnsolvedSymbol = localScope.unsolvedSymbols[symb];
+                    localUnsolvedSymbol.Expr = null;
+                    unsolvedSymbols.Add(symb, localUnsolvedSymbol);
                 }
 
             }
@@ -180,7 +183,6 @@ namespace WinASM65
 
         private static void MemAreaHandler(string value)
         {
-            Match match = Regex.Match(value, @"^(" + CPUDef.hbRegex + @")$");
             MemArea ma;
             if (!localScope.isLocalScope)
             {
@@ -190,27 +192,15 @@ namespace WinASM65
             {
                 ma = localScope.memArea;
             }
-            if (match.Success)
+            ExprResult res = ResolveExpr(value, CPUDef.AddrModes.NO);
+            if (res.undefinedSymbs.Count == 0)
             {
-                SymbolType symbType = SymbolType.BYTE;
-                byte val = byte.Parse(match.Groups["HB"].Value, NumberStyles.HexNumber);
-                ma.val = val;
-                ma.type = symbType;
+                ma.val = res.Result;
+                ma.type = res.Type;
             }
             else
             {
-                match = Regex.Match(value, @"^(" + CPUDef.hwRegex + @")$");
-                if (match.Success)
-                {
-                    SymbolType symbType = SymbolType.WORD;
-                    ushort val = ushort.Parse(match.Groups["HW"].Value, NumberStyles.HexNumber);
-                    ma.val = val;
-                    ma.type = symbType;
-                }
-                else
-                {
-                    AddError(Errors.DATA_TYPE);
-                }
+                AddError(Errors.UNDEFINED_SYMBOL);
             }
         }
 
@@ -631,38 +621,38 @@ namespace WinASM65
         {
             string label = lineReg.Groups["label"].Value;
             string value = lineReg.Groups["value"].Value;
-            int val = int.Parse(value);
-            MemArea ma;
-            Dictionary<string, Symbol> symbTable;
-            if (localScope.isLocalScope)
+            ExprResult res = ResolveExpr(value, CPUDef.AddrModes.NO);
+            if (res.undefinedSymbs.Count == 0)
             {
-                ma = localScope.memArea;
-                symbTable = localScope.symbolTable;
-            }
-            else
-            {
-                ma = memArea;
-                symbTable = symbolTable;
-            }
-            Symbol variable = new Symbol() { Type = ma.type, Value = ma.val };
-            if (!symbTable.ContainsKey(label))
-            {
-                AddSymbol(label, variable);
-                if (ma.type == SymbolType.BYTE)
+                MemArea ma;
+                Dictionary<string, Symbol> symbTable;
+                if (localScope.isLocalScope)
                 {
-                    ma.val += (byte)val;
+                    ma = localScope.memArea;
+                    symbTable = localScope.symbolTable;
                 }
                 else
                 {
-                    ma.val += (ushort)val;
+                    ma = memArea;
+                    symbTable = symbolTable;
                 }
-                MainConsole.WriteLine($"{label} {variable.Value.ToString("x")}");
+                Symbol variable = new Symbol() { Type = ma.type, Value = ma.val };
+                if (!symbTable.ContainsKey(label))
+                {
+                    AddSymbol(label, variable);
+                    ma.val += res.Result;
+                    ma.type = ma.val <= 255 ? SymbolType.BYTE : SymbolType.WORD;
+                    MainConsole.WriteLine($"{label} {variable.Value.ToString("x")}");
+                }
+                else
+                {
+                    AddError(Errors.LABEL_EXISTS);
+                }
             }
             else
             {
-                AddError(Errors.LABEL_EXISTS);
+                AddError(Errors.UNDEFINED_SYMBOL);
             }
-
         }
 
         private static void CallMacroHandler(Match lineReg)
@@ -733,6 +723,11 @@ namespace WinASM65
                         unsolved.ExprList.Add(expr);
                     }
                 }
+                if (!string.IsNullOrEmpty(unresSymb.Expr))
+                {
+                    unsolved.Expr = unresSymb.Expr;
+                }
+                unsolvedSymbs[unsolvedLabel] = unsolved;
             }
             else
             {
@@ -962,7 +957,6 @@ namespace WinASM65
                 {
                     continue;
                 }
-                Symbol symb = symbolTable[symbName];
                 UnresolvedSymbol unresSymb = unsolvedSymbols[symbName];
                 ResolveSymbolDepsAndExprs(unresSymb);
                 resolved.Add(symbName);
@@ -1167,6 +1161,7 @@ namespace WinASM65
         public static string MACRO_NOT_EXISTS = "Undefined Macro";
         public static string MACRO_CALL_WITHOUT_PARAMS = "Macro called without params";
         public static string OPERANDS = "Error in operands";
+        public static string UNDEFINED_SYMBOL = "Undefined symbol";
     }
 
     public struct UnresolvedSymbol

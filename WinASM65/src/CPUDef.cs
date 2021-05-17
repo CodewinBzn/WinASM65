@@ -54,8 +54,6 @@ namespace WinASM65
         public static readonly string hwRegex = @"(\$(?<HW>" + hexWord + "))";
         // label regex
         public static readonly string labelRegex = @"(?<label>" + label + ")";
-        // zero page addr label
-        public static readonly string zpLabelRegex = @"(\](?<zpLabel>" + label + "))";
         // label's low byte regex
         public static readonly string loLabelRegex = @"(<(?<loLabel>" + label + "))";
         // label's high byte regex
@@ -129,28 +127,14 @@ namespace WinASM65
             { "TXS", new byte[] {0x9a,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff}},
             { "TYA", new byte[] {0x98,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff}}
         };
-
-
-        // token definitions
-        private static readonly string wordToken = decRegex + @"|" + hwRegex + @"|" + labelRegex;
-        private static readonly string byteToken = decRegex + @"|" + hbRegex + @"|" + zpLabelRegex + @"|" + labelRegex + @"|" + loLabelRegex + @"|" + hiLabelRegex + @"|" + loHexWordRegex + @"|" + hiHexWordRegex + @"|" + binByteRegex;
-        private static readonly string zpByteToken = decRegex + @"|" + hbRegex + @"|" + binByteRegex + @"|" + zpLabelRegex + @"|" + loLabelRegex + @"|" + hiLabelRegex + @"|" + loHexWordRegex + @"|" + hiHexWordRegex;
-        private static readonly string immToken = decRegex + @"|" + binByteRegex + @"|" + loHexWordRegex + @"|" + hiHexWordRegex + @"|" + hbRegex + @"|" + labelRegex + @"|" + loLabelRegex + @"|" + hiLabelRegex;
-        private static readonly string constantToken = hbRegex + "|" + hwRegex + "|" + binByteRegex + "|" + decRegex + "|" + labelRegex;
-        // expressions
-        public static readonly string wordExp = @"(" + wordToken + @"(\s*" + arOpRegex + @"\s*(" + wordToken + ")" + ")*" + @")";
-        public static readonly string byteExp = @"(" + byteToken + @"(\s*" + arOpRegex + @"\s*(" + byteToken + ")" + ")*" + @")";
-        private static readonly string zpByteExp = @"(" + zpByteToken + @"(\s*" + arOpRegex + @"\s*(" + zpByteToken + ")" + ")*" + @")";
-        private static readonly string immExp = @"(" + immToken + @"(\s*" + arOpRegex + @"\s*(" + immToken + ")" + ")*" + @")";
-        private static readonly string constantExp = @"(" + constantToken + @"(\s*" + arOpRegex + @"\s*(" + constantToken + ")" + ")*" + @")";
-
+           
         // regex
         public static readonly string labelDeclareReg = @"\s*" + labelRegex + @":\s*";
         public static readonly string directiveReg = @"\s*(?<directive>\.[a-zA-Z]+)(\s+(?<value>(.)+))?";
         // instruction = label? opcode operands?
         public static readonly string instrReg = @"^(\s*" + labelRegex + @"\s+)?(?<opcode>[a-zA-Z]{3})((\s+(?<operands>(.)+))|$)";
         public static readonly string constantReg = @"^\s*" + labelRegex + @"\s*=\s*(?<value>(.)+)$";
-        public static readonly string memResReg = @"^\s*" + labelRegex + @"\s+\.(RES|res)\s+(?<value>[0-9]+)$";
+        public static readonly string memResReg = @"^\s*" + labelRegex + @"\s+\.(RES|res)\s+(?<value>(.)+)$";
         public static readonly string macroReg = @"^(\s*" + labelRegex + @")(\s+(?<value>(.)+))?";
         private static readonly string startLocalScopeRegex = @"^\s*\{\s*";
         private static readonly string endLocalScopeRegex = @"^\s*\}\s*";
@@ -166,15 +150,6 @@ namespace WinASM65
             { instrReg, INSTRUCTION},
             { macroReg, CALL_MACRO }
         };
-
-        public static List<string> operandTypes = new List<string> {
-         "DEC", "HB", "HW", "label", "loLabel", "hiLabel", "loHW", "hiHW", "binByte"
-        };
-
-        public static List<string> constantTypes = new List<string> {
-         "HB", "HW", "binByte", "DEC"
-        };
-
 
         public struct InstructionInfo
         {
