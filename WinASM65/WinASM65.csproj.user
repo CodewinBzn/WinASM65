@@ -15,7 +15,7 @@
     <StartArguments>-f test/test.asm -o test/rom.txt</StartArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
-    <StartArguments>-f test/test.asm -o test/rom.o</StartArguments>
+    <StartArguments>-c rom_gen.json</StartArguments>
   </PropertyGroup>
   <PropertyGroup>
     <EnableSecurityDebugging>false</EnableSecurityDebugging>

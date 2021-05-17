@@ -18,9 +18,9 @@ RESET:
   STX $2001    ; disable rendering
   STX $4010    ; disable DMC IRQs
 
-
-vblank vblankwait1, $2002
-
+{
+	vblank vblankwait, $2002
+}
 clrmem:
   LDA #$00
   STA $0000, x
@@ -34,9 +34,9 @@ clrmem:
   STA $0300, x
   INX
   BNE clrmem
-   
-vblank vblankwait2, $2002   ; Second wait for vblank, PPU is ready after this
-
+{   
+	vblank vblankwait, $2002   ; Second wait for vblank, PPU is ready after this
+}
   ; ************** NEW CODE ****************
 LoadPalettes:
   LDA $2002    ; read PPU status to reset the high/low latch

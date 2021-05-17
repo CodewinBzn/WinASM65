@@ -27,26 +27,25 @@ namespace WinASM65
                 serializer = new JsonSerializer();
                 config = (CombineConf)serializer.Deserialize(file, typeof(CombineConf));
             }
-
-            foreach (FileConf fileConf in config.Files)
-            {
-                List<byte>  bytesOut = new List<byte>(File.ReadAllBytes(fileConf.FileName));
-                if(fileConf.Size != null)
+            using (BinaryWriter writer = new BinaryWriter(File.Open(config.ObjectFile, FileMode.Append)))
+            {                
+                foreach (FileConf fileConf in config.Files)
                 {
-                    ushort size = ushort.Parse(fileConf.Size.Trim().Replace("$", string.Empty), NumberStyles.HexNumber);
-                    if (bytesOut.Count < size){
-                        int delta = size - bytesOut.Count;
-                        for(short i = 0; i< delta; i++)
+                    List<byte> bytesOut = new List<byte>(File.ReadAllBytes(fileConf.FileName));
+                    writer.Write(bytesOut.ToArray());
+                    if (fileConf.Size != null)
+                    {
+                        ushort size = ushort.Parse(fileConf.Size.Trim().Replace("$", string.Empty), NumberStyles.HexNumber);
+                        if (bytesOut.Count < size)
                         {
-                            bytesOut.Add(0);
+                            int delta = size - bytesOut.Count;
+                            for (int i = 0; i < delta; i++)
+                            {
+                                writer.Write((byte)0);
+                            }
                         }
-                    }
-                }
-                outMemory.AddRange(bytesOut);
-            }
-            using (BinaryWriter writer = new BinaryWriter(File.Open(config.ObjectFile, FileMode.Create)))
-            {
-                writer.Write(outMemory.ToArray());
+                    }                   
+                }                
             }
         }
     }
