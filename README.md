@@ -118,19 +118,21 @@ lda #$00
 #### .MEMAREA / .memarea  .
 
 - Set the starting address of a memory area for 
-memory reservation.
-- To use only with hex numbers.
+memory reservation (accepts expressions).
 
 #### .RES / .res 
-Reserve a number of bytes (to use with decimal number).
+Reserve a number of bytes (accepts expressions).
 
 ```
 	.memarea $00  ; zero page
 player_posx  .res 1
 player_pos_y .res 1
-	.memarea $0400
-ennemies_pos_x .res 15 	; to store posx of ennemies (15 ennemies) 
-ennemies_pos_y .res 15  ; to store posy of ennemies (15 ennemies) 
+
+ram = $0400
+	.memarea ram
+nbr_ennemies = 15	
+ennemies_pos_x .res nbr_ennemies  ; to store posx of ennemies  
+ennemies_pos_y .res nbr_ennemies  ; to store posy of ennemies 
 ```
 
 #### .INCBIN / .incbin
@@ -145,12 +147,13 @@ ennemies_pos_y .res 15  ; to store posy of ennemies (15 ennemies)
 ```
 
 #### .BYTE/.byte, .WORD/.word
-
-Emit byte(s) or word(s).  Multiple arguments are separated by commas.
+- Emit byte(s) or word(s).
+- Multiple arguments are separated by commas.
+- Accept expressions.
 ```
 RED = $06
 palette:
-.byte $00, $10, RED, $5d
+.byte $00, $10, RED + 4, $5d
 ```
 
 #### Strings
@@ -193,7 +196,7 @@ add #red_color, #$00
  - <        Returns the low byte of a value (ex: <label).
  - >        Returns the high byte of a value (ex: >label).
  - #   	    Immidate addressing (ex: #label).
- - ]label   Force the zero page addressing (usefull when reffering to a symbol in another segment).
+ - ()+-*/%  Arithmetic 
 ```
  
  ### Local lexical level
