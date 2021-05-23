@@ -217,7 +217,7 @@ add #red_color, #$00
  - >        				Returns the high byte of a value (ex: >label).
  - #   	    				Immidate addressing (ex: #label).
  - ()+-*/%  				Arithmetic 
- - or and > < >= <= = <> true false 	Logical
+ - () or and > < >= <= = <> true false 	Logical
 ```
  
  ### Local lexical level
