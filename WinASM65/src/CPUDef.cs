@@ -45,7 +45,7 @@ namespace WinASM65
         private static readonly string hexByte = @"(" + hex + @"{2}|" + hex + @"{1})";
         private static readonly string hexWord = hex + @"{4}";
         private static readonly string label = @"[a-zA-Z_][a-zA-Z_0-9]*";
-        private static readonly string arOp = @"[+*/%-]";
+        private static readonly string arOp = @"[<>!=|&+*/%-]";
 
         public static readonly string decRegex = @"(?<DEC>" + dec + ")";
         // hex byte regex

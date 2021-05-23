@@ -106,9 +106,24 @@ namespace WinASM65
             { ".endmacro", EndMacroDefHandler },
             { ".ifdef", IfDefHandler },
             { ".ifndef", IfnDefHandler },
+            { ".if", IfHandler },
             { ".else", ElseHandler },
             { ".endif", EndIfHandler },
         };
+
+        private static void IfHandler(string value)
+        {           
+            ExprResult res = ResolveExpr(value.Trim(), CPUDef.AddrModes.NO, true);
+            if (res.undefinedSymbs.Count > 0)
+            {
+                AddError(Errors.UNDEFINED_SYMBOL);
+            }
+            else
+            {
+                cAsm.inCondition = true;
+                cAsm.val = (bool)res.Result;
+            }
+        }
 
         private static void IfDefHandler(string value)
         {
@@ -192,7 +207,7 @@ namespace WinASM65
             {
                 ma = localScope.memArea;
             }
-            ExprResult res = ResolveExpr(value, CPUDef.AddrModes.NO);
+            ExprResult res = ResolveExpr(value);
             if (res.undefinedSymbs.Count == 0)
             {
                 ma.val = res.Result;
@@ -252,7 +267,7 @@ namespace WinASM65
                 }
                 else
                 {
-                    ExprResult res = ResolveExpr(data, CPUDef.AddrModes.NO);
+                    ExprResult res = ResolveExpr(data);
                     if (res.undefinedSymbs.Count == 0)
                     {
                         fileOutMemory.Add((byte)res.Result);
@@ -294,7 +309,7 @@ namespace WinASM65
             foreach (string dw in words)
             {
                 string data = dw.Trim();
-                ExprResult res = ResolveExpr(data, CPUDef.AddrModes.NO);
+                ExprResult res = ResolveExpr(data);
                 if (res.undefinedSymbs.Count == 0)
                 {
                     fileOutMemory.AddRange(GetWordBytes((ushort)res.Result));
@@ -331,7 +346,7 @@ namespace WinASM65
         {
             string label = lineReg.Groups["label"].Value;
             string value = lineReg.Groups["value"].Value;
-            ExprResult res = ResolveExpr(value, CPUDef.AddrModes.NO);
+            ExprResult res = ResolveExpr(value);
             if (res.undefinedSymbs.Count == 0)
             {
                 Symbol symb = new Symbol()
@@ -382,7 +397,19 @@ namespace WinASM65
                 unsolvedSymbs.Add(symbol, unsolved);
             }
         }
-        private static ExprResult ResolveExpr(string exprIn, CPUDef.AddrModes addrMode)
+
+        public static bool EvaluateLogicalExpression(string logicalExpression)
+        {
+            System.Data.DataTable table = new System.Data.DataTable();
+            table.Columns.Add("", typeof(bool));
+            table.Columns[0].Expression = logicalExpression;
+
+            System.Data.DataRow r = table.NewRow();
+            table.Rows.Add(r);
+            bool result = (Boolean)r[0];
+            return result;
+        }
+        private static ExprResult ResolveExpr(string exprIn, CPUDef.AddrModes addrMode = CPUDef.AddrModes.NO, bool isLogical = false)
         {
             List<Token> tokens = Tokenizer.Tokenize(exprIn);
             string expr = string.Empty;
@@ -458,33 +485,37 @@ namespace WinASM65
                 }
             }
             if (exprRes.undefinedSymbs.Count == 0)
-            {
-                Symbol constant = new Symbol();
-                DataTable dt = new DataTable();
-                exprRes.Result = dt.Compute(expr, "");
-                exprRes.Type = exprRes.Result <= 255 ? SymbolType.BYTE : SymbolType.WORD;
-                if (addrMode == CPUDef.AddrModes.REL && exprRes.Type == SymbolType.WORD)
+            {                
+                if (isLogical)
                 {
-                    int delta = (ushort)exprRes.Result - (currentAddr + 1);
-                    byte res;
-                    if (delta > 127 || delta < -128)
+                    exprRes.Result = EvaluateLogicalExpression(expr);
+                } else {
+                    DataTable dt = new DataTable();
+                    exprRes.Result = dt.Compute(expr, "");
+                    exprRes.Type = exprRes.Result <= 255 ? SymbolType.BYTE : SymbolType.WORD;
+                    if (addrMode == CPUDef.AddrModes.REL && exprRes.Type == SymbolType.WORD)
                     {
-                        AddError(Errors.REL_JUMP);
-                    }
-                    else
-                    {
-                        if (delta < 0)
+                        int delta = (ushort)exprRes.Result - (currentAddr + 1);
+                        byte res;
+                        if (delta > 127 || delta < -128)
                         {
-                            res = (byte)(255 + delta);
+                            AddError(Errors.REL_JUMP);
                         }
                         else
                         {
-                            res = (byte)(delta - 1);
+                            if (delta < 0)
+                            {
+                                res = (byte)(255 + delta);
+                            }
+                            else
+                            {
+                                res = (byte)(delta - 1);
+                            }
+                            exprRes.Result = res;
+                            exprRes.Type = SymbolType.BYTE;
                         }
-                        exprRes.Result = res;
-                        exprRes.Type = SymbolType.BYTE;
                     }
-                }
+                }                
             }
             return exprRes;
         }
@@ -621,7 +652,7 @@ namespace WinASM65
         {
             string label = lineReg.Groups["label"].Value;
             string value = lineReg.Groups["value"].Value;
-            ExprResult res = ResolveExpr(value, CPUDef.AddrModes.NO);
+            ExprResult res = ResolveExpr(value);
             if (res.undefinedSymbs.Count == 0)
             {
                 MemArea ma;
@@ -798,7 +829,7 @@ namespace WinASM65
                 unresDep.NbrUndefinedSymb--;
                 if (unresDep.NbrUndefinedSymb <= 0)
                 {
-                    ExprResult res = ResolveExpr(unresDep.Expr, CPUDef.AddrModes.NO);
+                    ExprResult res = ResolveExpr(unresDep.Expr);
                     AddSymbol(dep, new Symbol()
                     {
                         Value = res.Result,
