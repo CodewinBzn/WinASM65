@@ -165,6 +165,7 @@ myString:
 	.byte "Hello World"
 ```
 #### .IFDEF/.ifdef,  .IFNDEF/.ifndef
+Conditional assembly:
 - Process a block of code if a symbol has been defined / not defined.
 ```
 .ifdef _debug_
@@ -178,6 +179,24 @@ myString:
 .endif
 
 ```
+#### .IF/.if
+Conditional assembly:
+- Process a block of code if the logical expression is evatuated to true.
+- The expression must be a constant expression, that is, all operands must be defined.
+```
+.if expression
+	.
+	.
+	.
+.else 
+	.
+	.
+	.
+.endif
+
+```
+
+
 #### .MACRO/.macro
 -  Define a macro.  Macro arguments are comma separated.
 - .macro name args...
@@ -194,10 +213,11 @@ add #red_color, #$00
 
 ### Expressions
 ```
- - <        Returns the low byte of a value (ex: <label).
- - >        Returns the high byte of a value (ex: >label).
- - #   	    Immidate addressing (ex: #label).
- - ()+-*/%  Arithmetic 
+ - <        				Returns the low byte of a value (ex: <label).
+ - >        				Returns the high byte of a value (ex: >label).
+ - #   	    				Immidate addressing (ex: #label).
+ - ()+-*/%  				Arithmetic 
+ - or and > < >= <= = <> true false 	Logical
 ```
  
  ### Local lexical level
