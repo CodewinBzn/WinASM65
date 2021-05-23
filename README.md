@@ -131,9 +131,9 @@ player_pos_y .res 1
 
 ram = $0400
 	.memarea ram
-nbr_ennemies = 15	
-ennemies_pos_x .res nbr_ennemies  ; to store posx of ennemies  
-ennemies_pos_y .res nbr_ennemies  ; to store posy of ennemies 
+nbr_coins = 15	
+coins_pos_x .res nbr_coins  ; to store posx of coins  
+coins_pos_y .res nbr_coins  ; to store posy of coins
 ```
 
 #### .INCBIN / .incbin
