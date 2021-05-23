@@ -165,7 +165,7 @@ myString:
 	.byte "Hello World"
 ```
 #### .IFDEF/.ifdef,  .IFNDEF/.ifndef
-Conditional assembly:
+Conditional assembly
 - Process a block of code if a symbol has been defined / not defined.
 ```
 .ifdef _debug_
@@ -180,7 +180,7 @@ Conditional assembly:
 
 ```
 #### .IF/.if
-Conditional assembly:
+Conditional assembly
 - Process a block of code if the logical expression is evatuated to true.
 - The expression must be a constant expression, that is, all operands must be defined.
 ```
