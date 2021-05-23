@@ -10,6 +10,10 @@ namespace WinASM65
          @"(?<OpenRoundBracket>\()|" +
          @"(?<CloseRoundBracket>\))|" +
          @"(?<whitespace>\s+)|" +
+         @"(?<OR>(OR|or))|" +
+         @"(?<AND>(AND|and))|" +
+         @"(?<TRUE>(TRUE|true))|" +
+         @"(?<FALSE>(FALSE|false))|" +
          CPUDef.binByteRegex + "|" +
          CPUDef.decRegex + "|" +
          CPUDef.hwRegex + "|" +
@@ -39,6 +43,10 @@ namespace WinASM65
             captureGroupNames.Add("arOp");
             captureGroupNames.Add("OpenRoundBracket");
             captureGroupNames.Add("CloseRoundBracket");
+            captureGroupNames.Add("OR");
+            captureGroupNames.Add("AND");
+            captureGroupNames.Add("TRUE");
+            captureGroupNames.Add("FALSE");
         }
 
         public static List<Token> Tokenize(string line)
