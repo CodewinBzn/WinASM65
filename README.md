@@ -181,7 +181,7 @@ Conditional assembly
 ```
 #### .IF/.if
 Conditional assembly
-- Process a block of code if the logical expression is evatuated to true.
+- Process a block of code if the logical expression is evaluated to true.
 - The expression must be a constant expression, that is, all operands must be defined.
 ```
 .if expression
