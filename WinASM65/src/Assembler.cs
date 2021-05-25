@@ -53,11 +53,21 @@ namespace WinASM65
 
         private static void StartLocalScopeHandler(Match lineReg)
         {
+            if(localScope.isLocalScope)
+            {
+                AddError(Errors.NESTED_LOCAL_SCOPE);
+                return;
+            }
             localScope.isLocalScope = true;
         }
 
         private static void EndLocalScopeHandler(Match lineReg)
         {
+            if (!localScope.isLocalScope)
+            {
+                AddError(Errors.NO_LOCAL_SCOPE);
+                return;
+            }
             foreach (string symb in localScope.unsolvedSymbols.Keys)
             {
                 if (unsolvedSymbols.ContainsKey(symb))
@@ -112,7 +122,12 @@ namespace WinASM65
         };
 
         private static void IfHandler(string value)
-        {           
+        {
+            if (cAsm.inCondition)
+            {
+                AddError(Errors.NESTED_CONDITIONAL_ASSEMBLY);
+                return;
+            }
             ExprResult res = ResolveExpr(value.Trim(), CPUDef.AddrModes.NO, true);
             if (res.undefinedSymbs.Count > 0)
             {
@@ -127,6 +142,11 @@ namespace WinASM65
 
         private static void IfDefHandler(string value)
         {
+            if(cAsm.inCondition)
+            {
+                AddError(Errors.NESTED_CONDITIONAL_ASSEMBLY);
+                return;
+            }
             cAsm.inCondition = true;
             string label = value.Trim();
             cAsm.val = symbolTable.ContainsKey(label) || (localScope.isLocalScope && localScope.symbolTable.ContainsKey(label));
@@ -134,17 +154,32 @@ namespace WinASM65
 
         private static void IfnDefHandler(string value)
         {
+            if (cAsm.inCondition)
+            {
+                AddError(Errors.NESTED_CONDITIONAL_ASSEMBLY);
+                return;
+            }
             cAsm.inCondition = true;
             string label = value.Trim();
             cAsm.val = !symbolTable.ContainsKey(label) && (!localScope.isLocalScope || !localScope.symbolTable.ContainsKey(label));
         }
         private static void ElseHandler(string value)
         {
+            if(!cAsm.inCondition)
+            {
+                AddError(Errors.NO_CONDITIONAL_ASSEMBLY);
+                return;
+            }
             cAsm.val = !cAsm.val;
         }
 
         private static void EndIfHandler(string value)
         {
+            if (!cAsm.inCondition)
+            {
+                AddError(Errors.NO_CONDITIONAL_ASSEMBLY);
+                return;
+            }
             cAsm.inCondition = false;
         }
 
@@ -1009,11 +1044,11 @@ namespace WinASM65
             {
                 file = fileStack.Pop();
                 string line;
-                file.currentLineNumber = -1;
+                file.currentLineNumber = 0;
                 while ((line = file.fp.ReadLine()) != null)
                 {
                     file.currentLineNumber++;
-                    if (cAsm.inCondition && !cAsm.val)
+                    if (cAsm.inCondition && !cAsm.val && !line.ToLower().Equals(".endif"))
                     {
                         MainConsole.WriteLine(string.Format("{0}   --- {1}", line, "NOT Assembled"));
                         continue;
@@ -1184,6 +1219,10 @@ namespace WinASM65
         public static string MACRO_CALL_WITHOUT_PARAMS = "Macro called without params";
         public static string OPERANDS = "Error in operands";
         public static string UNDEFINED_SYMBOL = "Undefined symbol";
+        public static string NESTED_CONDITIONAL_ASSEMBLY = "Nested conditional assembly unpermitted";
+        public static string NO_CONDITIONAL_ASSEMBLY = "No conditional assembly is defined";
+        public static string NESTED_LOCAL_SCOPE = "nested local scope unpermitted";
+        public static string NO_LOCAL_SCOPE = "No local scope is defined";
     }
 
     public struct UnresolvedSymbol
