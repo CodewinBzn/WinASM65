@@ -1,0 +1,10 @@
+[
+	{
+		FileName: "headers.asm",
+		Dependencies: []
+	},
+	{
+		FileName: "vectors.asm",
+		Dependencies: []
+	}
+]

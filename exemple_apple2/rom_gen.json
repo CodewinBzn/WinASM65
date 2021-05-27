@@ -1,0 +1,11 @@
+{
+	
+	ObjectFile: "add#066000.bin",
+	Files: 
+	[
+		{
+			FileName: "add.o",
+			Size: "$8E00"
+		}
+	]
+}

@@ -1,0 +1,1 @@
+{"ADR1":{"Value":24832,"Type":1},"ADR2":{"Value":24833,"Type":1},"ADR3":{"Value":24834,"Type":1}}
