@@ -984,7 +984,7 @@ namespace WinASM65
             }
             if (contextError)
             {
-                Console.Error.WriteLine("\nTape help to learn more about the tool");
+                Console.Error.WriteLine("\n Tape -help to learn more about the tool");
                 return;
             }
             OpenFiles();
