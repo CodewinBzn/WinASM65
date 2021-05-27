@@ -1,2 +1,4 @@
 /WinASM65/bin/*
 /WinASM65/obj/*
+/WinASM65/WinASM65.csproj.user
+/WinASM65/WinASM65_TemporaryKey.pfx
