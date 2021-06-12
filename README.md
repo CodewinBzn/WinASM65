@@ -12,8 +12,13 @@ by CodewinBzn (Abdelghani BOUZIANE).
 		WinASM65 [-option] sourcefile
 		
 ### Options
+		-help			Show help
+		-h			Show help		
 		-m 			Assemble one or several segments
 		-c 			Combine assembled segments/binary files
+    Assemble single segment:
+		-f			Source file 
+		-o			Object file
 		
 		
 ## Assemble segments
