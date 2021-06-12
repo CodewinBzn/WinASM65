@@ -60,7 +60,7 @@ then it must mention them in this array as ["path_to_main_file_seg1", .....].
 			Size: "$hex"
 		},
 		{
-			FileName: "path_to_seg3_object_file",			
+			FileName: "path_to_seg3_object_file"			
 		},
 		....
 	]
