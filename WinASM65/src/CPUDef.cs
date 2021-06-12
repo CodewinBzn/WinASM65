@@ -31,16 +31,16 @@ namespace WinASM65
             ABS = 3,        // OPC word
             ABX = 4,        // OPC word,X
             ABY = 5,        // OPC word,Y
-            ZPG = 6,        // OPC byte         OPC ]label
-            ZPX = 7,        // OPC byte,X       OPC ]label,X
-            ZPY = 8,        // OPC byte,Y       OPC ]label,Y
+            ZPG = 6,        // OPC byte         
+            ZPX = 7,        // OPC byte,X       
+            ZPY = 8,        // OPC byte,Y       
             IND = 9,        // OPC (word)
             INX = 10,       // OPC (byte,x)
             INY = 11,       // OPC (byte),y
             REL = 12,       // OPC byte
         }
         private static readonly string dec = @"[0-9]+";
-        private static readonly string binByte = @"[01]{8}";
+        private static readonly string binByte = @"[01]+";
         private static readonly string hex = @"[a-fA-F0-9]";
         private static readonly string hexByte = @"(" + hex + @"{2}|" + hex + @"{1})";
         private static readonly string hexWord = hex + @"{4}";
