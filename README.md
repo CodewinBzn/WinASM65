@@ -16,7 +16,7 @@ by CodewinBzn (Abdelghani BOUZIANE).
 		-h			Show help		
 		-m 			Assemble one or several segments
 		-c 			Combine assembled segments/binary files
-Assemble single segment:
+ Assemble single segment:
 		-f			Source file 
 		-o			Object file
 		
