@@ -53,7 +53,7 @@ namespace WinASM65
 
         private static void StartLocalScopeHandler(Match lineReg)
         {
-            if(localScope.isLocalScope)
+            if (localScope.isLocalScope)
             {
                 AddError(Errors.NESTED_LOCAL_SCOPE);
                 return;
@@ -142,7 +142,7 @@ namespace WinASM65
 
         private static void IfDefHandler(string value)
         {
-            if(cAsm.inCondition)
+            if (cAsm.inCondition)
             {
                 AddError(Errors.NESTED_CONDITIONAL_ASSEMBLY);
                 return;
@@ -165,7 +165,7 @@ namespace WinASM65
         }
         private static void ElseHandler(string value)
         {
-            if(!cAsm.inCondition)
+            if (!cAsm.inCondition)
             {
                 AddError(Errors.NO_CONDITIONAL_ASSEMBLY);
                 return;
@@ -196,6 +196,10 @@ namespace WinASM65
             if (!string.IsNullOrEmpty(defParts))
             {
                 macroDef.listParam = Regex.Replace(defParts, @"\s+", "").Split(',');
+            }
+            else
+            {
+                macroDef.listParam = new string[] { };
             }
             if (macros.ContainsKey(macroName))
             {
@@ -520,11 +524,13 @@ namespace WinASM65
                 }
             }
             if (exprRes.undefinedSymbs.Count == 0)
-            {                
+            {
                 if (isLogical)
                 {
                     exprRes.Result = EvaluateLogicalExpression(expr);
-                } else {
+                }
+                else
+                {
                     DataTable dt = new DataTable();
                     exprRes.Result = dt.Compute(expr, "");
                     exprRes.Type = exprRes.Result <= 255 ? SymbolType.BYTE : SymbolType.WORD;
@@ -550,7 +556,7 @@ namespace WinASM65
                             exprRes.Type = SymbolType.BYTE;
                         }
                     }
-                }                
+                }
             }
             return exprRes;
         }
@@ -570,8 +576,16 @@ namespace WinASM65
             opcode = lineReg.Groups["opcode"].Value.ToUpper();
             if (!string.IsNullOrWhiteSpace(label))
             {
-                Symbol lSymb = new Symbol { Type = SymbolType.WORD, Value = currentAddr };
-                AddSymbol(label, lSymb);
+                if (CPUDef.OPC_TABLE.ContainsKey(label.ToUpper()))
+                {
+                    operands = lineReg.Groups["opcode"].Value;
+                    opcode = label;
+                }
+                else
+                {
+                    Symbol lSymb = new Symbol { Type = SymbolType.WORD, Value = currentAddr };
+                    AddSymbol(label, lSymb);
+                }
             }
 
             Byte[] addrModesValues = CPUDef.OPC_TABLE[opcode];
@@ -879,7 +893,7 @@ namespace WinASM65
                 unresExp.NbrUndefinedSymb--;
                 if (unresExp.NbrUndefinedSymb <= 0)
                 {
-                    ExprResult res = ResolveExpr(unresExp.Expr, unresExp.addrMode);
+                    ExprResult res = ResolveExpr(unresExp.Expr);
                     GenerateExprBytes(unresExp, res);
                     unsolvedExprList.Remove(expr);
                 }
@@ -889,45 +903,45 @@ namespace WinASM65
         private static void GenerateExprBytes(UnresolvedExpr expr, ExprResult exprRes)
         {
             byte[] bytes = null;
-            switch (expr.Type)
+            if (expr.addrMode == CPUDef.AddrModes.REL)
             {
-                case SymbolType.WORD:
-                    if (exprRes.Type == SymbolType.BYTE && !CPUDef.isAbsoluteAddr(expr.addrMode) && (expr.addrMode != CPUDef.AddrModes.IND))
+                int delta = (ushort)exprRes.Result - (expr.Position + originAddr);
+                byte res;
+                if (delta > 127 || delta < -128)
+                {
+                    AddError(Errors.REL_JUMP);
+                }
+                else
+                {
+                    if (delta < 0)
                     {
-                        bytes = new byte[1] { (byte)exprRes.Result };
+                        res = (byte)(255 + delta);
                     }
                     else
                     {
-                        if (expr.addrMode == CPUDef.AddrModes.REL)
+                        res = (byte)(delta - 1);
+                    }
+                    bytes = new byte[1] { res };
+                }
+            }
+            else
+            {
+                switch (expr.Type)
+                {
+                    case SymbolType.WORD:
+                        if (exprRes.Type == SymbolType.BYTE && !CPUDef.isAbsoluteAddr(expr.addrMode) && (expr.addrMode != CPUDef.AddrModes.IND))
                         {
-                            int delta = (ushort)exprRes.Result - (expr.Position + originAddr);
-                            byte res;
-                            if (delta > 127 || delta < -128)
-                            {
-                                AddError(Errors.REL_JUMP);
-                            }
-                            else
-                            {
-                                if (delta < 0)
-                                {
-                                    res = (byte)(255 + delta);
-                                }
-                                else
-                                {
-                                    res = (byte)(delta - 1);
-                                }
-                                bytes = new byte[1] { res };
-                            }
+                            bytes = new byte[1] { (byte)exprRes.Result };
                         }
                         else
                         {
                             bytes = GetWordBytes((ushort)exprRes.Result);
                         }
-                    }
-                    break;
-                case SymbolType.BYTE:
-                    bytes = new byte[1] { (byte)exprRes.Result };
-                    break;
+                        break;
+                    case SymbolType.BYTE:
+                        bytes = new byte[1] { (byte)exprRes.Result };
+                        break;
+                }
             }
             if (bytes != null)
             {
@@ -956,12 +970,12 @@ namespace WinASM65
                 symbolTable = new Dictionary<string, Symbol>(),
                 unsolvedSymbols = new Dictionary<string, UnresolvedSymbol>(),
                 isLocalScope = false,
-                memArea = new MemArea()
+                memArea = new MemArea() { val = 0, type = SymbolType.BYTE }
             };
             fileOutMemory = new List<byte>();
             errorList = new List<Error>();
             fileStack = new Stack<FileInfo>();
-            memArea = new MemArea();
+            memArea = new MemArea() { val = 0, type = SymbolType.BYTE };
             macros = new Dictionary<string, MacroDef>();
             startMacroDef = false;
             cAsm = new ConditionalAsm()
@@ -969,6 +983,8 @@ namespace WinASM65
                 inCondition = false,
                 val = false
             };
+            currentAddr = 0;
+            originAddr = 0;
 
             Boolean contextError = false;
             if (sourceFile == null)
@@ -1011,6 +1027,10 @@ namespace WinASM65
             if (unsolvedSymbols.Count > 0)
             {
                 File.WriteAllText(objectFileName + "_Unsolved.txt", JsonConvert.SerializeObject(unsolvedSymbols));
+            }
+            if (unsolvedExprList.Count > 0)
+            {
+                File.WriteAllText(objectFileName + "_UnsolvedExpr.txt", JsonConvert.SerializeObject(unsolvedExprList));
             }
         }
 
@@ -1101,7 +1121,7 @@ namespace WinASM65
                 Console.Error.WriteLine("****************************************** Errors ******************************************");
                 foreach (Error err in errorList)
                 {
-                    Console.Error.WriteLine($"Line {err.line}   - Type {err.type}");
+                    Console.Error.WriteLine($"Line {err.line}  - File {err.sourceFile} - Type {err.type}");
                 }
                 Console.Error.WriteLine("********************************************************************************************");
             }
@@ -1186,7 +1206,7 @@ namespace WinASM65
         public string Value { get; set; }
     }
 
-    public struct ExprResult
+    public class ExprResult
     {
         public dynamic Result { get; set; }
         public List<string> undefinedSymbs { get; set; }
@@ -1225,7 +1245,7 @@ namespace WinASM65
         public static string NO_LOCAL_SCOPE = "No local scope is defined";
     }
 
-    public struct UnresolvedSymbol
+    public class UnresolvedSymbol
     {
         public List<string> DependingList { get; set; }
         public List<ushort> ExprList { get; set; }
@@ -1233,7 +1253,7 @@ namespace WinASM65
         public int NbrUndefinedSymb { get; set; }
     }
 
-    public struct UnresolvedExpr
+    public class UnresolvedExpr
     {
         public string Expr { get; set; }
         public int NbrUndefinedSymb { get; set; }
@@ -1249,7 +1269,7 @@ namespace WinASM65
         public int currentLineNumber { get; set; }
     }
 
-    public struct MemArea
+    public class MemArea
     {
         public SymbolType type;
         public dynamic val;
@@ -1260,13 +1280,13 @@ namespace WinASM65
         public List<string> lines;
     }
 
-    public struct ConditionalAsm
+    public class ConditionalAsm
     {
         public bool val;
         public bool inCondition;
     }
 
-    public struct LocalScope
+    public class LocalScope
     {
         public Dictionary<string, Symbol> symbolTable;
         public Dictionary<string, UnresolvedSymbol> unsolvedSymbols;

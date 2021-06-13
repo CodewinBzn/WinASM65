@@ -50,6 +50,19 @@ namespace WinASM65
                         Console.WriteLine($"{seg.FileName} - No Symbol to resolve");
                         continue;
                     }
+                    string unsolvedExpr = seg.FileName.Split('.')[0] + ".o_UnsolvedExpr.txt";
+                    if (File.Exists(unsolvedExpr))
+                    {
+                        using (StreamReader file = File.OpenText(unsolvedExpr))
+                        {
+                            Assembler.unsolvedExprList = (Dictionary<ushort, UnresolvedExpr>)serializer.Deserialize(file, typeof(Dictionary<ushort, UnresolvedExpr>));
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine($"{seg.FileName} - No Expression to resolve");
+                        continue;
+                    }
                     Assembler.file = new FileInfo() { sourceFile = unsolvedFile, currentLineNumber = -1};
                     string objectFile = seg.FileName.Split('.')[0] + ".o";
                     Assembler.fileOutMemory = new List<byte>(File.ReadAllBytes(objectFile));
@@ -60,7 +73,11 @@ namespace WinASM65
                         {
                             Assembler.symbolTable = (Dictionary<string, Symbol>)serializer.Deserialize(file, typeof(Dictionary<string, Symbol>));
                         }
-                        Assembler.ResolveSymbols();
+                        Assembler.ResolveSymbols();                        
+                        if(Assembler.unsolvedExprList.Count == 0)
+                        {
+                            File.Delete(unsolvedExpr);
+                        }
                         if (Assembler.unsolvedSymbols.Count == 0)
                         {
                             File.Delete(unsolvedFile);
