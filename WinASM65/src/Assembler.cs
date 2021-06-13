@@ -265,7 +265,9 @@ namespace WinASM65
             string toInclude = directoryName + '/' + fileName;
             if (File.Exists(toInclude))
             {
-                fileOutMemory.AddRange(File.ReadAllBytes(toInclude));
+                byte[] bytesToInc = File.ReadAllBytes(toInclude);
+                fileOutMemory.AddRange(bytesToInc);
+                currentAddr += (ushort)bytesToInc.Length;
             }
             else
             {
