@@ -37,12 +37,14 @@ namespace WinASM65
                 // resolve dependencies
                 foreach (Segment seg in segments)
                 {
+                    Assembler.InitLexicalScope();
+                    LexicalScopeData globalScope = Assembler.lexicalScope.lexicalScopeDataList[0];
                     string unsolvedFile = seg.FileName.Split('.')[0] + ".o_Unsolved.txt";
                     if (File.Exists(unsolvedFile))
                     {
                         using (StreamReader file = File.OpenText(unsolvedFile))
                         {
-                            Assembler.unsolvedSymbols = (Dictionary<string, UnresolvedSymbol>)serializer.Deserialize(file, typeof(Dictionary<string, UnresolvedSymbol>));
+                            globalScope.unsolvedSymbols = (Dictionary<string, UnresolvedSymbol>)serializer.Deserialize(file, typeof(Dictionary<string, UnresolvedSymbol>));
                         }
                     }
                     else
@@ -71,14 +73,14 @@ namespace WinASM65
                         string symbolTableFile = dependence.Split('.')[0] + ".o_Symbol.txt";
                         using (StreamReader file = File.OpenText(symbolTableFile))
                         {
-                            Assembler.symbolTable = (Dictionary<string, Symbol>)serializer.Deserialize(file, typeof(Dictionary<string, Symbol>));
+                            globalScope.symbolTable = (Dictionary<string, Symbol>)serializer.Deserialize(file, typeof(Dictionary<string, Symbol>));
                         }
                         Assembler.ResolveSymbols();                        
                         if(Assembler.unsolvedExprList.Count == 0)
                         {
                             File.Delete(unsolvedExpr);
                         }
-                        if (Assembler.unsolvedSymbols.Count == 0)
+                        if (globalScope.unsolvedSymbols.Count == 0)
                         {
                             File.Delete(unsolvedFile);
                             break;
@@ -90,8 +92,6 @@ namespace WinASM65
                     }
                 }
             }
-
-
         }
     }
     class Segment

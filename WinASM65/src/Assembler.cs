@@ -35,12 +35,10 @@ namespace WinASM65
             {CPUDef.MEM_RESERVE, MemResHandler },
             {CPUDef.CALL_MACRO, CallMacroHandler }
         };
-        public static Dictionary<string, Symbol> symbolTable;
         private static ushort currentAddr;
         private static ushort originAddr;
         private delegate void DelDirectiveHandler(string value);
         public static string sourceFile;
-        public static Dictionary<string, UnresolvedSymbol> unsolvedSymbols;
         public static Dictionary<ushort, UnresolvedExpr> unsolvedExprList;
         public static Dictionary<string, MacroDef> macros;
         public static Stack<FileInfo> fileStack;
@@ -49,31 +47,38 @@ namespace WinASM65
         public static bool startMacroDef;
         public static string currentMacro;
         public static ConditionalAsm cAsm;
-        public static LocalScope localScope;
+        public static LexicalScope lexicalScope;
 
+        private static void AddNewLexicalScopeData()
+        {
+            lexicalScope.lexicalScopeDataList.Add(new LexicalScopeData
+            {
+                symbolTable = new Dictionary<string, Symbol>(),
+                unsolvedSymbols = new Dictionary<string, UnresolvedSymbol>(),
+                memArea = new MemArea() { val = 0, type = SymbolType.BYTE }
+            });
+        }
         private static void StartLocalScopeHandler(Match lineReg)
         {
-            if (localScope.isLocalScope)
-            {
-                AddError(Errors.NESTED_LOCAL_SCOPE);
-                return;
-            }
-            localScope.isLocalScope = true;
+            lexicalScope.level++;
+            AddNewLexicalScopeData();
         }
 
         private static void EndLocalScopeHandler(Match lineReg)
         {
-            if (!localScope.isLocalScope)
+            if (lexicalScope.level == 0)
             {
                 AddError(Errors.NO_LOCAL_SCOPE);
                 return;
             }
-            foreach (string symb in localScope.unsolvedSymbols.Keys)
+            Dictionary<string, UnresolvedSymbol> currentUnsolvedSymbols = lexicalScope.lexicalScopeDataList[lexicalScope.level].unsolvedSymbols;
+            Dictionary<string, UnresolvedSymbol> parentUnsolvedSymbols = lexicalScope.lexicalScopeDataList[lexicalScope.level - 1].unsolvedSymbols;
+            foreach (string symb in currentUnsolvedSymbols.Keys)
             {
-                if (unsolvedSymbols.ContainsKey(symb))
+                if (lexicalScope.lexicalScopeDataList[lexicalScope.level - 1].unsolvedSymbols.ContainsKey(symb))
                 {
-                    UnresolvedSymbol glUnsolvedSymbol = unsolvedSymbols[symb];
-                    UnresolvedSymbol localUnsolvedSymbol = localScope.unsolvedSymbols[symb];
+                    UnresolvedSymbol glUnsolvedSymbol = parentUnsolvedSymbols[symb];
+                    UnresolvedSymbol localUnsolvedSymbol = currentUnsolvedSymbols[symb];
                     foreach (string dep in localUnsolvedSymbol.DependingList)
                     {
                         if (!glUnsolvedSymbol.DependingList.Contains(dep))
@@ -88,19 +93,18 @@ namespace WinASM65
                             glUnsolvedSymbol.ExprList.Add(expr);
                         }
                     }
-                    unsolvedSymbols[symb] = glUnsolvedSymbol;
+                    parentUnsolvedSymbols[symb] = glUnsolvedSymbol;
                 }
                 else
                 {
-                    UnresolvedSymbol localUnsolvedSymbol = localScope.unsolvedSymbols[symb];
+                    UnresolvedSymbol localUnsolvedSymbol = currentUnsolvedSymbols[symb];
                     localUnsolvedSymbol.Expr = null;
-                    unsolvedSymbols.Add(symb, localUnsolvedSymbol);
+                    parentUnsolvedSymbols.Add(symb, localUnsolvedSymbol);
                 }
 
             }
-            localScope.isLocalScope = false;
-            localScope.symbolTable.Clear();
-            localScope.unsolvedSymbols.Clear();
+            lexicalScope.lexicalScopeDataList.RemoveAt(lexicalScope.level);
+            lexicalScope.level--;
         }
 
         #region directives
@@ -149,7 +153,7 @@ namespace WinASM65
             }
             cAsm.inCondition = true;
             string label = value.Trim();
-            cAsm.val = symbolTable.ContainsKey(label) || (localScope.isLocalScope && localScope.symbolTable.ContainsKey(label));
+            cAsm.val = GetSymbolValue(label) != null;
         }
 
         private static void IfnDefHandler(string value)
@@ -161,7 +165,7 @@ namespace WinASM65
             }
             cAsm.inCondition = true;
             string label = value.Trim();
-            cAsm.val = !symbolTable.ContainsKey(label) && (!localScope.isLocalScope || !localScope.symbolTable.ContainsKey(label));
+            cAsm.val = GetSymbolValue(label) == null;
         }
         private static void ElseHandler(string value)
         {
@@ -237,15 +241,7 @@ namespace WinASM65
 
         private static void MemAreaHandler(string value)
         {
-            MemArea ma;
-            if (!localScope.isLocalScope)
-            {
-                ma = memArea;
-            }
-            else
-            {
-                ma = localScope.memArea;
-            }
+            MemArea ma = lexicalScope.lexicalScopeDataList[lexicalScope.level].memArea;
             ExprResult res = ResolveExpr(value);
             if (res.undefinedSymbs.Count == 0)
             {
@@ -416,15 +412,7 @@ namespace WinASM65
 
         private static void AddDependingSymb(string symbol, string dependingSymb)
         {
-            Dictionary<string, UnresolvedSymbol> unsolvedSymbs;
-            if (localScope.isLocalScope)
-            {
-                unsolvedSymbs = localScope.unsolvedSymbols;
-            }
-            else
-            {
-                unsolvedSymbs = unsolvedSymbols;
-            }
+            Dictionary<string, UnresolvedSymbol> unsolvedSymbs = lexicalScope.lexicalScopeDataList[lexicalScope.level].unsolvedSymbols;
             if (unsolvedSymbs.ContainsKey(symbol))
             {
                 unsolvedSymbs[symbol].DependingList.Add(dependingSymb);
@@ -706,18 +694,8 @@ namespace WinASM65
             ExprResult res = ResolveExpr(value);
             if (res.undefinedSymbs.Count == 0)
             {
-                MemArea ma;
-                Dictionary<string, Symbol> symbTable;
-                if (localScope.isLocalScope)
-                {
-                    ma = localScope.memArea;
-                    symbTable = localScope.symbolTable;
-                }
-                else
-                {
-                    ma = memArea;
-                    symbTable = symbolTable;
-                }
+                MemArea ma = lexicalScope.lexicalScopeDataList[lexicalScope.level].memArea;
+                Dictionary<string, Symbol> symbTable = lexicalScope.lexicalScopeDataList[lexicalScope.level].symbolTable;
                 Symbol variable = new Symbol() { Type = ma.type, Value = ma.val };
                 if (!symbTable.ContainsKey(label))
                 {
@@ -779,15 +757,7 @@ namespace WinASM65
 
         private static void AddUnsolvedSymbol(string unsolvedLabel, UnresolvedSymbol unresSymb)
         {
-            Dictionary<string, UnresolvedSymbol> unsolvedSymbs;
-            if (localScope.isLocalScope)
-            {
-                unsolvedSymbs = localScope.unsolvedSymbols;
-            }
-            else
-            {
-                unsolvedSymbs = unsolvedSymbols;
-            }
+            Dictionary<string, UnresolvedSymbol> unsolvedSymbs = lexicalScope.lexicalScopeDataList[lexicalScope.level].unsolvedSymbols;
             if (unsolvedSymbs.ContainsKey(unsolvedLabel))
             {
                 UnresolvedSymbol unsolved = unsolvedSymbs[unsolvedLabel];
@@ -819,20 +789,22 @@ namespace WinASM65
 
         private static Symbol GetSymbolValue(string symbol)
         {
-            Dictionary<string, Symbol> symbTable = null;
-            if (localScope.isLocalScope && localScope.symbolTable.ContainsKey(symbol))
+            byte level = lexicalScope.level;
+            while (true)
             {
-                symbTable = localScope.symbolTable;
+                if (lexicalScope.lexicalScopeDataList[level].symbolTable.ContainsKey(symbol))
+                {
+                    return lexicalScope.lexicalScopeDataList[level].symbolTable[symbol];
+                }
+                if (level == 0)
+                {
+                    return null;
+                }
+                else
+                {
+                    level--;
+                }
             }
-            else
-            {
-                symbTable = symbolTable;
-            }
-            if (symbTable.ContainsKey(symbol))
-            {
-                return symbTable[symbol];
-            }
-            return null;
         }
 
         private static void LabelHandler(Match lineReg)
@@ -844,15 +816,7 @@ namespace WinASM65
 
         private static void ResolveSymbol(string label)
         {
-            Dictionary<string, UnresolvedSymbol> unsolvedSymbs;
-            if (localScope.isLocalScope)
-            {
-                unsolvedSymbs = localScope.unsolvedSymbols;
-            }
-            else
-            {
-                unsolvedSymbs = unsolvedSymbols;
-            }
+            Dictionary<string, UnresolvedSymbol> unsolvedSymbs = lexicalScope.lexicalScopeDataList[lexicalScope.level].unsolvedSymbols;
             if (!unsolvedSymbs.ContainsKey(label))
             {
                 return;
@@ -864,15 +828,7 @@ namespace WinASM65
 
         private static void ResolveSymbolDepsAndExprs(UnresolvedSymbol unresSymb)
         {
-            Dictionary<string, UnresolvedSymbol> unsolvedSymbs;
-            if (localScope.isLocalScope)
-            {
-                unsolvedSymbs = localScope.unsolvedSymbols;
-            }
-            else
-            {
-                unsolvedSymbs = unsolvedSymbols;
-            }
+            Dictionary<string, UnresolvedSymbol> unsolvedSymbs = lexicalScope.lexicalScopeDataList[lexicalScope.level].unsolvedSymbols;
             // resolve depending symbols
             foreach (string dep in unresSymb.DependingList)
             {
@@ -961,19 +917,21 @@ namespace WinASM65
         {
             errorList.Add(new Error(file.currentLineNumber, file.sourceFile, type));
         }
-
+        public static void InitLexicalScope()
+        {
+            lexicalScope = new LexicalScope()
+            {
+                level = 0,
+                lexicalScopeDataList = new List<LexicalScopeData>()
+            };
+            // add global scope
+            AddNewLexicalScopeData();
+            lexicalScope.globalScope = lexicalScope.lexicalScopeDataList[0];
+        }
         public static void Assemble()
         {
-            unsolvedSymbols = new Dictionary<string, UnresolvedSymbol>();
             unsolvedExprList = new Dictionary<ushort, UnresolvedExpr>();
-            symbolTable = new Dictionary<string, Symbol>();
-            localScope = new LocalScope()
-            {
-                symbolTable = new Dictionary<string, Symbol>(),
-                unsolvedSymbols = new Dictionary<string, UnresolvedSymbol>(),
-                isLocalScope = false,
-                memArea = new MemArea() { val = 0, type = SymbolType.BYTE }
-            };
+            InitLexicalScope();
             fileOutMemory = new List<byte>();
             errorList = new List<Error>();
             fileStack = new Stack<FileInfo>();
@@ -1018,14 +976,15 @@ namespace WinASM65
 
         private static void ExportSymbolTable()
         {
-            if (symbolTable.Count > 0)
+            if (lexicalScope.globalScope.symbolTable.Count > 0)
             {
-                File.WriteAllText(objectFileName + "_Symbol.txt", JsonConvert.SerializeObject(symbolTable));
+                File.WriteAllText(objectFileName + "_Symbol.txt", JsonConvert.SerializeObject(lexicalScope.globalScope.symbolTable));
             }
         }
 
         private static void ExportUnsolvedFile()
         {
+            Dictionary<string, UnresolvedSymbol> unsolvedSymbols = lexicalScope.globalScope.unsolvedSymbols;
             if (unsolvedSymbols.Count > 0)
             {
                 File.WriteAllText(objectFileName + "_Unsolved.txt", JsonConvert.SerializeObject(unsolvedSymbols));
@@ -1038,10 +997,11 @@ namespace WinASM65
 
         public static void ResolveSymbols()
         {
+            Dictionary<string, UnresolvedSymbol> unsolvedSymbols = lexicalScope.globalScope.unsolvedSymbols;
             List<string> resolved = new List<string>();
             foreach (string symbName in unsolvedSymbols.Keys)
             {
-                if (!symbolTable.ContainsKey(symbName))
+                if (!lexicalScope.globalScope.symbolTable.ContainsKey(symbName))
                 {
                     continue;
                 }
@@ -1169,15 +1129,7 @@ namespace WinASM65
 
         private static void AddSymbol(string label, Symbol symb)
         {
-            Dictionary<string, Symbol> symbTable;
-            if (localScope.isLocalScope)
-            {
-                symbTable = localScope.symbolTable;
-            }
-            else
-            {
-                symbTable = symbolTable;
-            }
+            Dictionary<string, Symbol> symbTable = lexicalScope.lexicalScopeDataList[lexicalScope.level].symbolTable;
             if (symbTable.ContainsKey(label))
             {
                 AddError(Errors.LABEL_EXISTS);
@@ -1288,11 +1240,18 @@ namespace WinASM65
         public bool inCondition;
     }
 
-    public class LocalScope
+    public class LexicalScopeData
     {
-        public Dictionary<string, Symbol> symbolTable;
-        public Dictionary<string, UnresolvedSymbol> unsolvedSymbols;
-        public bool isLocalScope;
-        public MemArea memArea;
+        public Dictionary<string, Symbol> symbolTable { get; set; }
+        public Dictionary<string, UnresolvedSymbol> unsolvedSymbols { get; set; }
+        public MemArea memArea { get; set; }
+    }
+    public class LexicalScope
+    {
+        public List<LexicalScopeData> lexicalScopeDataList;
+        // pointer to global scope
+        public LexicalScopeData globalScope;
+        // 0: global
+        public byte level;
     }
 }
