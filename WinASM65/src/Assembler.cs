@@ -224,6 +224,11 @@ namespace WinASM65
 
         private static void StartMacroDefHandler(string value)
         {
+            if(startMacroDef)
+            {
+                AddError(Errors.NESTED_MACROS);
+                return;
+            }
 
             Match mReg = Regex.Match(value, CPUDef.macroReg);
             string macroName = currentMacro = mReg.Groups["label"].Value;
@@ -252,6 +257,11 @@ namespace WinASM65
 
         private static void EndMacroDefHandler(string value)
         {
+            if(!startMacroDef)
+            {
+                AddError(Errors.NO_MACRO);
+                return;
+            }
             startMacroDef = false;
             currentMacro = string.Empty;
         }
@@ -1082,7 +1092,9 @@ namespace WinASM65
                         MainConsole.WriteLine(originalLine);
                         continue;
                     }
-                    if (startMacroDef && !line.ToLower().Equals(".endmacro"))
+                    if (startMacroDef &&
+                        !line.ToLower().Equals(".endmacro") &&
+                        !line.ToLower().StartsWith(".macro"))
                     {
                         macros[currentMacro].lines.Add(line);
                         MainConsole.WriteLine(string.Format("{0}   --- {1}", originalLine, "MACRO DEF"));
@@ -1231,6 +1243,8 @@ namespace WinASM65
         public static string MACRO_EXISTS = "Macro with the same name already defined";
         public static string MACRO_NOT_EXISTS = "Undefined Macro";
         public static string MACRO_CALL_WITHOUT_PARAMS = "Macro called without params";
+        public static string NESTED_MACROS = "Nested macros are not supported";
+        public static string NO_MACRO = "No macro is defined";
         public static string OPERANDS = "Error in operands";
         public static string UNDEFINED_SYMBOL = "Undefined symbol";
         public static string NESTED_CONDITIONAL_ASSEMBLY = "Too much nested conditional assembly";
