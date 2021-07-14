@@ -60,6 +60,11 @@ namespace WinASM65
         }
         private static void StartLocalScopeHandler(Match lineReg)
         {
+            if (lexicalScope.level == byte.MaxValue)
+            {
+                AddError(Errors.MAX_LOCAL_SCOPE);
+                return;
+            }
             lexicalScope.level++;
             AddNewLexicalScopeData();
         }
@@ -127,11 +132,12 @@ namespace WinASM65
 
         private static void IfHandler(string value)
         {
-            if (cAsm.inCondition)
+            if (cAsm.level == byte.MaxValue)
             {
                 AddError(Errors.NESTED_CONDITIONAL_ASSEMBLY);
                 return;
             }
+
             ExprResult res = ResolveExpr(value.Trim(), CPUDef.AddrModes.NO, true);
             if (res.undefinedSymbs.Count > 0)
             {
@@ -139,33 +145,54 @@ namespace WinASM65
             }
             else
             {
-                cAsm.inCondition = true;
-                cAsm.val = (bool)res.Result;
+                if (cAsm.inCondition)
+                {
+                    cAsm.level++;
+                }
+                else
+                {
+                    cAsm.inCondition = true;
+                }
+                cAsm.values.Add((bool)res.Result);
             }
         }
 
         private static void IfDefHandler(string value)
         {
-            if (cAsm.inCondition)
+            if (cAsm.level == byte.MaxValue)
             {
                 AddError(Errors.NESTED_CONDITIONAL_ASSEMBLY);
                 return;
             }
-            cAsm.inCondition = true;
+            if (cAsm.inCondition)
+            {
+                cAsm.level++;
+            }
+            else
+            {
+                cAsm.inCondition = true;
+            }
             string label = value.Trim();
-            cAsm.val = GetSymbolValue(label) != null;
+            cAsm.values.Add(GetSymbolValue(label) != null);
         }
 
         private static void IfnDefHandler(string value)
         {
-            if (cAsm.inCondition)
+            if (cAsm.level == byte.MaxValue)
             {
                 AddError(Errors.NESTED_CONDITIONAL_ASSEMBLY);
                 return;
             }
-            cAsm.inCondition = true;
+            if (cAsm.inCondition)
+            {
+                cAsm.level++;
+            }
+            else
+            {
+                cAsm.inCondition = true;
+            }
             string label = value.Trim();
-            cAsm.val = GetSymbolValue(label) == null;
+            cAsm.values.Add(GetSymbolValue(label) == null);
         }
         private static void ElseHandler(string value)
         {
@@ -174,7 +201,7 @@ namespace WinASM65
                 AddError(Errors.NO_CONDITIONAL_ASSEMBLY);
                 return;
             }
-            cAsm.val = !cAsm.val;
+            cAsm.values[cAsm.level] = !cAsm.values[cAsm.level];
         }
 
         private static void EndIfHandler(string value)
@@ -184,7 +211,15 @@ namespace WinASM65
                 AddError(Errors.NO_CONDITIONAL_ASSEMBLY);
                 return;
             }
-            cAsm.inCondition = false;
+            cAsm.values.RemoveAt(cAsm.level);
+            if (cAsm.values.Count == 0)
+            {
+                cAsm.inCondition = false;
+            }
+            if (cAsm.level > 0)
+            {
+                cAsm.level--;
+            }
         }
 
         private static void StartMacroDefHandler(string value)
@@ -940,8 +975,9 @@ namespace WinASM65
             startMacroDef = false;
             cAsm = new ConditionalAsm()
             {
+                level = 0,
                 inCondition = false,
-                val = false
+                values = new List<bool>()
             };
             currentAddr = 0;
             originAddr = 0;
@@ -1029,8 +1065,12 @@ namespace WinASM65
                 file.currentLineNumber = 0;
                 while ((line = file.fp.ReadLine()) != null)
                 {
+                    line = line.Trim();
                     file.currentLineNumber++;
-                    if (cAsm.inCondition && !cAsm.val && !line.ToLower().Equals(".endif"))
+                    if (cAsm.inCondition &&
+                        !cAsm.values[cAsm.level] &&
+                        !line.ToLower().Equals(".endif") &&
+                        !line.ToLower().Equals(".else"))
                     {
                         MainConsole.WriteLine(string.Format("{0}   --- {1}", line, "NOT Assembled"));
                         continue;
@@ -1193,9 +1233,9 @@ namespace WinASM65
         public static string MACRO_CALL_WITHOUT_PARAMS = "Macro called without params";
         public static string OPERANDS = "Error in operands";
         public static string UNDEFINED_SYMBOL = "Undefined symbol";
-        public static string NESTED_CONDITIONAL_ASSEMBLY = "Nested conditional assembly unpermitted";
+        public static string NESTED_CONDITIONAL_ASSEMBLY = "Too much nested conditional assembly";
         public static string NO_CONDITIONAL_ASSEMBLY = "No conditional assembly is defined";
-        public static string NESTED_LOCAL_SCOPE = "nested local scope unpermitted";
+        public static string MAX_LOCAL_SCOPE = "Too much nested local lexical levels";
         public static string NO_LOCAL_SCOPE = "No local scope is defined";
     }
 
@@ -1236,7 +1276,8 @@ namespace WinASM65
 
     public class ConditionalAsm
     {
-        public bool val;
+        public List<bool> values;
+        public byte level;
         public bool inCondition;
     }
 
