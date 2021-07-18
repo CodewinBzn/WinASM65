@@ -230,7 +230,7 @@ namespace WinASM65
                 return;
             }
 
-            Match mReg = Regex.Match(value, CPUDef.macroReg);
+            Match mReg = CPUDef.macroReg.Match(value);
             string macroName = currentMacro = mReg.Groups["label"].Value;
             string defParts = mReg.Groups["value"].Value;
             MacroDef macroDef = new MacroDef();
@@ -601,7 +601,7 @@ namespace WinASM65
             string operands = lineReg.Groups["operands"].Value;
             if (macros.ContainsKey(opcode))
             {
-                Match macroReg = Regex.Match($"{opcode} {operands}", CPUDef.macroReg);
+                Match macroReg = CPUDef.macroReg.Match($"{opcode} {operands}");
                 CallMacroHandler(macroReg);
                 return;
             }
@@ -1111,9 +1111,9 @@ namespace WinASM65
         private static void ParseLine(string line, string originalLine)
         {
             bool syntaxError = true;
-            foreach (KeyValuePair<string, string> entry in CPUDef.regMap)
+            foreach (KeyValuePair<Regex, string> entry in CPUDef.regMap)
             {
-                Match match = Regex.Match(line, entry.Key);
+                Match match = entry.Key.Match(line);
                 if (match.Success)
                 {
                     syntaxError = false;

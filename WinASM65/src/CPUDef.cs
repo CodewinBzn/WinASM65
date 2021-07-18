@@ -127,19 +127,19 @@ namespace WinASM65
             { "TXS", new byte[] {0x9a,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff}},
             { "TYA", new byte[] {0x98,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff,  0xff}}
         };
-           
-        // regex
-        public static readonly string labelDeclareReg = @"\s*" + labelRegex + @":\s*";
-        public static readonly string directiveReg = @"\s*(?<directive>\.[a-zA-Z]+)(\s+(?<value>(.)+))?";
-        // instruction = label? opcode operands?
-        public static readonly string instrReg = @"^(\s*" + labelRegex + @"\s+)?(?<opcode>[a-zA-Z]{3})((\s+(?<operands>(.)+))|$)";
-        public static readonly string constantReg = @"^\s*" + labelRegex + @"\s*=\s*(?<value>(.)+)$";
-        public static readonly string memResReg = @"^\s*" + labelRegex + @"\s+\.(RES|res)\s+(?<value>(.)+)$";
-        public static readonly string macroReg = @"^(\s*" + labelRegex + @")(\s+(?<value>(.)+))?";
-        private static readonly string startLocalScopeRegex = @"^\s*\{\s*";
-        private static readonly string endLocalScopeRegex = @"^\s*\}\s*";
 
-        public static readonly Dictionary<string, string> regMap = new Dictionary<string, string>
+        // regex
+        public static readonly Regex labelDeclareReg = new Regex(@"\s*" + labelRegex + @":\s*", RegexOptions.Compiled);
+        public static readonly Regex directiveReg = new Regex(@"\s*(?<directive>\.[a-zA-Z]+)(\s+(?<value>(.)+))?", RegexOptions.Compiled);
+        // instruction = label? opcode operands?
+        public static readonly Regex instrReg = new Regex(@"^(\s*" + labelRegex + @"\s+)?(?<opcode>[a-zA-Z]{3})((\s+(?<operands>(.)+))|$)", RegexOptions.Compiled);
+        public static readonly Regex constantReg = new Regex(@"^\s*" + labelRegex + @"\s*=\s*(?<value>(.)+)$", RegexOptions.Compiled);
+        public static readonly Regex memResReg = new Regex(@"^\s*" + labelRegex + @"\s+\.(RES|res)\s+(?<value>(.)+)$", RegexOptions.Compiled);
+        public static readonly Regex macroReg = new Regex(@"^(\s*" + labelRegex + @")(\s+(?<value>(.)+))?", RegexOptions.Compiled);
+        private static readonly Regex startLocalScopeRegex = new Regex(@"^\s*\{\s*", RegexOptions.Compiled);
+        private static readonly Regex endLocalScopeRegex = new Regex(@"^\s*\}\s*", RegexOptions.Compiled);
+
+        public static readonly Dictionary<Regex, string> regMap = new Dictionary<Regex, string>
         {
             { startLocalScopeRegex, START_LOCAL_SCOPE},
             { endLocalScopeRegex, END_LOCAL_SCOPE},
@@ -158,7 +158,7 @@ namespace WinASM65
             public string expr { get; set; }
 
         }
-        
+
         public static readonly Dictionary<AddrModes, InstructionInfo> instrInfoByAddrMode = new Dictionary<AddrModes, InstructionInfo>
         {
             { AddrModes.IMM, new InstructionInfo {addrMode = AddrModes.IMM, nbrBytes= 2}},
@@ -194,9 +194,9 @@ namespace WinASM65
             if (inst.EndsWith(",x") || inst.EndsWith(",X"))
             {
                 instInfo = instrInfoByAddrMode[AddrModes.ABX];
-                instInfo.expr = inst.Remove(inst.Length-2, 2);
+                instInfo.expr = inst.Remove(inst.Length - 2, 2);
                 return instInfo;
-            }            
+            }
             if (inst.StartsWith("(") && (inst.EndsWith(",x)") || inst.EndsWith(",X)")))
             {
                 instInfo = instrInfoByAddrMode[AddrModes.INX];
