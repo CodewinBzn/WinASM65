@@ -279,9 +279,15 @@ namespace WinASM65
 
         private static void OrgHandler(string value)
         {
-            value = value.Trim().Replace("$", string.Empty);
-            originAddr = ushort.Parse(value, NumberStyles.HexNumber);
-            currentAddr = originAddr;
+            ExprResult res = ResolveExpr(value);
+            if (res.undefinedSymbs.Count == 0)
+            {
+                currentAddr = originAddr = (ushort)res.Result;
+            }
+            else
+            {
+                AddError(Errors.UNDEFINED_SYMBOL);
+            }                                 
         }
 
         private static void MemAreaHandler(string value)
