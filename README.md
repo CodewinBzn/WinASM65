@@ -108,6 +108,7 @@ label:
 ### Numbers
 - Hexadecimal numbers begin with '$'.
 - Binary numbers begin with '%'.
+- Decimal.
 
 ### Assembler directives
 
@@ -115,13 +116,13 @@ label:
 
 - Set the starting address of a segment.
 - To use only once in each segment.
-- To use only with hex numbers.
+- Accepts expressions.
 ```
 	.org $c000
 lda #$00	
 ```
 
-#### .MEMAREA / .memarea  .
+#### .MEMAREA / .memarea  
 
 - Set the starting address of a memory area for 
 memory reservation (accepts expressions).
