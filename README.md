@@ -217,6 +217,17 @@ red_color = $85
 add #red_color, #$00	
 ```
 
+### .REP/.ENDREP
+-  Repeat a block of code constant number of times.
+- The command is followed by a constant expression that tells how many times the commands in the body should get repeated.
+```
+lastbyte:
+.rep $2000 - (lastbyte - $c000) ;fill the remaining bytes of the bank 
+	.byte $ff
+.endrep
+
+```
+
 ### Expressions
 ```
  - <        				Returns the low byte of a value (ex: <label).
