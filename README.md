@@ -221,11 +221,17 @@ add #red_color, #$00
 -  Repeat a block of code constant number of times.
 - The command is followed by a constant expression that tells how many times the commands in the body should get repeated.
 ```
-lastbyte:
-.rep $2000 - (lastbyte - $c000) ;fill the remaining bytes of the bank 
-	.byte $ff
-.endrep
-
+clrmem:
+  LDA #$00
+  {
+    mem = $0000
+    .rep 8
+      STA mem, x
+      mem = mem + $0100
+    .endrep  
+  }
+  INX
+  BNE clrmem
 ```
 
 ### Expressions
