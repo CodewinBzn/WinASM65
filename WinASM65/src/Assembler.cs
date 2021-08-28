@@ -48,6 +48,7 @@ namespace WinASM65
         public static string currentMacro;
         public static ConditionalAsm cAsm;
         public static LexicalScope lexicalScope;
+        public static RepBlock repBlock;
 
         private static void AddNewLexicalScopeData()
         {
@@ -128,6 +129,8 @@ namespace WinASM65
             { ".if", IfHandler },
             { ".else", ElseHandler },
             { ".endif", EndIfHandler },
+            { ".rep", RepHandler },
+            { ".endrep", EndRepHandler },
         };
 
         private static void IfHandler(string value)
@@ -224,7 +227,7 @@ namespace WinASM65
 
         private static void StartMacroDefHandler(string value)
         {
-            if(startMacroDef)
+            if (startMacroDef)
             {
                 AddError(Errors.NESTED_MACROS);
                 return;
@@ -257,7 +260,7 @@ namespace WinASM65
 
         private static void EndMacroDefHandler(string value)
         {
-            if(!startMacroDef)
+            if (!startMacroDef)
             {
                 AddError(Errors.NO_MACRO);
                 return;
@@ -266,6 +269,41 @@ namespace WinASM65
             currentMacro = string.Empty;
         }
 
+        private static void RepHandler(string value)
+        {
+            if (repBlock.IsInRepBlock)
+            {
+                AddError(Errors.NESTED_REP);
+                return;
+            }
+            repBlock.IsInRepBlock = true;
+            repBlock.lines = new List<string>();
+            ExprResult res = ResolveExpr(value.Trim());
+            if (res.undefinedSymbs.Count > 0)
+            {
+                AddError(Errors.UNDEFINED_SYMBOL);
+                return;
+            }
+            repBlock.Counter = res.Result;
+        }
+
+        private static void EndRepHandler(string value)
+        {
+            if (!repBlock.IsInRepBlock)
+            {
+                AddError(Errors.NO_REP);
+                return;
+            }
+            repBlock.IsInRepBlock = false;
+            for (int i = 0; i < repBlock.Counter; i++)
+            {
+                foreach (string line in repBlock.lines)
+                {
+                    ParseLine(line, line);
+                }
+            }
+
+        }
         private static void DirectiveHandler(Match lineReg)
         {
             string directive = lineReg.Groups["directive"].Value;
@@ -287,7 +325,7 @@ namespace WinASM65
             else
             {
                 AddError(Errors.UNDEFINED_SYMBOL);
-            }                                 
+            }
         }
 
         private static void MemAreaHandler(string value)
@@ -442,7 +480,7 @@ namespace WinASM65
                     Value = res.Result,
                     Type = res.Type
                 };
-                AddSymbol(label, symb);
+                AddSymbol(label, symb, true);
             }
             else
             {
@@ -883,16 +921,19 @@ namespace WinASM65
             // resolve depending symbols
             foreach (string dep in unresSymb.DependingList)
             {
-                UnresolvedSymbol unresDep = unsolvedSymbs[dep];
-                unresDep.NbrUndefinedSymb--;
-                if (unresDep.NbrUndefinedSymb <= 0)
+                if (unsolvedSymbs.ContainsKey(dep))
                 {
-                    ExprResult res = ResolveExpr(unresDep.Expr);
-                    AddSymbol(dep, new Symbol()
+                    UnresolvedSymbol unresDep = unsolvedSymbs[dep];
+                    unresDep.NbrUndefinedSymb--;
+                    if (unresDep.NbrUndefinedSymb <= 0)
                     {
-                        Value = res.Result,
-                        Type = res.Type
-                    });
+                        ExprResult res = ResolveExpr(unresDep.Expr);
+                        AddSymbol(dep, new Symbol()
+                        {
+                            Value = res.Result,
+                            Type = res.Type
+                        });
+                    }
                 }
             }
             // resolve expressions
@@ -989,6 +1030,10 @@ namespace WinASM65
             memArea = new MemArea() { val = 0, type = SymbolType.BYTE };
             macros = new Dictionary<string, MacroDef>();
             startMacroDef = false;
+            repBlock = new RepBlock
+            {
+                IsInRepBlock = false
+            };
             cAsm = new ConditionalAsm()
             {
                 level = 0,
@@ -1116,21 +1161,31 @@ namespace WinASM65
 
         private static void ParseLine(string line, string originalLine)
         {
-            bool syntaxError = true;
-            foreach (KeyValuePair<Regex, string> entry in CPUDef.regMap)
+            if (repBlock.IsInRepBlock &&
+                       !line.ToLower().Equals(".endrep") &&
+                       !line.ToLower().StartsWith(".rep"))
             {
-                Match match = entry.Key.Match(line);
-                if (match.Success)
-                {
-                    syntaxError = false;
-                    MainConsole.WriteLine(string.Format("{0}   --- {1}", originalLine, entry.Value));
-                    ProcessLine(match, entry.Value);
-                    break;
-                }
+                repBlock.lines.Add(line);
+                MainConsole.WriteLine(string.Format("{0}   --- {1}", originalLine, "Repeat block line"));
             }
-            if (syntaxError)
+            else
             {
-                AddError(Errors.SYNTAX);
+                bool syntaxError = true;
+                foreach (KeyValuePair<Regex, string> entry in CPUDef.regMap)
+                {
+                    Match match = entry.Key.Match(line);
+                    if (match.Success)
+                    {
+                        syntaxError = false;
+                        MainConsole.WriteLine(string.Format("{0}   --- {1}", originalLine, entry.Value));
+                        ProcessLine(match, entry.Value);
+                        break;
+                    }
+                }
+                if (syntaxError)
+                {
+                    AddError(Errors.SYNTAX);
+                }
             }
         }
 
@@ -1185,12 +1240,19 @@ namespace WinASM65
             return (byte)(word >> 8);
         }
 
-        private static void AddSymbol(string label, Symbol symb)
+        private static void AddSymbol(string label, Symbol symb, bool replaceIfExist = false)
         {
             Dictionary<string, Symbol> symbTable = lexicalScope.lexicalScopeDataList[lexicalScope.level].symbolTable;
             if (symbTable.ContainsKey(label))
             {
-                AddError(Errors.LABEL_EXISTS);
+                if (replaceIfExist)
+                {
+                    symbTable[label] = symb;
+                }
+                else
+                {
+                    AddError(Errors.LABEL_EXISTS);
+                }
             }
             else
             {
@@ -1250,7 +1312,9 @@ namespace WinASM65
         public static string MACRO_NOT_EXISTS = "Undefined Macro";
         public static string MACRO_CALL_WITHOUT_PARAMS = "Macro called without params";
         public static string NESTED_MACROS = "Nested macros are not supported";
+        public static string NESTED_REP = "Nested Reps are not supported";
         public static string NO_MACRO = "No macro is defined";
+        public static string NO_REP = "No repeat is defined";
         public static string OPERANDS = "Error in operands";
         public static string UNDEFINED_SYMBOL = "Undefined symbol";
         public static string NESTED_CONDITIONAL_ASSEMBLY = "Too much nested conditional assembly";
@@ -1314,5 +1378,12 @@ namespace WinASM65
         public LexicalScopeData globalScope;
         // 0: global
         public byte level;
+    }
+
+    public struct RepBlock
+    {
+        public bool IsInRepBlock { get; set; }
+        public List<string> lines { get; set; }
+        public dynamic Counter { get; internal set; }
     }
 }
