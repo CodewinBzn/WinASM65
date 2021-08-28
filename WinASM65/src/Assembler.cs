@@ -921,16 +921,19 @@ namespace WinASM65
             // resolve depending symbols
             foreach (string dep in unresSymb.DependingList)
             {
-                UnresolvedSymbol unresDep = unsolvedSymbs[dep];
-                unresDep.NbrUndefinedSymb--;
-                if (unresDep.NbrUndefinedSymb <= 0)
+                if (unsolvedSymbs.ContainsKey(dep))
                 {
-                    ExprResult res = ResolveExpr(unresDep.Expr);
-                    AddSymbol(dep, new Symbol()
+                    UnresolvedSymbol unresDep = unsolvedSymbs[dep];
+                    unresDep.NbrUndefinedSymb--;
+                    if (unresDep.NbrUndefinedSymb <= 0)
                     {
-                        Value = res.Result,
-                        Type = res.Type
-                    });
+                        ExprResult res = ResolveExpr(unresDep.Expr);
+                        AddSymbol(dep, new Symbol()
+                        {
+                            Value = res.Result,
+                            Type = res.Type
+                        });
+                    }
                 }
             }
             // resolve expressions
@@ -1147,13 +1150,6 @@ namespace WinASM65
                         macros[currentMacro].lines.Add(line);
                         MainConsole.WriteLine(string.Format("{0}   --- {1}", originalLine, "MACRO DEF"));
                     }
-                    else if (repBlock.IsInRepBlock &&
-                       !line.ToLower().Equals(".endrep") &&
-                       !line.ToLower().StartsWith(".rep"))
-                    {
-                        repBlock.lines.Add(line);
-                        MainConsole.WriteLine(string.Format("{0}   --- {1}", originalLine, "Repeat block line"));
-                    }
                     else
                     {
                         ParseLine(line, originalLine);
@@ -1165,21 +1161,31 @@ namespace WinASM65
 
         private static void ParseLine(string line, string originalLine)
         {
-            bool syntaxError = true;
-            foreach (KeyValuePair<Regex, string> entry in CPUDef.regMap)
+            if (repBlock.IsInRepBlock &&
+                       !line.ToLower().Equals(".endrep") &&
+                       !line.ToLower().StartsWith(".rep"))
             {
-                Match match = entry.Key.Match(line);
-                if (match.Success)
-                {
-                    syntaxError = false;
-                    MainConsole.WriteLine(string.Format("{0}   --- {1}", originalLine, entry.Value));
-                    ProcessLine(match, entry.Value);
-                    break;
-                }
+                repBlock.lines.Add(line);
+                MainConsole.WriteLine(string.Format("{0}   --- {1}", originalLine, "Repeat block line"));
             }
-            if (syntaxError)
+            else
             {
-                AddError(Errors.SYNTAX);
+                bool syntaxError = true;
+                foreach (KeyValuePair<Regex, string> entry in CPUDef.regMap)
+                {
+                    Match match = entry.Key.Match(line);
+                    if (match.Success)
+                    {
+                        syntaxError = false;
+                        MainConsole.WriteLine(string.Format("{0}   --- {1}", originalLine, entry.Value));
+                        ProcessLine(match, entry.Value);
+                        break;
+                    }
+                }
+                if (syntaxError)
+                {
+                    AddError(Errors.SYNTAX);
+                }
             }
         }
 
