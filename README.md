@@ -217,7 +217,7 @@ red_color = $85
 add #red_color, #$00	
 ```
 
-### .REP/.ENDREP
+#### .REP/.ENDREP
 -  Repeat a block of code constant number of times.
 - The command is followed by a constant expression that tells how many times the commands in the body should get repeated.
 ```
