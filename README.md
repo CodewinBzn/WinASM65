@@ -14,7 +14,7 @@ by CodewinBzn.
 ### Options
 		-help			Show help
 		-h			Show help		
-		-m 			Assemble one or several segments
+		-m 			Assemble one or multiple segments
 		-c 			Combine assembled segments/binary files
     Assemble single segment:
 		-f			Source file 
