@@ -26,7 +26,8 @@ namespace WinASM65
         {
             SingleSegment = 0,
             MultiSegment = 1,
-            Combine = 2
+            Combine = 2,
+            Monitor = 3
         }
         static void Main(string[] args)
         {
@@ -53,6 +54,9 @@ namespace WinASM65
                     case "-h":
                         DisplayHelp();
                         return;
+                    case "*":
+                        command = CommandType.Monitor;
+                        break;
                 }
             }
             switch (command)
@@ -65,6 +69,9 @@ namespace WinASM65
                     break;
                 case CommandType.Combine:
                     Combine.Process();
+                    break;
+                case CommandType.Monitor:
+                    Monitor.Start(); 
                     break;
             }
         }

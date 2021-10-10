@@ -35,7 +35,7 @@ namespace WinASM65
             {CPUDef.MEM_RESERVE, MemResHandler },
             {CPUDef.CALL_MACRO, CallMacroHandler }
         };
-        private static ushort currentAddr;
+        public static ushort currentAddr;
         private static ushort originAddr;
         private delegate void DelDirectiveHandler(string value);
         public static string sourceFile;
@@ -1159,7 +1159,7 @@ namespace WinASM65
             }
         }
 
-        private static void ParseLine(string line, string originalLine)
+        public static void ParseLine(string line, string originalLine)
         {
             if (repBlock.IsInRepBlock &&
                        !line.ToLower().Equals(".endrep") &&
