@@ -1,7 +1,7 @@
 # WinASM65
 
   Assembler for 6502 based systems
-by CodewinBzn (Abdelghani BOUZIANE).
+by CodewinBzn.
 
 
 ------------------------------
@@ -14,7 +14,7 @@ by CodewinBzn (Abdelghani BOUZIANE).
 ### Options
 		-help			Show help
 		-h			Show help		
-		-m 			Assemble one or several segments
+		-m 			Assemble one or multiple segments
 		-c 			Combine assembled segments/binary files
     Assemble single segment:
 		-f			Source file 
