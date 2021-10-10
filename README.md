@@ -165,10 +165,12 @@ palette:
 
 #### Strings
 ```
+lda #"A"
+
 .byte "A", "B"
 .byte "NES"
 myString: 
-	.byte "Hello World"
+	.byte "Hello World"		
 ```
 #### .IFDEF/.ifdef,  .IFNDEF/.ifndef
 Conditional assembly
