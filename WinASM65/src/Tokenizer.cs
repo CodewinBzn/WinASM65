@@ -13,6 +13,7 @@ namespace WinASM65
          @"(?<AND>(AND|and))|" +
          @"(?<TRUE>(TRUE|true))|" +
          @"(?<FALSE>(FALSE|false))|" +
+         "\"(?<CHAR>[\x00-\xFF])\"|" +
          CPUDef.binByteRegex + "|" +
          CPUDef.decRegex + "|" +
          CPUDef.hwRegex + "|" +
@@ -46,6 +47,7 @@ namespace WinASM65
             captureGroupNames.Add("AND");
             captureGroupNames.Add("TRUE");
             captureGroupNames.Add("FALSE");
+            captureGroupNames.Add("CHAR");
         }
 
         public static List<Token> Tokenize(string line)

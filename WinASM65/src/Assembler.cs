@@ -538,6 +538,9 @@ namespace WinASM65
             {
                 switch (token.Type)
                 {
+                    case "CHAR":
+                        expr = $"{expr} {Convert.ToByte(token.Value[0])}";
+                        break;
                     case "HB":
                         expr = $"{expr} {Byte.Parse(token.Value, NumberStyles.HexNumber)}";
                         break;
