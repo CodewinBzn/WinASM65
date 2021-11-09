@@ -249,7 +249,7 @@ lastbyte:
  - >        				Returns the high byte of a value (ex: >label).
  - #   	    				Immidate addressing (ex: #label).
  - ()*/%+-  				Arithmetic 
- - & ^ |					Bitwise
+ - & ^ |				Bitwise
  - () or and > < >= <= = <> true false 	Logical
 ```
  
