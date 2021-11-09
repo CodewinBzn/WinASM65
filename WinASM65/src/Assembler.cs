@@ -613,8 +613,8 @@ namespace WinASM65
                 }
                 else
                 {
-                    DataTable dt = new DataTable();
-                    exprRes.Result = dt.Compute(expr, "");
+                   
+                    exprRes.Result = ExprEvaluator.Eval(expr);
                     exprRes.Type = exprRes.Result <= 255 ? SymbolType.BYTE : SymbolType.WORD;
                     if (addrMode == CPUDef.AddrModes.REL && exprRes.Type == SymbolType.WORD)
                     {
