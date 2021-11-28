@@ -13,14 +13,14 @@ namespace WinASM65
     public class CPUDef
     {
 
-        public static readonly string LABEL = "LABEL";
-        public static readonly string DIRECTIVE = "DIRECTIVE";
-        public static readonly string INSTRUCTION = "INSTRUCTION";
-        public static readonly string CONSTANT = "CONSTANT";
-        public static readonly string MEM_RESERVE = "MEM_RESERVE";
-        public static readonly string CALL_MACRO = "CALL_MACRO";
-        public static readonly string START_LOCAL_SCOPE = "START_LOCAL_SCOPE";
-        public static readonly string END_LOCAL_SCOPE = "END_LOCAL_SCOPE";
+        public const string LABEL = "LABEL";
+        public const string DIRECTIVE = "DIRECTIVE";
+        public const string INSTRUCTION = "INSTRUCTION";
+        public const string CONSTANT = "CONSTANT";
+        public const string MEM_RESERVE = "MEM_RESERVE";
+        public const string CALL_MACRO = "CALL_MACRO";
+        public const string START_LOCAL_SCOPE = "START_LOCAL_SCOPE";
+        public const string END_LOCAL_SCOPE = "END_LOCAL_SCOPE";
 
         public enum AddrModes
         {
@@ -39,32 +39,22 @@ namespace WinASM65
             INY = 11,       // OPC (byte),y
             REL = 12,       // OPC byte
         }
-        private static readonly string dec = @"[0-9]+";
-        private static readonly string binByte = @"[01]+";
-        private static readonly string hex = @"[a-fA-F0-9]";
-        private static readonly string hexByte = @"(" + hex + @"{2}|" + hex + @"{1})";
-        private static readonly string hexWord = hex + @"{4}";
-        private static readonly string label = @"[a-zA-Z_][a-zA-Z_0-9]*";
-        private static readonly string arOp = @"[<>!=^|&+*/%-]";
+        private const string dec = @"[0-9]+";
+        private const string binByte = @"[01]+";
+        private const string hex = @"[a-fA-F0-9]";
+        private const string hexByte = @"(" + hex + @"{2}|" + hex + @"{1})";
+        private const string hexWord = hex + @"{4}";
+        private const string label = @"[a-zA-Z_][a-zA-Z_0-9]*";        
 
-        public static readonly string decRegex = @"(?<DEC>" + dec + ")";
+        public const string decRegex = @"(?<DEC>" + dec + ")";
         // hex byte regex
-        public static readonly string hbRegex = @"(\$(?<HB>" + hexByte + "))";
+        public const string hbRegex = @"(\$(?<HB>" + hexByte + "))";
         // hex word regex
-        public static readonly string hwRegex = @"(\$(?<HW>" + hexWord + "))";
+        public const string hwRegex = @"(\$(?<HW>" + hexWord + "))";
         // label regex
-        public static readonly string labelRegex = @"(?<label>" + label + ")";
-        // label's low byte regex
-        public static readonly string loLabelRegex = @"(<(?<loLabel>" + label + "))";
-        // label's high byte regex
-        public static readonly string hiLabelRegex = @"(>(?<hiLabel>" + label + "))";
-        // hex word's low byte regex
-        public static readonly string loHexWordRegex = @"(<\$(?<loHW>" + hexWord + "))";
-        // hex word's high byte regex
-        public static readonly string hiHexWordRegex = @"(>\$(?<hiHW>" + hexWord + "))";
+        public const string labelRegex = @"(?<label>" + label + ")";
         // binary byte regex
-        public static readonly string binByteRegex = @"(%(?<binByte>" + binByte + "))";
-        public static readonly string arOpRegex = @"(?<arOp>" + arOp + ")";
+        public const string binByteRegex = @"(%(?<binByte>" + binByte + "))";        
 
         public static readonly string[] REL_OPC = new string[] { "BCC", "BCS", "BEQ", "BMI", "BNE", "BPL", "BVC", "BVS" };
         public static readonly string[] ACC_OPC = new string[] { "ASL ", "LSR", "ROL", "ROR" };

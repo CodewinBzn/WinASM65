@@ -515,18 +515,6 @@ namespace WinASM65
                 unsolvedSymbs.Add(symbol, unsolved);
             }
         }
-
-        public static bool EvaluateLogicalExpression(string logicalExpression)
-        {
-            System.Data.DataTable table = new System.Data.DataTable();
-            table.Columns.Add("", typeof(bool));
-            table.Columns[0].Expression = logicalExpression;
-
-            System.Data.DataRow r = table.NewRow();
-            table.Rows.Add(r);
-            bool result = (Boolean)r[0];
-            return result;
-        }
         private static ExprResult ResolveExpr(string exprIn, CPUDef.AddrModes addrMode = CPUDef.AddrModes.NO, bool isLogical = false)
         {
             List<Token> tokens = Tokenizer.Tokenize(exprIn);
@@ -571,35 +559,7 @@ namespace WinASM65
                         {
                             exprRes.undefinedSymbs.Add(token.Value);
                         }
-                        break;
-                    case "loLabel":
-                        symb = GetSymbolValue(token.Value);
-                        if (symb != null)
-                        {
-                            expr = $"{expr} {GetLowByte((ushort)symb.Value)}";
-                        }
-                        else
-                        {
-                            exprRes.undefinedSymbs.Add(token.Value);
-                        }
-                        break;
-                    case "hiLabel":
-                        symb = GetSymbolValue(token.Value);
-                        if (symb != null)
-                        {
-                            expr = $"{expr} {GetHighByte((ushort)symb.Value)}";
-                        }
-                        else
-                        {
-                            exprRes.undefinedSymbs.Add(token.Value);
-                        }
-                        break;
-                    case "loHW":
-                        expr = $"{expr} {GetLowByte(ushort.Parse(token.Value, NumberStyles.HexNumber))}";
-                        break;
-                    case "hiHW":
-                        expr = $"{expr} {GetHighByte(ushort.Parse(token.Value, NumberStyles.HexNumber))}";
-                        break;
+                        break;                   
                     default:
                         expr = $"{expr} {token.Value}";
                         break;
@@ -609,11 +569,10 @@ namespace WinASM65
             {
                 if (isLogical)
                 {
-                    exprRes.Result = EvaluateLogicalExpression(expr);
+                    exprRes.Result = ExprEvaluator.Eval(expr);
                 }
                 else
-                {
-                   
+                {                   
                     exprRes.Result = ExprEvaluator.Eval(expr);
                     exprRes.Type = exprRes.Result <= 255 ? SymbolType.BYTE : SymbolType.WORD;
                     if (addrMode == CPUDef.AddrModes.REL && exprRes.Type == SymbolType.WORD)
@@ -1233,12 +1192,12 @@ namespace WinASM65
             return new byte[2] { lower, upper };
         }
 
-        private static byte GetLowByte(ushort word)
+        public static byte GetLowByte(ushort word)
         {
             return (byte)(word & 0xff);
         }
 
-        private static byte GetHighByte(ushort word)
+        public static byte GetHighByte(ushort word)
         {
             return (byte)(word >> 8);
         }
