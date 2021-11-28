@@ -244,13 +244,22 @@ lastbyte:
 ```
 
 ### Expressions
+#### Supported operators (listed by precedence)
 ```
- - <        				Returns the low byte of a value (ex: <label).
- - >        				Returns the high byte of a value (ex: >label).
- - #   	    				Immidate addressing (ex: #label).
- - ()*/%+-  				Arithmetic 
- - & ^ |				Bitwise
- - () or and > < >= <= = <> true false 	Logical
+ - ()
+ - + - ~ ! < > (The unary < and > give respectively the lower and the upper byte of a value)
+ - * / %
+ - + -
+ - << >>
+ - < > <= >=
+ - = == != <> 
+ - &
+ - ^
+ - |
+ - &&
+ - ||
+ - #   	    	 Immidate addressing.
+
 ```
  
  ### Local lexical level
