@@ -5,12 +5,12 @@ namespace WinASM65
     public class Tokenizer
     {
         private static readonly List<string> captureGroupNames;
-        private static string pattern =
+        private const string pattern =
          @"(?<OpenRoundBracket>\()|" +
          @"(?<CloseRoundBracket>\))|" +
          @"(?<whitespace>\s+)|" +
-         @"(?<OR>(OR|or))|" +
-         @"(?<AND>(AND|and))|" +
+         @"(?<OR>(OR|or|\|\|))|" +
+         @"(?<AND>(AND|and|&&))|" +
          @"(?<TRUE>(TRUE|true))|" +
          @"(?<FALSE>(FALSE|false))|" +
          "\"(?<CHAR>[\x00-\xFF])\"|" +
@@ -19,28 +19,58 @@ namespace WinASM65
          CPUDef.hwRegex + "|" +
          CPUDef.hbRegex + "|" +         
          CPUDef.labelRegex + "|" +
-         CPUDef.loLabelRegex + "|" +
-         CPUDef.hiLabelRegex + "|" +
-         CPUDef.loHexWordRegex + "|" +
-         CPUDef.hiHexWordRegex + "|" +
-         CPUDef.arOpRegex + "|" +
+        @"(?<BSL>(<<))|" +
+        @"(?<BSR>(>>))|" +
+        @"(?<LESSEQ>(<=))|" +
+        @"(?<GREATEREQ>(>=))|" +
+        @"(?<NOTEQ>(!=|<>))|" +
+        @"(?<EQ>(==))|" +
+        @"(?<AF>(=))|" +
+        @"(?<LESS>(<))|" +
+        @"(?<GREATER>(>))|" +
+        @"(?<BOR>(\|))|" +
+        @"(?<BAND>(&))|" +
+        @"(?<XOR>(\^))|" +
+        @"(?<PLUS>(\+))|" +
+        @"(?<MINUS>(-))|" +
+        @"(?<MULT>(\*))|" +
+        @"(?<DIV>(/))|" +
+        @"(?<MOD>(%))|" +
+        @"(?<BOC>(~))|" +
+        @"(?<NOT>(!))|" +
         @"(?<invalid>[^\s]+)"
     ;
-        private static Regex regexPattern = new Regex(pattern, RegexOptions.Compiled);
+        private static Regex regexPattern; 
 
         static Tokenizer()
         {
+            MainConsole.WriteLine(pattern);
+            regexPattern = new Regex(pattern, RegexOptions.Compiled);
             captureGroupNames = new List<string>();
             captureGroupNames.Add("DEC");
             captureGroupNames.Add("HB");
             captureGroupNames.Add("HW");
-            captureGroupNames.Add("label");
-            captureGroupNames.Add("loLabel");
-            captureGroupNames.Add("hiLabel");
-            captureGroupNames.Add("loHW");
-            captureGroupNames.Add("hiHW");
+            captureGroupNames.Add("label");            
             captureGroupNames.Add("binByte");
-            captureGroupNames.Add("arOp");
+            captureGroupNames.Add("BSL");
+            captureGroupNames.Add("BSR");
+            captureGroupNames.Add("LESSEQ");
+            captureGroupNames.Add("GREATEREQ");
+            captureGroupNames.Add("NOTEQ");
+            captureGroupNames.Add("EQ");
+            captureGroupNames.Add("AF");
+            captureGroupNames.Add("LESS");
+            captureGroupNames.Add("GREATER");
+            captureGroupNames.Add("BOR");
+            captureGroupNames.Add("BAND");
+            captureGroupNames.Add("XOR");
+            captureGroupNames.Add("PLUS");
+            captureGroupNames.Add("MINUS");
+            captureGroupNames.Add("MULT");
+            captureGroupNames.Add("DIV");
+            captureGroupNames.Add("MOD");
+            captureGroupNames.Add("BOC");
+            captureGroupNames.Add("NOT");            
             captureGroupNames.Add("OpenRoundBracket");
             captureGroupNames.Add("CloseRoundBracket");
             captureGroupNames.Add("OR");
