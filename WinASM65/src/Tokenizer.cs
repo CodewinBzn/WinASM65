@@ -2,7 +2,7 @@
 using System.Text.RegularExpressions;
 namespace WinASM65
 {
-    public class Tokenizer
+    public static class Tokenizer
     {
         private static readonly List<string> captureGroupNames;
         private const string pattern =
@@ -106,6 +106,5 @@ namespace WinASM65
             }
             return tokenList;
         }
-
     }
 }

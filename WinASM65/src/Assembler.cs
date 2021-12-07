@@ -18,39 +18,65 @@ namespace WinASM65
 {
     public class Assembler
     {
-        public static List<byte> fileOutMemory;
-        private static List<Error> errorList;
-        private static Stream stream;
-        private static BinaryWriter bw = null;
-        public static string objectFileName { get; set; }
+        public List<byte> fileOutMemory;
+        private List<Error> errorList;
+        private Stream stream;
+        private BinaryWriter bw = null;
+        public string objectFileName { get; set; }
         public delegate void DelHandler(Match lineReg);
-        private static Dictionary<string, DelHandler> mapLineHandlers = new Dictionary<string, DelHandler>
-        {
-            {CPUDef.START_LOCAL_SCOPE, StartLocalScopeHandler },
-            {CPUDef.END_LOCAL_SCOPE, EndLocalScopeHandler },
-            {CPUDef.LABEL, LabelHandler },
-            {CPUDef.DIRECTIVE, DirectiveHandler },
-            {CPUDef.INSTRUCTION, InstructionHandler },
-            {CPUDef.CONSTANT, ConstantHandler },
-            {CPUDef.MEM_RESERVE, MemResHandler },
-            {CPUDef.CALL_MACRO, CallMacroHandler }
-        };
-        private static ushort currentAddr;
-        private static ushort originAddr;
+        private Dictionary<string, DelHandler> mapLineHandlers;
+        private Dictionary<string, DelDirectiveHandler> directiveHandlersMap;
+        private ushort currentAddr;
+        private ushort originAddr;
         private delegate void DelDirectiveHandler(string value);
-        public static string sourceFile;
-        public static Dictionary<ushort, UnresolvedExpr> unsolvedExprList;
-        public static Dictionary<string, MacroDef> macros;
-        public static Stack<FileInfo> fileStack;
-        public static FileInfo file;
-        public static MemArea memArea;
-        public static bool startMacroDef;
-        public static string currentMacro;
-        public static ConditionalAsm cAsm;
-        public static LexicalScope lexicalScope;
-        public static RepBlock repBlock;
+        public string sourceFile;
+        public Dictionary<ushort, UnresolvedExpr> unsolvedExprList;
+        public Dictionary<string, MacroDef> macros;
+        public Stack<FileInfo> fileStack;
+        public FileInfo file;
+        public MemArea memArea;
+        public bool startMacroDef;
+        public string currentMacro;
+        public ConditionalAsm cAsm;
+        public LexicalScope lexicalScope;
+        public RepBlock repBlock;
 
-        private static void AddNewLexicalScopeData()
+        public Assembler(string sourceFile, string objectFileName)
+        {
+            this.sourceFile = sourceFile;
+            this.objectFileName = objectFileName;
+            mapLineHandlers = new Dictionary<string, DelHandler>
+            {
+                {CPUDef.START_LOCAL_SCOPE, StartLocalScopeHandler },
+                {CPUDef.END_LOCAL_SCOPE, EndLocalScopeHandler },
+                {CPUDef.LABEL, LabelHandler },
+                {CPUDef.DIRECTIVE, DirectiveHandler },
+                {CPUDef.INSTRUCTION, InstructionHandler },
+                {CPUDef.CONSTANT, ConstantHandler },
+                {CPUDef.MEM_RESERVE, MemResHandler },
+                {CPUDef.CALL_MACRO, CallMacroHandler }
+            };
+            directiveHandlersMap = new Dictionary<string, DelDirectiveHandler>
+            {
+                { ".org", OrgHandler },
+                { ".memarea", MemAreaHandler },
+                { ".incbin", IncBinHandler },
+                { ".include", IncludeHandler },
+                { ".byte", DataByteHandler },
+                { ".word", DataWordHandler },
+                { ".macro", StartMacroDefHandler },
+                { ".endmacro", EndMacroDefHandler },
+                { ".ifdef", IfDefHandler },
+                { ".ifndef", IfnDefHandler },
+                { ".if", IfHandler },
+                { ".else", ElseHandler },
+                { ".endif", EndIfHandler },
+                { ".rep", RepHandler },
+                { ".endrep", EndRepHandler },
+            };
+        }
+
+        private void AddNewLexicalScopeData()
         {
             lexicalScope.lexicalScopeDataList.Add(new LexicalScopeData
             {
@@ -59,7 +85,7 @@ namespace WinASM65
                 memArea = new MemArea() { val = 0, type = SymbolType.BYTE }
             });
         }
-        private static void StartLocalScopeHandler(Match lineReg)
+        private void StartLocalScopeHandler(Match lineReg)
         {
             if (lexicalScope.level == byte.MaxValue)
             {
@@ -70,7 +96,7 @@ namespace WinASM65
             AddNewLexicalScopeData();
         }
 
-        private static void EndLocalScopeHandler(Match lineReg)
+        private void EndLocalScopeHandler(Match lineReg)
         {
             if (lexicalScope.level == 0)
             {
@@ -113,27 +139,9 @@ namespace WinASM65
             lexicalScope.level--;
         }
 
-        #region directives
-        private static Dictionary<string, DelDirectiveHandler> directiveHandlersMap = new Dictionary<string, DelDirectiveHandler>
-        {
-            { ".org", OrgHandler },
-            { ".memarea", MemAreaHandler },
-            { ".incbin", IncBinHandler },
-            { ".include", IncludeHandler },
-            { ".byte", DataByteHandler },
-            { ".word", DataWordHandler },
-            { ".macro", StartMacroDefHandler },
-            { ".endmacro", EndMacroDefHandler },
-            { ".ifdef", IfDefHandler },
-            { ".ifndef", IfnDefHandler },
-            { ".if", IfHandler },
-            { ".else", ElseHandler },
-            { ".endif", EndIfHandler },
-            { ".rep", RepHandler },
-            { ".endrep", EndRepHandler },
-        };
+        #region directives       
 
-        private static void IfHandler(string value)
+        private void IfHandler(string value)
         {
             if (cAsm.level == byte.MaxValue)
             {
@@ -160,7 +168,7 @@ namespace WinASM65
             }
         }
 
-        private static void IfDefHandler(string value)
+        private void IfDefHandler(string value)
         {
             if (cAsm.level == byte.MaxValue)
             {
@@ -179,7 +187,7 @@ namespace WinASM65
             cAsm.values.Add(GetSymbolValue(label) != null);
         }
 
-        private static void IfnDefHandler(string value)
+        private void IfnDefHandler(string value)
         {
             if (cAsm.level == byte.MaxValue)
             {
@@ -197,7 +205,7 @@ namespace WinASM65
             string label = value.Trim();
             cAsm.values.Add(GetSymbolValue(label) == null);
         }
-        private static void ElseHandler(string value)
+        private void ElseHandler(string value)
         {
             if (!cAsm.inCondition)
             {
@@ -207,7 +215,7 @@ namespace WinASM65
             cAsm.values[cAsm.level] = !cAsm.values[cAsm.level];
         }
 
-        private static void EndIfHandler(string value)
+        private void EndIfHandler(string value)
         {
             if (!cAsm.inCondition)
             {
@@ -225,7 +233,7 @@ namespace WinASM65
             }
         }
 
-        private static void StartMacroDefHandler(string value)
+        private void StartMacroDefHandler(string value)
         {
             if (startMacroDef)
             {
@@ -258,7 +266,7 @@ namespace WinASM65
             }
         }
 
-        private static void EndMacroDefHandler(string value)
+        private void EndMacroDefHandler(string value)
         {
             if (!startMacroDef)
             {
@@ -269,7 +277,7 @@ namespace WinASM65
             currentMacro = string.Empty;
         }
 
-        private static void RepHandler(string value)
+        private void RepHandler(string value)
         {
             if (repBlock.IsInRepBlock)
             {
@@ -287,7 +295,7 @@ namespace WinASM65
             repBlock.Counter = res.Result;
         }
 
-        private static void EndRepHandler(string value)
+        private void EndRepHandler(string value)
         {
             if (!repBlock.IsInRepBlock)
             {
@@ -304,7 +312,7 @@ namespace WinASM65
             }
 
         }
-        private static void DirectiveHandler(Match lineReg)
+        private void DirectiveHandler(Match lineReg)
         {
             string directive = lineReg.Groups["directive"].Value;
             string value = lineReg.Groups["value"].Value;
@@ -315,7 +323,7 @@ namespace WinASM65
             }
         }
 
-        private static void OrgHandler(string value)
+        private void OrgHandler(string value)
         {
             ExprResult res = ResolveExpr(value);
             if (res.undefinedSymbs.Count == 0)
@@ -328,7 +336,7 @@ namespace WinASM65
             }
         }
 
-        private static void MemAreaHandler(string value)
+        private void MemAreaHandler(string value)
         {
             MemArea ma = lexicalScope.lexicalScopeDataList[lexicalScope.level].memArea;
             ExprResult res = ResolveExpr(value);
@@ -343,7 +351,7 @@ namespace WinASM65
             }
         }
 
-        private static void IncBinHandler(string fileName)
+        private void IncBinHandler(string fileName)
         {
             fileName = fileName.Replace("\"", String.Empty);
             string directoryName = Path.GetDirectoryName(file.sourceFile);
@@ -359,7 +367,7 @@ namespace WinASM65
                 AddError(Errors.FILE_NOT_EXISTS);
             }
         }
-        private static void IncludeHandler(string fileName)
+        private void IncludeHandler(string fileName)
         {
             fileName = fileName.Replace("\"", String.Empty);
             string directoryName = Path.GetDirectoryName(file.sourceFile);
@@ -376,7 +384,7 @@ namespace WinASM65
 
         }
 
-        private static void DataByteHandler(string bytesIn)
+        private void DataByteHandler(string bytesIn)
         {
             string[] bytes = bytesIn.Split(',');
             foreach (string db in bytes)
@@ -429,7 +437,7 @@ namespace WinASM65
             }
         }
 
-        private static void DataWordHandler(string wordsIn)
+        private void DataWordHandler(string wordsIn)
         {
             string[] words = wordsIn.Split(',');
             foreach (string dw in words)
@@ -468,7 +476,7 @@ namespace WinASM65
         }
 
         #endregion
-        private static void ConstantHandler(Match lineReg)
+        private void ConstantHandler(Match lineReg)
         {
             string label = lineReg.Groups["label"].Value;
             string value = lineReg.Groups["value"].Value;
@@ -499,7 +507,7 @@ namespace WinASM65
             }
         }
 
-        private static void AddDependingSymb(string symbol, string dependingSymb)
+        private void AddDependingSymb(string symbol, string dependingSymb)
         {
             Dictionary<string, UnresolvedSymbol> unsolvedSymbs = lexicalScope.lexicalScopeDataList[lexicalScope.level].unsolvedSymbols;
             if (unsolvedSymbs.ContainsKey(symbol))
@@ -515,7 +523,7 @@ namespace WinASM65
                 unsolvedSymbs.Add(symbol, unsolved);
             }
         }
-        private static ExprResult ResolveExpr(string exprIn, CPUDef.AddrModes addrMode = CPUDef.AddrModes.NO, bool isLogical = false)
+        private ExprResult ResolveExpr(string exprIn, CPUDef.AddrModes addrMode = CPUDef.AddrModes.NO, bool isLogical = false)
         {
             List<Token> tokens = Tokenizer.Tokenize(exprIn);
             string expr = string.Empty;
@@ -559,7 +567,7 @@ namespace WinASM65
                         {
                             exprRes.undefinedSymbs.Add(token.Value);
                         }
-                        break;                   
+                        break;
                     default:
                         expr = $"{expr} {token.Value}";
                         break;
@@ -572,7 +580,7 @@ namespace WinASM65
                     exprRes.Result = ExprEvaluator.Eval(expr);
                 }
                 else
-                {                   
+                {
                     exprRes.Result = ExprEvaluator.Eval(expr);
                     exprRes.Type = exprRes.Result <= 255 ? SymbolType.BYTE : SymbolType.WORD;
                     if (addrMode == CPUDef.AddrModes.REL && exprRes.Type == SymbolType.WORD)
@@ -601,7 +609,7 @@ namespace WinASM65
             }
             return exprRes;
         }
-        private static void InstructionHandler(Match lineReg)
+        private void InstructionHandler(Match lineReg)
         {
             string opcode = lineReg.Groups["opcode"].Value;
             string operands = lineReg.Groups["operands"].Value;
@@ -738,7 +746,7 @@ namespace WinASM65
             }
         }
 
-        private static void MemResHandler(Match lineReg)
+        private void MemResHandler(Match lineReg)
         {
             string label = lineReg.Groups["label"].Value;
             string value = lineReg.Groups["value"].Value;
@@ -766,7 +774,7 @@ namespace WinASM65
             }
         }
 
-        private static void CallMacroHandler(Match lineReg)
+        private void CallMacroHandler(Match lineReg)
         {
             string macroName = lineReg.Groups["label"].Value;
             string value = lineReg.Groups["value"].Value;
@@ -806,7 +814,7 @@ namespace WinASM65
             }
         }
 
-        private static void AddUnsolvedSymbol(string unsolvedLabel, UnresolvedSymbol unresSymb)
+        private void AddUnsolvedSymbol(string unsolvedLabel, UnresolvedSymbol unresSymb)
         {
             Dictionary<string, UnresolvedSymbol> unsolvedSymbs = lexicalScope.lexicalScopeDataList[lexicalScope.level].unsolvedSymbols;
             if (unsolvedSymbs.ContainsKey(unsolvedLabel))
@@ -838,7 +846,7 @@ namespace WinASM65
             }
         }
 
-        private static Symbol GetSymbolValue(string symbol)
+        private Symbol GetSymbolValue(string symbol)
         {
             byte level = lexicalScope.level;
             while (true)
@@ -858,14 +866,14 @@ namespace WinASM65
             }
         }
 
-        private static void LabelHandler(Match lineReg)
+        private void LabelHandler(Match lineReg)
         {
             string label = lineReg.Groups["label"].Value;
             Symbol symb = new Symbol { Value = currentAddr, Type = SymbolType.WORD };
             AddSymbol(label, symb);
         }
 
-        private static void ResolveSymbol(string label)
+        private void ResolveSymbol(string label)
         {
             Dictionary<string, UnresolvedSymbol> unsolvedSymbs = lexicalScope.lexicalScopeDataList[lexicalScope.level].unsolvedSymbols;
             if (!unsolvedSymbs.ContainsKey(label))
@@ -877,7 +885,7 @@ namespace WinASM65
             unsolvedSymbs.Remove(label);
         }
 
-        private static void ResolveSymbolDepsAndExprs(UnresolvedSymbol unresSymb)
+        private void ResolveSymbolDepsAndExprs(UnresolvedSymbol unresSymb)
         {
             Dictionary<string, UnresolvedSymbol> unsolvedSymbs = lexicalScope.lexicalScopeDataList[lexicalScope.level].unsolvedSymbols;
             // resolve depending symbols
@@ -912,7 +920,7 @@ namespace WinASM65
             }
         }
 
-        private static void GenerateExprBytes(UnresolvedExpr expr, ExprResult exprRes)
+        private void GenerateExprBytes(UnresolvedExpr expr, ExprResult exprRes)
         {
             byte[] bytes = null;
             if (expr.addrMode == CPUDef.AddrModes.REL)
@@ -961,17 +969,17 @@ namespace WinASM65
                 fileOutMemory.InsertRange(expr.Position, bytes);
             }
         }
-        public static void ProcessLine(Match lineReg, string type)
+        public void ProcessLine(Match lineReg, string type)
         {
             DelHandler handler = mapLineHandlers[type];
             handler(lineReg);
         }
 
-        public static void AddError(string type)
+        public void AddError(string type)
         {
             errorList.Add(new Error(file.currentLineNumber, file.sourceFile, type));
         }
-        public static void InitLexicalScope()
+        public void InitLexicalScope()
         {
             lexicalScope = new LexicalScope()
             {
@@ -982,7 +990,7 @@ namespace WinASM65
             AddNewLexicalScopeData();
             lexicalScope.globalScope = lexicalScope.lexicalScopeDataList[0];
         }
-        public static void Assemble()
+        public void Assemble()
         {
             unsolvedExprList = new Dictionary<ushort, UnresolvedExpr>();
             InitLexicalScope();
@@ -1033,7 +1041,7 @@ namespace WinASM65
 
         }
 
-        private static void ExportSymbolTable()
+        private void ExportSymbolTable()
         {
             if (lexicalScope.globalScope.symbolTable.Count > 0)
             {
@@ -1041,7 +1049,7 @@ namespace WinASM65
             }
         }
 
-        private static void ExportUnsolvedFile()
+        private void ExportUnsolvedFile()
         {
             Dictionary<string, UnresolvedSymbol> unsolvedSymbols = lexicalScope.globalScope.unsolvedSymbols;
             if (unsolvedSymbols.Count > 0)
@@ -1054,7 +1062,7 @@ namespace WinASM65
             }
         }
 
-        public static void ResolveSymbols()
+        public void ResolveSymbols()
         {
             Dictionary<string, UnresolvedSymbol> unsolvedSymbols = lexicalScope.globalScope.unsolvedSymbols;
             List<string> resolved = new List<string>();
@@ -1074,7 +1082,7 @@ namespace WinASM65
             }
         }
 
-        private static void Process()
+        private void Process()
         {
             file = new FileInfo();
             file.fp = new StreamReader(sourceFile);
@@ -1121,7 +1129,7 @@ namespace WinASM65
             }
         }
 
-        private static void ParseLine(string line, string originalLine)
+        private void ParseLine(string line, string originalLine)
         {
             if (repBlock.IsInRepBlock &&
                        !line.ToLower().Equals(".endrep") &&
@@ -1151,7 +1159,7 @@ namespace WinASM65
             }
         }
 
-        private static void DisplayErrors()
+        private void DisplayErrors()
         {
             if (errorList.Count > 0)
             {
@@ -1164,13 +1172,13 @@ namespace WinASM65
             }
         }
 
-        private static void OpenFiles()
+        private void OpenFiles()
         {
             stream = new FileStream(objectFileName, FileMode.Create);
             bw = new BinaryWriter(stream);
         }
 
-        public static void CloseFiles()
+        public void CloseFiles()
         {
             if (bw != null)
             {
@@ -1202,7 +1210,7 @@ namespace WinASM65
             return (byte)(word >> 8);
         }
 
-        private static void AddSymbol(string label, Symbol symb, bool replaceIfExist = false)
+        private void AddSymbol(string label, Symbol symb, bool replaceIfExist = false)
         {
             Dictionary<string, Symbol> symbTable = lexicalScope.lexicalScopeDataList[lexicalScope.level].symbolTable;
             if (symbTable.ContainsKey(label))

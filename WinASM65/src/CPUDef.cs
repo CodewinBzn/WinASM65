@@ -10,9 +10,8 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 namespace WinASM65
 {
-    public class CPUDef
+    public static class CPUDef
     {
-
         public const string LABEL = "LABEL";
         public const string DIRECTIVE = "DIRECTIVE";
         public const string INSTRUCTION = "INSTRUCTION";

@@ -31,15 +31,17 @@ namespace WinASM65
         static void Main(string[] args)
         {
             CommandType command = CommandType.SingleSegment;
+            string sourceFile = string.Empty;
+            string objectFileName = string.Empty;
             for (int i = 0; i < args.Length; i++)
             {
                 switch (args[i])
                 {
                     case "-f":
-                        Assembler.sourceFile = args[++i];
+                        sourceFile = args[++i];
                         break;
                     case "-o":
-                        Assembler.objectFileName = args[++i];
+                        objectFileName = args[++i];
                         break;
                     case "-m":
                         command = CommandType.MultiSegment;
@@ -47,7 +49,7 @@ namespace WinASM65
                         break;
                     case "-c":
                         command = CommandType.Combine;
-                        Combine.configFile = args[++i];
+                        Combine.ConfigFile = args[++i];
                         break;
                     case "-help":
                     case "-h":
@@ -58,7 +60,7 @@ namespace WinASM65
             switch (command)
             {
                 case CommandType.SingleSegment:
-                    Assembler.Assemble();
+                    new Assembler(sourceFile, objectFileName).Assemble();                    
                     break;
                 case CommandType.MultiSegment:
                     MultiSegment.Assemble();
