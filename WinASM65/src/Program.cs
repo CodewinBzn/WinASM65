@@ -36,18 +36,18 @@ namespace WinASM65
                 switch (args[i])
                 {
                     case "-f":
-                        Assembler.sourceFile = args[++i];
+                        Assembler.SourceFile = args[++i];
                         break;
                     case "-o":
-                        Assembler.objectFileName = args[++i];
+                        Assembler.ObjectFileName = args[++i];
                         break;
                     case "-m":
                         command = CommandType.MultiSegment;
-                        MultiSegment.configFile = args[++i];
+                        MultiSegment.ConfigFile = args[++i];
                         break;
                     case "-c":
                         command = CommandType.Combine;
-                        Combine.configFile = args[++i];
+                        Combine.ConfigFile = args[++i];
                         break;
                     case "-help":
                     case "-h":

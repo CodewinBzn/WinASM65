@@ -4,8 +4,21 @@ namespace WinASM65
 {
     public class Tokenizer
     {
-        private static readonly List<string> captureGroupNames;
-        private const string pattern =
+        private const string Dec = @"[0-9]+";
+        private const string BinByte = @"[01]+";
+        private const string Hex = @"[a-fA-F0-9]";
+        private const string HexByte = @"(" + Hex + @"{2}|" + Hex + @"{1})";
+        private const string HexWord = Hex + @"{4}";
+        private const string Label = @"[a-zA-Z_][a-zA-Z_0-9]*";
+
+        private const string DecRegex = @"(?<DEC>" + Dec + ")";
+        private const string HexbyteRegex = @"(\$(?<HB>" + HexByte + "))";
+        private const string HexWordRegex = @"(\$(?<HW>" + HexWord + "))";
+        public const string LabelRegex = @"(?<label>" + Label + ")";
+        private const string BinByteRegex = @"(%(?<binByte>" + BinByte + "))";
+
+        private static readonly List<string> CaptureGroupNames;
+        private const string Pattern =
          @"(?<OpenRoundBracket>\()|" +
          @"(?<CloseRoundBracket>\))|" +
          @"(?<whitespace>\s+)|" +
@@ -14,11 +27,11 @@ namespace WinASM65
          @"(?<TRUE>(TRUE|true))|" +
          @"(?<FALSE>(FALSE|false))|" +
          "\"(?<CHAR>[\x00-\xFF])\"|" +
-         CPUDef.binByteRegex + "|" +
-         CPUDef.decRegex + "|" +
-         CPUDef.hwRegex + "|" +
-         CPUDef.hbRegex + "|" +         
-         CPUDef.labelRegex + "|" +
+         BinByteRegex + "|" +
+         DecRegex + "|" +
+         HexWordRegex + "|" +
+         HexbyteRegex + "|" +
+         LabelRegex + "|" +
         @"(?<BSL>(<<))|" +
         @"(?<BSR>(>>))|" +
         @"(?<LESSEQ>(<=))|" +
@@ -40,49 +53,49 @@ namespace WinASM65
         @"(?<NOT>(!))|" +
         @"(?<invalid>[^\s]+)"
     ;
-        private static Regex regexPattern; 
+        private static readonly Regex RegexPattern; 
 
         static Tokenizer()
         {
-            MainConsole.WriteLine(pattern);
-            regexPattern = new Regex(pattern, RegexOptions.Compiled);
-            captureGroupNames = new List<string>();
-            captureGroupNames.Add("DEC");
-            captureGroupNames.Add("HB");
-            captureGroupNames.Add("HW");
-            captureGroupNames.Add("label");            
-            captureGroupNames.Add("binByte");
-            captureGroupNames.Add("BSL");
-            captureGroupNames.Add("BSR");
-            captureGroupNames.Add("LESSEQ");
-            captureGroupNames.Add("GREATEREQ");
-            captureGroupNames.Add("NOTEQ");
-            captureGroupNames.Add("EQ");
-            captureGroupNames.Add("AF");
-            captureGroupNames.Add("LESS");
-            captureGroupNames.Add("GREATER");
-            captureGroupNames.Add("BOR");
-            captureGroupNames.Add("BAND");
-            captureGroupNames.Add("XOR");
-            captureGroupNames.Add("PLUS");
-            captureGroupNames.Add("MINUS");
-            captureGroupNames.Add("MULT");
-            captureGroupNames.Add("DIV");
-            captureGroupNames.Add("MOD");
-            captureGroupNames.Add("BOC");
-            captureGroupNames.Add("NOT");            
-            captureGroupNames.Add("OpenRoundBracket");
-            captureGroupNames.Add("CloseRoundBracket");
-            captureGroupNames.Add("OR");
-            captureGroupNames.Add("AND");
-            captureGroupNames.Add("TRUE");
-            captureGroupNames.Add("FALSE");
-            captureGroupNames.Add("CHAR");
+            MainConsole.WriteLine(Pattern);
+            RegexPattern = new Regex(Pattern, RegexOptions.Compiled);
+            CaptureGroupNames = new List<string>();
+            CaptureGroupNames.Add("DEC");
+            CaptureGroupNames.Add("HB");
+            CaptureGroupNames.Add("HW");
+            CaptureGroupNames.Add("label");            
+            CaptureGroupNames.Add("binByte");
+            CaptureGroupNames.Add("BSL");
+            CaptureGroupNames.Add("BSR");
+            CaptureGroupNames.Add("LESSEQ");
+            CaptureGroupNames.Add("GREATEREQ");
+            CaptureGroupNames.Add("NOTEQ");
+            CaptureGroupNames.Add("EQ");
+            CaptureGroupNames.Add("AF");
+            CaptureGroupNames.Add("LESS");
+            CaptureGroupNames.Add("GREATER");
+            CaptureGroupNames.Add("BOR");
+            CaptureGroupNames.Add("BAND");
+            CaptureGroupNames.Add("XOR");
+            CaptureGroupNames.Add("PLUS");
+            CaptureGroupNames.Add("MINUS");
+            CaptureGroupNames.Add("MULT");
+            CaptureGroupNames.Add("DIV");
+            CaptureGroupNames.Add("MOD");
+            CaptureGroupNames.Add("BOC");
+            CaptureGroupNames.Add("NOT");            
+            CaptureGroupNames.Add("OpenRoundBracket");
+            CaptureGroupNames.Add("CloseRoundBracket");
+            CaptureGroupNames.Add("OR");
+            CaptureGroupNames.Add("AND");
+            CaptureGroupNames.Add("TRUE");
+            CaptureGroupNames.Add("FALSE");
+            CaptureGroupNames.Add("CHAR");
         }
 
         public static List<Token> Tokenize(string line)
         {
-            MatchCollection matches = regexPattern.Matches(line);
+            MatchCollection matches = RegexPattern.Matches(line);
             List<Token> tokenList = new List<Token>();
             foreach (Match match in matches)
             {
@@ -94,8 +107,8 @@ namespace WinASM65
                     // ignore capture index 0 and 1 (general and WhiteSpace)
                     if (success && i > 1)
                     {
-                        string groupName = regexPattern.GroupNameFromNumber(i);
-                        if (captureGroupNames.Contains(groupName))
+                        string groupName = RegexPattern.GroupNameFromNumber(i);
+                        if (CaptureGroupNames.Contains(groupName))
                         {
                             tokenList.Add(new Token() { Type = groupName, Value = matchValue });
                         }

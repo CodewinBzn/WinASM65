@@ -14,14 +14,14 @@ namespace WinASM65
 {
     class Combine
     {
-        public static string configFile { get; set; }
-        public static List<byte> outMemory;
+        public static string ConfigFile { get; set; }
+        public static List<byte> OutMemory { get; set; }
         public static void Process()
         {
-            outMemory = new List<byte>();
+            OutMemory = new List<byte>();
             JsonSerializer serializer;
             CombineConf config;
-            using (StreamReader file = File.OpenText(configFile))
+            using (StreamReader file = File.OpenText(ConfigFile))
             {
                 serializer = new JsonSerializer();
                 config = (CombineConf)serializer.Deserialize(file, typeof(CombineConf));
