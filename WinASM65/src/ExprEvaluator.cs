@@ -9,6 +9,9 @@ namespace WinASM65
 {
     public class ExprEvaluator
     {
+        private static readonly string[] Operators = { "BSL", "BSR", "LESSEQ", "GREATEREQ", "NOTEQ", "EQ", "AF",
+            "LESS", "GREATER", "BOR", "BAND", "XOR", "PLUS", "MINUS", "MULT", "DIV", "MOD", "BOC","NOT","OR", "AND" };
+        private static readonly string[] UnaryOperators = { "PLUS", "MINUS", "BOC", "NOT", "LESS", "GREATER" };
         private static void EvalNode(Stack<dynamic> values, Stack<string> ops)
         {
             dynamic val;
@@ -134,8 +137,6 @@ namespace WinASM65
         {
             switch (op)
             {
-
-
                 case "LO":
                 case "HI":
                 case "U+":
@@ -205,15 +206,12 @@ namespace WinASM65
         }
 
         private static bool IsOperator(string op)
-        {
-            string[] ops = { "BSL", "BSR", "LESSEQ", "GREATEREQ", "NOTEQ", "EQ", "AF",
-            "LESS", "GREATER", "BOR", "BAND", "XOR", "PLUS", "MINUS", "MULT", "DIV", "MOD", "BOC","NOT","OR", "AND" };
-            return ops.Contains(op);
+        {            
+            return Operators.Contains(op);
         }
         private static bool IsUnary(string op)
-        {
-            string[] unaryOps = { "PLUS", "MINUS", "BOC", "NOT", "LESS", "GREATER" };
-            return unaryOps.Contains(op);
+        {            
+            return UnaryOperators.Contains(op);
         }
     }
 }

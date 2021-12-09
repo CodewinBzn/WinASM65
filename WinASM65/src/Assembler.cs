@@ -18,70 +18,81 @@ namespace WinASM65
 {
     public class Assembler
     {
-        public static List<byte> fileOutMemory;
-        private static List<Error> errorList;
-        private static Stream stream;
-        private static BinaryWriter bw = null;
-        public static string objectFileName { get; set; }
+        public static List<byte> FileOutMemory { get; set; }
+        private static List<Error> _errorList;
+        private static Stream _stream;
+        private static BinaryWriter _bw = null;
+        public static string ObjectFileName { get; set; }
         public delegate void DelHandler(Match lineReg);
-        private static Dictionary<string, DelHandler> mapLineHandlers = new Dictionary<string, DelHandler>
+        private static readonly Dictionary<string, DelHandler> MapLineHandlers = new Dictionary<string, DelHandler>
         {
-            {CPUDef.START_LOCAL_SCOPE, StartLocalScopeHandler },
-            {CPUDef.END_LOCAL_SCOPE, EndLocalScopeHandler },
-            {CPUDef.LABEL, LabelHandler },
-            {CPUDef.DIRECTIVE, DirectiveHandler },
-            {CPUDef.INSTRUCTION, InstructionHandler },
-            {CPUDef.CONSTANT, ConstantHandler },
-            {CPUDef.MEM_RESERVE, MemResHandler },
-            {CPUDef.CALL_MACRO, CallMacroHandler }
+            {CPUDef.StartLocalScope, StartLocalScopeHandler },
+            {CPUDef.EndLocalScope, EndLocalScopeHandler },
+            {CPUDef.Label, LabelHandler },
+            {CPUDef.Directive, DirectiveHandler },
+            {CPUDef.Instruction, InstructionHandler },
+            {CPUDef.Constant, ConstantHandler },
+            {CPUDef.MemReserve, MemResHandler },
+            {CPUDef.CallMacro, CallMacroHandler }
         };
-        private static ushort currentAddr;
-        private static ushort originAddr;
+        private static ushort _currentAddr;
+        private static ushort _originAddr;
         private delegate void DelDirectiveHandler(string value);
-        public static string sourceFile;
-        public static Dictionary<ushort, UnresolvedExpr> unsolvedExprList;
-        public static Dictionary<string, MacroDef> macros;
-        public static Stack<FileInfo> fileStack;
-        public static FileInfo file;
-        public static MemArea memArea;
-        public static bool startMacroDef;
-        public static string currentMacro;
-        public static ConditionalAsm cAsm;
-        public static LexicalScope lexicalScope;
-        public static RepBlock repBlock;
+        public static string SourceFile { get; set; }
+        public static Dictionary<ushort, UnresolvedExpr> UnsolvedExprList { get; set; }
+        private static Dictionary<string, MacroDef> _macros;
+        private static Stack<FileInfo> _fileStack;
+        private static FileInfo _filePtr;
+        public static FileInfo FilePtr
+        {
+            get
+            {
+                return _filePtr;
+            }
+            set
+            {
+                _filePtr = value;
+            }
+        }
+        private static MemArea _memArea;
+        private static bool _startMacroDef;
+        private static string _currentMacro;
+        private static ConditionalAsm _cAsm;
+        public static LexicalScope LexicalScope { get; set; }
+        private static RepBlock _repBlock;
 
         private static void AddNewLexicalScopeData()
         {
-            lexicalScope.lexicalScopeDataList.Add(new LexicalScopeData
+            LexicalScope.LexicalScopeDataList.Add(new LexicalScopeData
             {
-                symbolTable = new Dictionary<string, Symbol>(),
-                unsolvedSymbols = new Dictionary<string, UnresolvedSymbol>(),
-                memArea = new MemArea() { val = 0, type = SymbolType.BYTE }
+                SymbolTable = new Dictionary<string, Symbol>(),
+                UnsolvedSymbols = new Dictionary<string, UnresolvedSymbol>(),
+                MemArea = new MemArea() { Val = 0, Type = SymbolType.BYTE }
             });
         }
         private static void StartLocalScopeHandler(Match lineReg)
         {
-            if (lexicalScope.level == byte.MaxValue)
+            if (LexicalScope.Level == byte.MaxValue)
             {
                 AddError(Errors.MAX_LOCAL_SCOPE);
                 return;
             }
-            lexicalScope.level++;
+            LexicalScope.Level++;
             AddNewLexicalScopeData();
         }
 
         private static void EndLocalScopeHandler(Match lineReg)
         {
-            if (lexicalScope.level == 0)
+            if (LexicalScope.Level == 0)
             {
                 AddError(Errors.NO_LOCAL_SCOPE);
                 return;
             }
-            Dictionary<string, UnresolvedSymbol> currentUnsolvedSymbols = lexicalScope.lexicalScopeDataList[lexicalScope.level].unsolvedSymbols;
-            Dictionary<string, UnresolvedSymbol> parentUnsolvedSymbols = lexicalScope.lexicalScopeDataList[lexicalScope.level - 1].unsolvedSymbols;
+            Dictionary<string, UnresolvedSymbol> currentUnsolvedSymbols = LexicalScope.LexicalScopeDataList[LexicalScope.Level].UnsolvedSymbols;
+            Dictionary<string, UnresolvedSymbol> parentUnsolvedSymbols = LexicalScope.LexicalScopeDataList[LexicalScope.Level - 1].UnsolvedSymbols;
             foreach (string symb in currentUnsolvedSymbols.Keys)
             {
-                if (lexicalScope.lexicalScopeDataList[lexicalScope.level - 1].unsolvedSymbols.ContainsKey(symb))
+                if (LexicalScope.LexicalScopeDataList[LexicalScope.Level - 1].UnsolvedSymbols.ContainsKey(symb))
                 {
                     UnresolvedSymbol glUnsolvedSymbol = parentUnsolvedSymbols[symb];
                     UnresolvedSymbol localUnsolvedSymbol = currentUnsolvedSymbols[symb];
@@ -109,12 +120,12 @@ namespace WinASM65
                 }
 
             }
-            lexicalScope.lexicalScopeDataList.RemoveAt(lexicalScope.level);
-            lexicalScope.level--;
+            LexicalScope.LexicalScopeDataList.RemoveAt(LexicalScope.Level);
+            LexicalScope.Level--;
         }
 
         #region directives
-        private static Dictionary<string, DelDirectiveHandler> directiveHandlersMap = new Dictionary<string, DelDirectiveHandler>
+        private static readonly Dictionary<string, DelDirectiveHandler> DirectiveHandlersMap = new Dictionary<string, DelDirectiveHandler>
         {
             { ".org", OrgHandler },
             { ".memarea", MemAreaHandler },
@@ -135,169 +146,171 @@ namespace WinASM65
 
         private static void IfHandler(string value)
         {
-            if (cAsm.level == byte.MaxValue)
+            if (_cAsm.Level == byte.MaxValue)
             {
                 AddError(Errors.NESTED_CONDITIONAL_ASSEMBLY);
                 return;
             }
 
             ExprResult res = ResolveExpr(value.Trim(), CPUDef.AddrModes.NO, true);
-            if (res.undefinedSymbs.Count > 0)
+            if (res.UndefinedSymbs.Count > 0)
             {
                 AddError(Errors.UNDEFINED_SYMBOL);
             }
             else
             {
-                if (cAsm.inCondition)
+                if (_cAsm.InCondition)
                 {
-                    cAsm.level++;
+                    _cAsm.Level++;
                 }
                 else
                 {
-                    cAsm.inCondition = true;
+                    _cAsm.InCondition = true;
                 }
-                cAsm.values.Add((bool)res.Result);
+                _cAsm.Values.Add((bool)res.Result);
             }
         }
 
         private static void IfDefHandler(string value)
         {
-            if (cAsm.level == byte.MaxValue)
+            if (_cAsm.Level == byte.MaxValue)
             {
                 AddError(Errors.NESTED_CONDITIONAL_ASSEMBLY);
                 return;
             }
-            if (cAsm.inCondition)
+            if (_cAsm.InCondition)
             {
-                cAsm.level++;
+                _cAsm.Level++;
             }
             else
             {
-                cAsm.inCondition = true;
+                _cAsm.InCondition = true;
             }
             string label = value.Trim();
-            cAsm.values.Add(GetSymbolValue(label) != null);
+            _cAsm.Values.Add(GetSymbolValue(label) != null);
         }
 
         private static void IfnDefHandler(string value)
         {
-            if (cAsm.level == byte.MaxValue)
+            if (_cAsm.Level == byte.MaxValue)
             {
                 AddError(Errors.NESTED_CONDITIONAL_ASSEMBLY);
                 return;
             }
-            if (cAsm.inCondition)
+            if (_cAsm.InCondition)
             {
-                cAsm.level++;
+                _cAsm.Level++;
             }
             else
             {
-                cAsm.inCondition = true;
+                _cAsm.InCondition = true;
             }
             string label = value.Trim();
-            cAsm.values.Add(GetSymbolValue(label) == null);
+            _cAsm.Values.Add(GetSymbolValue(label) == null);
         }
         private static void ElseHandler(string value)
         {
-            if (!cAsm.inCondition)
+            if (!_cAsm.InCondition)
             {
                 AddError(Errors.NO_CONDITIONAL_ASSEMBLY);
                 return;
             }
-            cAsm.values[cAsm.level] = !cAsm.values[cAsm.level];
+            _cAsm.Values[_cAsm.Level] = !_cAsm.Values[_cAsm.Level];
         }
 
         private static void EndIfHandler(string value)
         {
-            if (!cAsm.inCondition)
+            if (!_cAsm.InCondition)
             {
                 AddError(Errors.NO_CONDITIONAL_ASSEMBLY);
                 return;
             }
-            cAsm.values.RemoveAt(cAsm.level);
-            if (cAsm.values.Count == 0)
+            _cAsm.Values.RemoveAt(_cAsm.Level);
+            if (_cAsm.Values.Count == 0)
             {
-                cAsm.inCondition = false;
+                _cAsm.InCondition = false;
             }
-            if (cAsm.level > 0)
+            if (_cAsm.Level > 0)
             {
-                cAsm.level--;
+                _cAsm.Level--;
             }
         }
 
         private static void StartMacroDefHandler(string value)
         {
-            if (startMacroDef)
+            if (_startMacroDef)
             {
                 AddError(Errors.NESTED_MACROS);
                 return;
             }
 
-            Match mReg = CPUDef.macroReg.Match(value);
-            string macroName = currentMacro = mReg.Groups["label"].Value;
+            Match mReg = CPUDef.MacroReg.Match(value);
+            string macroName = _currentMacro = mReg.Groups["label"].Value;
             string defParts = mReg.Groups["value"].Value;
-            MacroDef macroDef = new MacroDef();
-            macroDef.lines = new List<string>();
+            MacroDef macroDef = new MacroDef
+            {
+                Lines = new List<string>()
+            };
 
-            startMacroDef = true;
+            _startMacroDef = true;
             if (!string.IsNullOrEmpty(defParts))
             {
-                macroDef.listParam = Regex.Replace(defParts, @"\s+", "").Split(',');
+                macroDef.ListParam = Regex.Replace(defParts, @"\s+", "").Split(',');
             }
             else
             {
-                macroDef.listParam = new string[] { };
+                macroDef.ListParam = new string[] { };
             }
-            if (macros.ContainsKey(macroName))
+            if (_macros.ContainsKey(macroName))
             {
                 AddError(Errors.MACRO_EXISTS);
             }
             else
             {
-                macros.Add(macroName, macroDef);
+                _macros.Add(macroName, macroDef);
             }
         }
 
         private static void EndMacroDefHandler(string value)
         {
-            if (!startMacroDef)
+            if (!_startMacroDef)
             {
                 AddError(Errors.NO_MACRO);
                 return;
             }
-            startMacroDef = false;
-            currentMacro = string.Empty;
+            _startMacroDef = false;
+            _currentMacro = string.Empty;
         }
 
         private static void RepHandler(string value)
         {
-            if (repBlock.IsInRepBlock)
+            if (_repBlock.IsInRepBlock)
             {
                 AddError(Errors.NESTED_REP);
                 return;
             }
-            repBlock.IsInRepBlock = true;
-            repBlock.lines = new List<string>();
+            _repBlock.IsInRepBlock = true;
+            _repBlock.Lines = new List<string>();
             ExprResult res = ResolveExpr(value.Trim());
-            if (res.undefinedSymbs.Count > 0)
+            if (res.UndefinedSymbs.Count > 0)
             {
                 AddError(Errors.UNDEFINED_SYMBOL);
                 return;
             }
-            repBlock.Counter = res.Result;
+            _repBlock.Counter = res.Result;
         }
 
         private static void EndRepHandler(string value)
         {
-            if (!repBlock.IsInRepBlock)
+            if (!_repBlock.IsInRepBlock)
             {
                 AddError(Errors.NO_REP);
                 return;
             }
-            repBlock.IsInRepBlock = false;
-            for (int i = 0; i < repBlock.Counter; i++)
+            _repBlock.IsInRepBlock = false;
+            for (int i = 0; i < _repBlock.Counter; i++)
             {
-                foreach (string line in repBlock.lines)
+                foreach (string line in _repBlock.Lines)
                 {
                     ParseLine(line, line);
                 }
@@ -308,9 +321,9 @@ namespace WinASM65
         {
             string directive = lineReg.Groups["directive"].Value;
             string value = lineReg.Groups["value"].Value;
-            if (directiveHandlersMap.ContainsKey(directive.ToLower()))
+            if (DirectiveHandlersMap.ContainsKey(directive.ToLower()))
             {
-                DelDirectiveHandler handler = directiveHandlersMap[directive.ToLower()];
+                DelDirectiveHandler handler = DirectiveHandlersMap[directive.ToLower()];
                 handler(value);
             }
         }
@@ -318,9 +331,9 @@ namespace WinASM65
         private static void OrgHandler(string value)
         {
             ExprResult res = ResolveExpr(value);
-            if (res.undefinedSymbs.Count == 0)
+            if (res.UndefinedSymbs.Count == 0)
             {
-                currentAddr = originAddr = (ushort)res.Result;
+                _currentAddr = _originAddr = (ushort)res.Result;
             }
             else
             {
@@ -330,12 +343,12 @@ namespace WinASM65
 
         private static void MemAreaHandler(string value)
         {
-            MemArea ma = lexicalScope.lexicalScopeDataList[lexicalScope.level].memArea;
+            MemArea ma = LexicalScope.LexicalScopeDataList[LexicalScope.Level].MemArea;
             ExprResult res = ResolveExpr(value);
-            if (res.undefinedSymbs.Count == 0)
+            if (res.UndefinedSymbs.Count == 0)
             {
-                ma.val = res.Result;
-                ma.type = res.Type;
+                ma.Val = res.Result;
+                ma.Type = res.Type;
             }
             else
             {
@@ -346,13 +359,13 @@ namespace WinASM65
         private static void IncBinHandler(string fileName)
         {
             fileName = fileName.Replace("\"", String.Empty);
-            string directoryName = Path.GetDirectoryName(file.sourceFile);
+            string directoryName = Path.GetDirectoryName(_filePtr.SourceFile);
             string toInclude = directoryName + '/' + fileName;
-            if (File.Exists(toInclude))
+            if (System.IO.File.Exists(toInclude))
             {
-                byte[] bytesToInc = File.ReadAllBytes(toInclude);
-                fileOutMemory.AddRange(bytesToInc);
-                currentAddr += (ushort)bytesToInc.Length;
+                byte[] bytesToInc = System.IO.File.ReadAllBytes(toInclude);
+                FileOutMemory.AddRange(bytesToInc);
+                _currentAddr += (ushort)bytesToInc.Length;
             }
             else
             {
@@ -362,12 +375,12 @@ namespace WinASM65
         private static void IncludeHandler(string fileName)
         {
             fileName = fileName.Replace("\"", String.Empty);
-            string directoryName = Path.GetDirectoryName(file.sourceFile);
+            string directoryName = Path.GetDirectoryName(_filePtr.SourceFile);
             string toInclude = directoryName + '/' + fileName;
-            if (File.Exists(toInclude))
+            if (System.IO.File.Exists(toInclude))
             {
-                fileStack.Push(file);
-                file = new FileInfo() { fp = new StreamReader(toInclude), sourceFile = toInclude };
+                _fileStack.Push(_filePtr);
+                _filePtr = new FileInfo() { FileStreamReader = new StreamReader(toInclude), SourceFile = toInclude };
             }
             else
             {
@@ -382,49 +395,51 @@ namespace WinASM65
             foreach (string db in bytes)
             {
                 string data = db.Trim();
-                if (CPUDef.isString(data)) // handle strings 
+                if (CPUDef.IsString(data)) // handle strings 
                 {
                     data = data.Substring(1, data.Length - 2);
                     foreach (char c in data)
                     {
-                        fileOutMemory.Add(Convert.ToByte(c));
-                        currentAddr++;
+                        FileOutMemory.Add(Convert.ToByte(c));
+                        _currentAddr++;
                     }
                 }
                 else
                 {
                     ExprResult res = ResolveExpr(data);
-                    if (res.undefinedSymbs.Count == 0)
+                    if (res.UndefinedSymbs.Count == 0)
                     {
-                        fileOutMemory.Add((byte)res.Result);
+                        FileOutMemory.Add((byte)res.Result);
                     }
                     else
                     {
 
-                        fileOutMemory.Add(0);
-                        ushort position = (ushort)(currentAddr - originAddr);
+                        FileOutMemory.Add(0);
+                        ushort position = (ushort)(_currentAddr - _originAddr);
                         UnresolvedExpr expr = new UnresolvedExpr
                         {
                             Position = position,
                             Type = SymbolType.BYTE,
-                            addrMode = CPUDef.AddrModes.NO,
-                            NbrUndefinedSymb = res.undefinedSymbs.Count,
+                            AddrMode = CPUDef.AddrModes.NO,
+                            NbrUndefinedSymb = res.UndefinedSymbs.Count,
                             Expr = data
                         };
 
-                        unsolvedExprList.Add(position, expr);
+                        UnsolvedExprList.Add(position, expr);
 
-                        foreach (string symb in res.undefinedSymbs)
+                        foreach (string symb in res.UndefinedSymbs)
                         {
-                            UnresolvedSymbol unResSymb = new UnresolvedSymbol();
-                            unResSymb.DependingList = new List<string>();
-                            unResSymb.ExprList = new List<ushort>();
+                            UnresolvedSymbol unResSymb = new UnresolvedSymbol
+                            {
+                                DependingList = new List<string>(),
+                                ExprList = new List<ushort>()
+                            };
                             unResSymb.ExprList.Add(position);
                             AddUnsolvedSymbol(symb, unResSymb);
                         }
                     }
 
-                    currentAddr++;
+                    _currentAddr++;
                 }
             }
         }
@@ -436,34 +451,36 @@ namespace WinASM65
             {
                 string data = dw.Trim();
                 ExprResult res = ResolveExpr(data);
-                if (res.undefinedSymbs.Count == 0)
+                if (res.UndefinedSymbs.Count == 0)
                 {
-                    fileOutMemory.AddRange(GetWordBytes((ushort)res.Result));
+                    FileOutMemory.AddRange(GetWordBytes((ushort)res.Result));
                 }
                 else
                 {
-                    fileOutMemory.AddRange(new byte[2] { 0, 0 });
-                    ushort position = (ushort)(currentAddr - originAddr);
+                    FileOutMemory.AddRange(new byte[2] { 0, 0 });
+                    ushort position = (ushort)(_currentAddr - _originAddr);
                     UnresolvedExpr expr = new UnresolvedExpr
                     {
                         Position = position,
                         Type = SymbolType.WORD,
-                        addrMode = CPUDef.AddrModes.NO,
-                        NbrUndefinedSymb = res.undefinedSymbs.Count,
+                        AddrMode = CPUDef.AddrModes.NO,
+                        NbrUndefinedSymb = res.UndefinedSymbs.Count,
                         Expr = data
                     };
 
-                    unsolvedExprList.Add(position, expr);
-                    foreach (string symb in res.undefinedSymbs)
+                    UnsolvedExprList.Add(position, expr);
+                    foreach (string symb in res.UndefinedSymbs)
                     {
-                        UnresolvedSymbol unResSymb = new UnresolvedSymbol();
-                        unResSymb.DependingList = new List<string>();
-                        unResSymb.ExprList = new List<ushort>();
+                        UnresolvedSymbol unResSymb = new UnresolvedSymbol
+                        {
+                            DependingList = new List<string>(),
+                            ExprList = new List<ushort>()
+                        };
                         unResSymb.ExprList.Add(position);
                         AddUnsolvedSymbol(symb, unResSymb);
                     }
                 }
-                currentAddr += 2;
+                _currentAddr += 2;
             }
         }
 
@@ -473,7 +490,7 @@ namespace WinASM65
             string label = lineReg.Groups["label"].Value;
             string value = lineReg.Groups["value"].Value;
             ExprResult res = ResolveExpr(value);
-            if (res.undefinedSymbs.Count == 0)
+            if (res.UndefinedSymbs.Count == 0)
             {
                 Symbol symb = new Symbol()
                 {
@@ -484,13 +501,15 @@ namespace WinASM65
             }
             else
             {
-                UnresolvedSymbol unResSymb = new UnresolvedSymbol();
-                unResSymb.NbrUndefinedSymb = res.undefinedSymbs.Count;
-                unResSymb.DependingList = new List<string>();
-                unResSymb.Expr = value;
-                unResSymb.ExprList = new List<ushort>();
+                UnresolvedSymbol unResSymb = new UnresolvedSymbol
+                {
+                    NbrUndefinedSymb = res.UndefinedSymbs.Count,
+                    DependingList = new List<string>(),
+                    Expr = value,
+                    ExprList = new List<ushort>()
+                };
 
-                foreach (string symb in res.undefinedSymbs)
+                foreach (string symb in res.UndefinedSymbs)
                 {
                     AddDependingSymb(symb, label);
                 }
@@ -501,15 +520,17 @@ namespace WinASM65
 
         private static void AddDependingSymb(string symbol, string dependingSymb)
         {
-            Dictionary<string, UnresolvedSymbol> unsolvedSymbs = lexicalScope.lexicalScopeDataList[lexicalScope.level].unsolvedSymbols;
+            Dictionary<string, UnresolvedSymbol> unsolvedSymbs = LexicalScope.LexicalScopeDataList[LexicalScope.Level].UnsolvedSymbols;
             if (unsolvedSymbs.ContainsKey(symbol))
             {
                 unsolvedSymbs[symbol].DependingList.Add(dependingSymb);
             }
             else
             {
-                UnresolvedSymbol unsolved = new UnresolvedSymbol();
-                unsolved.DependingList = new List<string>();
+                UnresolvedSymbol unsolved = new UnresolvedSymbol
+                {
+                    DependingList = new List<string>()
+                };
                 unsolved.DependingList.Add(dependingSymb);
                 unsolved.ExprList = new List<ushort>();
                 unsolvedSymbs.Add(symbol, unsolved);
@@ -520,8 +541,10 @@ namespace WinASM65
             List<Token> tokens = Tokenizer.Tokenize(exprIn);
             string expr = string.Empty;
             Symbol symb;
-            ExprResult exprRes = new ExprResult();
-            exprRes.undefinedSymbs = new List<string>();
+            ExprResult exprRes = new ExprResult
+            {
+                UndefinedSymbs = new List<string>()
+            };
             foreach (Token token in tokens)
             {
                 switch (token.Type)
@@ -557,27 +580,27 @@ namespace WinASM65
                         }
                         else
                         {
-                            exprRes.undefinedSymbs.Add(token.Value);
+                            exprRes.UndefinedSymbs.Add(token.Value);
                         }
-                        break;                   
+                        break;
                     default:
                         expr = $"{expr} {token.Value}";
                         break;
                 }
             }
-            if (exprRes.undefinedSymbs.Count == 0)
+            if (exprRes.UndefinedSymbs.Count == 0)
             {
                 if (isLogical)
                 {
                     exprRes.Result = ExprEvaluator.Eval(expr);
                 }
                 else
-                {                   
+                {
                     exprRes.Result = ExprEvaluator.Eval(expr);
                     exprRes.Type = exprRes.Result <= 255 ? SymbolType.BYTE : SymbolType.WORD;
                     if (addrMode == CPUDef.AddrModes.REL && exprRes.Type == SymbolType.WORD)
                     {
-                        int delta = (ushort)exprRes.Result - (currentAddr + 1);
+                        int delta = (ushort)exprRes.Result - (_currentAddr + 1);
                         byte res;
                         if (delta > 127 || delta < -128)
                         {
@@ -605,31 +628,31 @@ namespace WinASM65
         {
             string opcode = lineReg.Groups["opcode"].Value;
             string operands = lineReg.Groups["operands"].Value;
-            if (macros.ContainsKey(opcode))
+            if (_macros.ContainsKey(opcode))
             {
-                Match macroReg = CPUDef.macroReg.Match($"{opcode} {operands}");
+                Match macroReg = CPUDef.MacroReg.Match($"{opcode} {operands}");
                 CallMacroHandler(macroReg);
                 return;
             }
             string label = lineReg.Groups["label"].Value;
 
-            ushort opcodeAddr = currentAddr;
+            ushort opcodeAddr = _currentAddr;
             opcode = lineReg.Groups["opcode"].Value.ToUpper();
             if (!string.IsNullOrWhiteSpace(label))
             {
-                if (CPUDef.OPC_TABLE.ContainsKey(label.ToUpper()))
+                if (CPUDef.OpcTable.ContainsKey(label.ToUpper()))
                 {
                     operands = lineReg.Groups["opcode"].Value;
                     opcode = label;
                 }
                 else
                 {
-                    Symbol lSymb = new Symbol { Type = SymbolType.WORD, Value = currentAddr };
+                    Symbol lSymb = new Symbol { Type = SymbolType.WORD, Value = _currentAddr };
                     AddSymbol(label, lSymb);
                 }
             }
 
-            Byte[] addrModesValues = CPUDef.OPC_TABLE[opcode];
+            Byte[] addrModesValues = CPUDef.OpcTable[opcode];
             CPUDef.AddrModes addrMode = CPUDef.AddrModes.NO;
             List<byte> instBytes = new List<byte>();
             CPUDef.InstructionInfo instInfo = new CPUDef.InstructionInfo();
@@ -638,7 +661,7 @@ namespace WinASM65
             {
                 syntaxError = false;
                 // 1 byte opcode                
-                if (Array.Exists(CPUDef.ACC_OPC, opc => opc.Equals(opcode)))
+                if (Array.Exists(CPUDef.AccOpc, opc => opc.Equals(opcode)))
                 {
                     addrMode = CPUDef.AddrModes.ACC;
                 }
@@ -646,24 +669,24 @@ namespace WinASM65
                 {
                     addrMode = CPUDef.AddrModes.IMP;
                 }
-                instInfo = new CPUDef.InstructionInfo { addrMode = addrMode, nbrBytes = 1 };
+                instInfo = new CPUDef.InstructionInfo { AddrMode = addrMode, NbrBytes = 1 };
                 instBytes.Add(addrModesValues[(int)addrMode]);
             }
             else
             {
                 string expr = string.Empty;
                 // 2 bytes opcode
-                if (Array.Exists(CPUDef.REL_OPC, opc => opc.Equals(opcode)))
+                if (Array.Exists(CPUDef.RelOpc, opc => opc.Equals(opcode)))
                 {
                     syntaxError = false;
                     expr = operands;
-                    instInfo = new CPUDef.InstructionInfo { addrMode = CPUDef.AddrModes.REL, nbrBytes = 2 };
+                    instInfo = new CPUDef.InstructionInfo { AddrMode = CPUDef.AddrModes.REL, NbrBytes = 2 };
                 }
                 else
                 {
                     instInfo = CPUDef.GetInstructionInfo(operands);
                     syntaxError = false;
-                    expr = instInfo.expr;
+                    expr = instInfo.Expr;
 
 
                 }
@@ -673,18 +696,18 @@ namespace WinASM65
                 }
                 else
                 {
-                    addrMode = instInfo.addrMode;
+                    addrMode = instInfo.AddrMode;
                     ExprResult exprRes = ResolveExpr(expr, addrMode);
-                    if (exprRes.undefinedSymbs.Count == 0)
+                    if (exprRes.UndefinedSymbs.Count == 0)
                     {
                         // convert to zero page if symbol is a single byte
-                        if (CPUDef.isAbsoluteAddr(addrMode) && exprRes.Type == SymbolType.BYTE)
+                        if (CPUDef.IsAbsoluteAddr(addrMode) && exprRes.Type == SymbolType.BYTE)
                         {
-                            addrMode = addrMode + 3;
-                            instInfo.nbrBytes = 2;
+                            addrMode += 3;
+                            instInfo.NbrBytes = 2;
                         }
                         instBytes.Add(addrModesValues[(int)addrMode]);
-                        if (instInfo.nbrBytes == 2)
+                        if (instInfo.NbrBytes == 2)
                         {
                             instBytes.Add((byte)exprRes.Result);
                         }
@@ -697,7 +720,7 @@ namespace WinASM65
                     {
                         instBytes.Add(addrModesValues[(int)addrMode]);
                         SymbolType typeExpr;
-                        if (instInfo.nbrBytes == 2)
+                        if (instInfo.NbrBytes == 2)
                         {
                             instBytes.AddRange(new byte[1] { 0 });
                             typeExpr = SymbolType.BYTE;
@@ -708,23 +731,27 @@ namespace WinASM65
                             typeExpr = SymbolType.WORD;
                         }
 
-                        ushort position = (ushort)(opcodeAddr - originAddr + 1);
+                        ushort position = (ushort)(opcodeAddr - _originAddr + 1);
                         UnresolvedExpr exprObj = new UnresolvedExpr
                         {
                             Position = position,
                             Type = typeExpr,
-                            addrMode = addrMode,
-                            NbrUndefinedSymb = exprRes.undefinedSymbs.Count,
+                            AddrMode = addrMode,
+                            NbrUndefinedSymb = exprRes.UndefinedSymbs.Count,
                             Expr = expr
                         };
-                        unsolvedExprList.Add(position, exprObj);
+                        UnsolvedExprList.Add(position, exprObj);
 
-                        foreach (string symb in exprRes.undefinedSymbs)
+                        foreach (string symb in exprRes.UndefinedSymbs)
                         {
-                            UnresolvedSymbol unResSymb = new UnresolvedSymbol();
-                            unResSymb.DependingList = new List<string>();
-                            unResSymb.ExprList = new List<ushort>();
-                            unResSymb.ExprList.Add(position);
+                            UnresolvedSymbol unResSymb = new UnresolvedSymbol
+                            {
+                                DependingList = new List<string>(),
+                                ExprList = new List<ushort>
+                                {
+                                    position
+                                }
+                            };
                             AddUnsolvedSymbol(symb, unResSymb);
                         }
                     }
@@ -732,9 +759,9 @@ namespace WinASM65
             }
             if (!syntaxError)
             {
-                currentAddr += instInfo.nbrBytes;
-                fileOutMemory.AddRange(instBytes.ToArray());
-                MainConsole.WriteLine($"{opcode} mode {addrMode.ToString()}");
+                _currentAddr += instInfo.NbrBytes;
+                FileOutMemory.AddRange(instBytes.ToArray());
+                MainConsole.WriteLine($"{opcode} mode {addrMode}");
             }
         }
 
@@ -743,16 +770,16 @@ namespace WinASM65
             string label = lineReg.Groups["label"].Value;
             string value = lineReg.Groups["value"].Value;
             ExprResult res = ResolveExpr(value);
-            if (res.undefinedSymbs.Count == 0)
+            if (res.UndefinedSymbs.Count == 0)
             {
-                MemArea ma = lexicalScope.lexicalScopeDataList[lexicalScope.level].memArea;
-                Dictionary<string, Symbol> symbTable = lexicalScope.lexicalScopeDataList[lexicalScope.level].symbolTable;
-                Symbol variable = new Symbol() { Type = ma.type, Value = ma.val };
+                MemArea ma = LexicalScope.LexicalScopeDataList[LexicalScope.Level].MemArea;
+                Dictionary<string, Symbol> symbTable = LexicalScope.LexicalScopeDataList[LexicalScope.Level].SymbolTable;
+                Symbol variable = new Symbol() { Type = ma.Type, Value = ma.Val };
                 if (!symbTable.ContainsKey(label))
                 {
                     AddSymbol(label, variable);
-                    ma.val += res.Result;
-                    ma.type = ma.val <= 255 ? SymbolType.BYTE : SymbolType.WORD;
+                    ma.Val += res.Result;
+                    ma.Type = ma.Val <= 255 ? SymbolType.BYTE : SymbolType.WORD;
                     MainConsole.WriteLine($"{label} {variable.Value.ToString("x")}");
                 }
                 else
@@ -771,22 +798,22 @@ namespace WinASM65
             string macroName = lineReg.Groups["label"].Value;
             string value = lineReg.Groups["value"].Value;
 
-            if (!macros.ContainsKey(macroName))
+            if (!_macros.ContainsKey(macroName))
             {
                 AddError(Errors.MACRO_NOT_EXISTS);
                 return;
             }
-            MacroDef macroDef = macros[macroName];
+            MacroDef macroDef = _macros[macroName];
             if (!string.IsNullOrEmpty(value))
             {
                 string[] paramValues = Regex.Replace(value, @"\s+", "").Split(',');
-                foreach (string line in macroDef.lines)
+                foreach (string line in macroDef.Lines)
                 {
                     string finalLine = line;
                     for (int i = 0; i < paramValues.Length; i++)
                     {
                         string paramValue = paramValues[i];
-                        string paramName = macroDef.listParam[i];
+                        string paramName = macroDef.ListParam[i];
                         finalLine = finalLine.Replace(paramName, paramValue);
                     }
                     ParseLine(finalLine, finalLine);
@@ -794,12 +821,12 @@ namespace WinASM65
             }
             else
             {
-                if (macroDef.listParam.Length > 0)
+                if (macroDef.ListParam.Length > 0)
                 {
                     AddError(Errors.MACRO_CALL_WITHOUT_PARAMS);
                     return;
                 }
-                foreach (string line in macroDef.lines)
+                foreach (string line in macroDef.Lines)
                 {
                     ParseLine(line, line);
                 }
@@ -808,7 +835,7 @@ namespace WinASM65
 
         private static void AddUnsolvedSymbol(string unsolvedLabel, UnresolvedSymbol unresSymb)
         {
-            Dictionary<string, UnresolvedSymbol> unsolvedSymbs = lexicalScope.lexicalScopeDataList[lexicalScope.level].unsolvedSymbols;
+            Dictionary<string, UnresolvedSymbol> unsolvedSymbs = LexicalScope.LexicalScopeDataList[LexicalScope.Level].UnsolvedSymbols;
             if (unsolvedSymbs.ContainsKey(unsolvedLabel))
             {
                 UnresolvedSymbol unsolved = unsolvedSymbs[unsolvedLabel];
@@ -840,12 +867,12 @@ namespace WinASM65
 
         private static Symbol GetSymbolValue(string symbol)
         {
-            byte level = lexicalScope.level;
+            byte level = LexicalScope.Level;
             while (true)
             {
-                if (lexicalScope.lexicalScopeDataList[level].symbolTable.ContainsKey(symbol))
+                if (LexicalScope.LexicalScopeDataList[level].SymbolTable.ContainsKey(symbol))
                 {
-                    return lexicalScope.lexicalScopeDataList[level].symbolTable[symbol];
+                    return LexicalScope.LexicalScopeDataList[level].SymbolTable[symbol];
                 }
                 if (level == 0)
                 {
@@ -861,13 +888,13 @@ namespace WinASM65
         private static void LabelHandler(Match lineReg)
         {
             string label = lineReg.Groups["label"].Value;
-            Symbol symb = new Symbol { Value = currentAddr, Type = SymbolType.WORD };
+            Symbol symb = new Symbol { Value = _currentAddr, Type = SymbolType.WORD };
             AddSymbol(label, symb);
         }
 
         private static void ResolveSymbol(string label)
         {
-            Dictionary<string, UnresolvedSymbol> unsolvedSymbs = lexicalScope.lexicalScopeDataList[lexicalScope.level].unsolvedSymbols;
+            Dictionary<string, UnresolvedSymbol> unsolvedSymbs = LexicalScope.LexicalScopeDataList[LexicalScope.Level].UnsolvedSymbols;
             if (!unsolvedSymbs.ContainsKey(label))
             {
                 return;
@@ -879,7 +906,7 @@ namespace WinASM65
 
         private static void ResolveSymbolDepsAndExprs(UnresolvedSymbol unresSymb)
         {
-            Dictionary<string, UnresolvedSymbol> unsolvedSymbs = lexicalScope.lexicalScopeDataList[lexicalScope.level].unsolvedSymbols;
+            Dictionary<string, UnresolvedSymbol> unsolvedSymbs = LexicalScope.LexicalScopeDataList[LexicalScope.Level].UnsolvedSymbols;
             // resolve depending symbols
             foreach (string dep in unresSymb.DependingList)
             {
@@ -901,13 +928,13 @@ namespace WinASM65
             // resolve expressions
             foreach (ushort expr in unresSymb.ExprList)
             {
-                UnresolvedExpr unresExp = unsolvedExprList[expr];
+                UnresolvedExpr unresExp = UnsolvedExprList[expr];
                 unresExp.NbrUndefinedSymb--;
                 if (unresExp.NbrUndefinedSymb <= 0)
                 {
                     ExprResult res = ResolveExpr(unresExp.Expr);
                     GenerateExprBytes(unresExp, res);
-                    unsolvedExprList.Remove(expr);
+                    UnsolvedExprList.Remove(expr);
                 }
             }
         }
@@ -915,9 +942,9 @@ namespace WinASM65
         private static void GenerateExprBytes(UnresolvedExpr expr, ExprResult exprRes)
         {
             byte[] bytes = null;
-            if (expr.addrMode == CPUDef.AddrModes.REL)
+            if (expr.AddrMode == CPUDef.AddrModes.REL)
             {
-                int delta = (ushort)exprRes.Result - (expr.Position + originAddr);
+                int delta = (ushort)exprRes.Result - (expr.Position + _originAddr);
                 byte res;
                 if (delta > 127 || delta < -128)
                 {
@@ -941,7 +968,7 @@ namespace WinASM65
                 switch (expr.Type)
                 {
                     case SymbolType.WORD:
-                        if (exprRes.Type == SymbolType.BYTE && !CPUDef.isAbsoluteAddr(expr.addrMode) && (expr.addrMode != CPUDef.AddrModes.IND))
+                        if (exprRes.Type == SymbolType.BYTE && !CPUDef.IsAbsoluteAddr(expr.AddrMode) && (expr.AddrMode != CPUDef.AddrModes.IND))
                         {
                             bytes = new byte[1] { (byte)exprRes.Result };
                         }
@@ -957,61 +984,61 @@ namespace WinASM65
             }
             if (bytes != null)
             {
-                fileOutMemory.RemoveRange(expr.Position, bytes.Length);
-                fileOutMemory.InsertRange(expr.Position, bytes);
+                FileOutMemory.RemoveRange(expr.Position, bytes.Length);
+                FileOutMemory.InsertRange(expr.Position, bytes);
             }
         }
         public static void ProcessLine(Match lineReg, string type)
         {
-            DelHandler handler = mapLineHandlers[type];
+            DelHandler handler = MapLineHandlers[type];
             handler(lineReg);
         }
 
         public static void AddError(string type)
         {
-            errorList.Add(new Error(file.currentLineNumber, file.sourceFile, type));
+            _errorList.Add(new Error(_filePtr.CurrentLineNumber, _filePtr.SourceFile, type));
         }
         public static void InitLexicalScope()
         {
-            lexicalScope = new LexicalScope()
+            LexicalScope = new LexicalScope()
             {
-                level = 0,
-                lexicalScopeDataList = new List<LexicalScopeData>()
+                Level = 0,
+                LexicalScopeDataList = new List<LexicalScopeData>()
             };
             // add global scope
             AddNewLexicalScopeData();
-            lexicalScope.globalScope = lexicalScope.lexicalScopeDataList[0];
+            LexicalScope.GlobalScope = LexicalScope.LexicalScopeDataList[0];
         }
         public static void Assemble()
         {
-            unsolvedExprList = new Dictionary<ushort, UnresolvedExpr>();
+            UnsolvedExprList = new Dictionary<ushort, UnresolvedExpr>();
             InitLexicalScope();
-            fileOutMemory = new List<byte>();
-            errorList = new List<Error>();
-            fileStack = new Stack<FileInfo>();
-            memArea = new MemArea() { val = 0, type = SymbolType.BYTE };
-            macros = new Dictionary<string, MacroDef>();
-            startMacroDef = false;
-            repBlock = new RepBlock
+            FileOutMemory = new List<byte>();
+            _errorList = new List<Error>();
+            _fileStack = new Stack<FileInfo>();
+            _memArea = new MemArea() { Val = 0, Type = SymbolType.BYTE };
+            _macros = new Dictionary<string, MacroDef>();
+            _startMacroDef = false;
+            _repBlock = new RepBlock
             {
                 IsInRepBlock = false
             };
-            cAsm = new ConditionalAsm()
+            _cAsm = new ConditionalAsm()
             {
-                level = 0,
-                inCondition = false,
-                values = new List<bool>()
+                Level = 0,
+                InCondition = false,
+                Values = new List<bool>()
             };
-            currentAddr = 0;
-            originAddr = 0;
+            _currentAddr = 0;
+            _originAddr = 0;
 
             Boolean contextError = false;
-            if (sourceFile == null)
+            if (SourceFile == null)
             {
                 contextError = true;
                 Console.Error.WriteLine("undefined Source file");
             }
-            if (objectFileName == null)
+            if (ObjectFileName == null)
             {
                 contextError = true;
                 Console.Error.WriteLine("undefined object file");
@@ -1025,7 +1052,7 @@ namespace WinASM65
             OpenFiles();
             Process();
             ResolveSymbols();
-            bw.Write(fileOutMemory.ToArray());
+            _bw.Write(FileOutMemory.ToArray());
             CloseFiles();
             ExportUnsolvedFile();
             ExportSymbolTable();
@@ -1035,32 +1062,32 @@ namespace WinASM65
 
         private static void ExportSymbolTable()
         {
-            if (lexicalScope.globalScope.symbolTable.Count > 0)
+            if (LexicalScope.GlobalScope.SymbolTable.Count > 0)
             {
-                File.WriteAllText(objectFileName + "_Symbol.txt", JsonConvert.SerializeObject(lexicalScope.globalScope.symbolTable));
+                System.IO.File.WriteAllText(ObjectFileName + "_Symbol.txt", JsonConvert.SerializeObject(LexicalScope.GlobalScope.SymbolTable));
             }
         }
 
         private static void ExportUnsolvedFile()
         {
-            Dictionary<string, UnresolvedSymbol> unsolvedSymbols = lexicalScope.globalScope.unsolvedSymbols;
+            Dictionary<string, UnresolvedSymbol> unsolvedSymbols = LexicalScope.GlobalScope.UnsolvedSymbols;
             if (unsolvedSymbols.Count > 0)
             {
-                File.WriteAllText(objectFileName + "_Unsolved.txt", JsonConvert.SerializeObject(unsolvedSymbols));
+                System.IO.File.WriteAllText(ObjectFileName + "_Unsolved.txt", JsonConvert.SerializeObject(unsolvedSymbols));
             }
-            if (unsolvedExprList.Count > 0)
+            if (UnsolvedExprList.Count > 0)
             {
-                File.WriteAllText(objectFileName + "_UnsolvedExpr.txt", JsonConvert.SerializeObject(unsolvedExprList));
+                System.IO.File.WriteAllText(ObjectFileName + "_UnsolvedExpr.txt", JsonConvert.SerializeObject(UnsolvedExprList));
             }
         }
 
         public static void ResolveSymbols()
         {
-            Dictionary<string, UnresolvedSymbol> unsolvedSymbols = lexicalScope.globalScope.unsolvedSymbols;
+            Dictionary<string, UnresolvedSymbol> unsolvedSymbols = LexicalScope.GlobalScope.UnsolvedSymbols;
             List<string> resolved = new List<string>();
             foreach (string symbName in unsolvedSymbols.Keys)
             {
-                if (!lexicalScope.globalScope.symbolTable.ContainsKey(symbName))
+                if (!LexicalScope.GlobalScope.SymbolTable.ContainsKey(symbName))
                 {
                     continue;
                 }
@@ -1076,22 +1103,24 @@ namespace WinASM65
 
         private static void Process()
         {
-            file = new FileInfo();
-            file.fp = new StreamReader(sourceFile);
-            file.sourceFile = sourceFile;
-
-            fileStack.Push(file);
-            while (fileStack.Count > 0)
+            _filePtr = new FileInfo
             {
-                file = fileStack.Pop();
+                FileStreamReader = new StreamReader(SourceFile),
+                SourceFile = SourceFile
+            };
+
+            _fileStack.Push(_filePtr);
+            while (_fileStack.Count > 0)
+            {
+                _filePtr = _fileStack.Pop();
                 string line;
-                file.currentLineNumber = 0;
-                while ((line = file.fp.ReadLine()) != null)
+                _filePtr.CurrentLineNumber = 0;
+                while ((line = _filePtr.FileStreamReader.ReadLine()) != null)
                 {
                     line = line.Trim();
-                    file.currentLineNumber++;
-                    if (cAsm.inCondition &&
-                        !cAsm.values[cAsm.level] &&
+                    _filePtr.CurrentLineNumber++;
+                    if (_cAsm.InCondition &&
+                        !_cAsm.Values[_cAsm.Level] &&
                         !line.ToLower().Equals(".endif") &&
                         !line.ToLower().Equals(".else"))
                     {
@@ -1105,11 +1134,11 @@ namespace WinASM65
                         MainConsole.WriteLine(originalLine);
                         continue;
                     }
-                    if (startMacroDef &&
+                    if (_startMacroDef &&
                         !line.ToLower().Equals(".endmacro") &&
                         !line.ToLower().StartsWith(".macro"))
                     {
-                        macros[currentMacro].lines.Add(line);
+                        _macros[_currentMacro].Lines.Add(line);
                         MainConsole.WriteLine(string.Format("{0}   --- {1}", originalLine, "MACRO DEF"));
                     }
                     else
@@ -1117,23 +1146,23 @@ namespace WinASM65
                         ParseLine(line, originalLine);
                     }
                 }
-                file.fp.Close();
+                _filePtr.FileStreamReader.Close();
             }
         }
 
         private static void ParseLine(string line, string originalLine)
         {
-            if (repBlock.IsInRepBlock &&
+            if (_repBlock.IsInRepBlock &&
                        !line.ToLower().Equals(".endrep") &&
                        !line.ToLower().StartsWith(".rep"))
             {
-                repBlock.lines.Add(line);
+                _repBlock.Lines.Add(line);
                 MainConsole.WriteLine(string.Format("{0}   --- {1}", originalLine, "Repeat block line"));
             }
             else
             {
                 bool syntaxError = true;
-                foreach (KeyValuePair<Regex, string> entry in CPUDef.regMap)
+                foreach (KeyValuePair<Regex, string> entry in CPUDef.RegMap)
                 {
                     Match match = entry.Key.Match(line);
                     if (match.Success)
@@ -1153,12 +1182,12 @@ namespace WinASM65
 
         private static void DisplayErrors()
         {
-            if (errorList.Count > 0)
+            if (_errorList.Count > 0)
             {
                 Console.Error.WriteLine("****************************************** Errors ******************************************");
-                foreach (Error err in errorList)
+                foreach (Error err in _errorList)
                 {
-                    Console.Error.WriteLine($"Line {err.line}  - File {err.sourceFile} - Type {err.type}");
+                    Console.Error.WriteLine($"Line {err.Line}  - File {err.SourceFile} - Type {err.Type}");
                 }
                 Console.Error.WriteLine("********************************************************************************************");
             }
@@ -1166,16 +1195,16 @@ namespace WinASM65
 
         private static void OpenFiles()
         {
-            stream = new FileStream(objectFileName, FileMode.Create);
-            bw = new BinaryWriter(stream);
+            _stream = new FileStream(ObjectFileName, FileMode.Create);
+            _bw = new BinaryWriter(_stream);
         }
 
         public static void CloseFiles()
         {
-            if (bw != null)
+            if (_bw != null)
             {
-                bw.Flush();
-                bw.Close();
+                _bw.Flush();
+                _bw.Close();
             }
         }
 
@@ -1204,7 +1233,7 @@ namespace WinASM65
 
         private static void AddSymbol(string label, Symbol symb, bool replaceIfExist = false)
         {
-            Dictionary<string, Symbol> symbTable = lexicalScope.lexicalScopeDataList[lexicalScope.level].symbolTable;
+            Dictionary<string, Symbol> symbTable = LexicalScope.LexicalScopeDataList[LexicalScope.Level].SymbolTable;
             if (symbTable.ContainsKey(label))
             {
                 if (replaceIfExist)
@@ -1225,14 +1254,14 @@ namespace WinASM65
     }
     public struct Error
     {
-        public int line { get; set; }
-        public string sourceFile { get; set; }
-        public string type { get; set; }
+        public int Line { get; set; }
+        public string SourceFile { get; set; }
+        public string Type { get; set; }
         public Error(int line, string sourceFile, string type)
         {
-            this.line = line;
-            this.type = type;
-            this.sourceFile = sourceFile;
+            this.Line = line;
+            this.Type = type;
+            this.SourceFile = sourceFile;
         }
     }
 
@@ -1245,7 +1274,7 @@ namespace WinASM65
     public class ExprResult
     {
         public dynamic Result { get; set; }
-        public List<string> undefinedSymbs { get; set; }
+        public List<string> UndefinedSymbs { get; set; }
         public SymbolType Type { get; set; }
     }
 
@@ -1263,26 +1292,26 @@ namespace WinASM65
 
     public struct Errors
     {
-        public static string LABEL_EXISTS = "Label already declared";
-        public static string REL_JUMP = "Relative jump is too big";
-        public static string SYNTAX = "Syntax Error";
-        public static string FILE_NOT_EXISTS = "File doesn't exist";
-        public static string DATA_BYTE = "Error in insert data byte";
-        public static string DATA_WORD = "Error in insert data word";
-        public static string DATA_TYPE = "Error in data type";
-        public static string MACRO_EXISTS = "Macro with the same name already defined";
-        public static string MACRO_NOT_EXISTS = "Undefined Macro";
-        public static string MACRO_CALL_WITHOUT_PARAMS = "Macro called without params";
-        public static string NESTED_MACROS = "Nested macros are not supported";
-        public static string NESTED_REP = "Nested Reps are not supported";
-        public static string NO_MACRO = "No macro is defined";
-        public static string NO_REP = "No repeat is defined";
-        public static string OPERANDS = "Error in operands";
-        public static string UNDEFINED_SYMBOL = "Undefined symbol";
-        public static string NESTED_CONDITIONAL_ASSEMBLY = "Too much nested conditional assembly";
-        public static string NO_CONDITIONAL_ASSEMBLY = "No conditional assembly is defined";
-        public static string MAX_LOCAL_SCOPE = "Too much nested local lexical levels";
-        public static string NO_LOCAL_SCOPE = "No local scope is defined";
+        public const string LABEL_EXISTS = "Label already declared";
+        public const string REL_JUMP = "Relative jump is too big";
+        public const string SYNTAX = "Syntax Error";
+        public const string FILE_NOT_EXISTS = "File doesn't exist";
+        public const string DATA_BYTE = "Error in insert data byte";
+        public const string DATA_WORD = "Error in insert data word";
+        public const string DATA_TYPE = "Error in data type";
+        public const string MACRO_EXISTS = "Macro with the same name already defined";
+        public const string MACRO_NOT_EXISTS = "Undefined Macro";
+        public const string MACRO_CALL_WITHOUT_PARAMS = "Macro called without params";
+        public const string NESTED_MACROS = "Nested macros are not supported";
+        public const string NESTED_REP = "Nested Reps are not supported";
+        public const string NO_MACRO = "No macro is defined";
+        public const string NO_REP = "No repeat is defined";
+        public const string OPERANDS = "Error in operands";
+        public const string UNDEFINED_SYMBOL = "Undefined symbol";
+        public const string NESTED_CONDITIONAL_ASSEMBLY = "Too much nested conditional assembly";
+        public const string NO_CONDITIONAL_ASSEMBLY = "No conditional assembly is defined";
+        public const string MAX_LOCAL_SCOPE = "Too much nested local lexical levels";
+        public const string NO_LOCAL_SCOPE = "No local scope is defined";
     }
 
     public class UnresolvedSymbol
@@ -1299,53 +1328,53 @@ namespace WinASM65
         public int NbrUndefinedSymb { get; set; }
         public ushort Position { get; set; }
         public SymbolType Type { get; set; }
-        public CPUDef.AddrModes addrMode { get; set; }
+        public CPUDef.AddrModes AddrMode { get; set; }
     }
 
     public struct FileInfo
     {
-        public StreamReader fp { get; set; }
-        public string sourceFile { get; set; }
-        public int currentLineNumber { get; set; }
+        public StreamReader FileStreamReader { get; set; }
+        public string SourceFile { get; set; }
+        public int CurrentLineNumber { get; set; }
     }
 
     public class MemArea
     {
-        public SymbolType type;
-        public dynamic val;
+        public SymbolType Type { get; set; }
+        public dynamic Val { get; set; }
     }
     public struct MacroDef
     {
-        public string[] listParam;
-        public List<string> lines;
+        public string[] ListParam { get; set; }
+        public List<string> Lines { get; set; }
     }
 
     public class ConditionalAsm
     {
-        public List<bool> values;
-        public byte level;
-        public bool inCondition;
+        public List<bool> Values { get; set; }
+        public byte Level { get; set; }
+        public bool InCondition { get; set; }
     }
 
     public class LexicalScopeData
     {
-        public Dictionary<string, Symbol> symbolTable { get; set; }
-        public Dictionary<string, UnresolvedSymbol> unsolvedSymbols { get; set; }
-        public MemArea memArea { get; set; }
+        public Dictionary<string, Symbol> SymbolTable { get; set; }
+        public Dictionary<string, UnresolvedSymbol> UnsolvedSymbols { get; set; }
+        public MemArea MemArea { get; set; }
     }
     public class LexicalScope
     {
-        public List<LexicalScopeData> lexicalScopeDataList;
+        public List<LexicalScopeData> LexicalScopeDataList { get; set; }
         // pointer to global scope
-        public LexicalScopeData globalScope;
+        public LexicalScopeData GlobalScope { get; set; }
         // 0: global
-        public byte level;
+        public byte Level { get; set; }
     }
 
     public struct RepBlock
     {
         public bool IsInRepBlock { get; set; }
-        public List<string> lines { get; set; }
+        public List<string> Lines { get; set; }
         public dynamic Counter { get; internal set; }
     }
 }
