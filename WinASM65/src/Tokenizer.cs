@@ -5,15 +5,12 @@ namespace WinASM65
     public class Tokenizer
     {
         private const string Dec = @"[0-9]+";
-        private const string BinByte = @"[01]+";
-        private const string Hex = @"[a-fA-F0-9]";
-        private const string HexByte = @"(" + Hex + @"{2}|" + Hex + @"{1})";
-        private const string HexWord = Hex + @"{4}";
+        private const string BinByte = @"[01]+";      
+        private const string Hex = @"[a-fA-F0-9]{1,4}";
         private const string Label = @"[a-zA-Z_][a-zA-Z_0-9]*";
 
-        private const string DecRegex = @"(?<DEC>" + Dec + ")";
-        private const string HexbyteRegex = @"(\$(?<HB>" + HexByte + "))";
-        private const string HexWordRegex = @"(\$(?<HW>" + HexWord + "))";
+        private const string DecRegex = @"(?<DEC>" + Dec + ")";        
+        private const string HexRegex = @"(\$(?<HEX>" + Hex + "))";
         public const string LabelRegex = @"(?<label>" + Label + ")";
         private const string BinByteRegex = @"(%(?<binByte>" + BinByte + "))";
 
@@ -29,8 +26,7 @@ namespace WinASM65
          "\"(?<CHAR>[\x00-\xFF])\"|" +
          BinByteRegex + "|" +
          DecRegex + "|" +
-         HexWordRegex + "|" +
-         HexbyteRegex + "|" +
+         HexRegex + "|" +         
          LabelRegex + "|" +
         @"(?<BSL>(<<))|" +
         @"(?<BSR>(>>))|" +
@@ -60,9 +56,8 @@ namespace WinASM65
             MainConsole.WriteLine(Pattern);
             RegexPattern = new Regex(Pattern, RegexOptions.Compiled);
             CaptureGroupNames = new List<string>();
-            CaptureGroupNames.Add("DEC");
-            CaptureGroupNames.Add("HB");
-            CaptureGroupNames.Add("HW");
+            CaptureGroupNames.Add("DEC");            
+            CaptureGroupNames.Add("HEX");
             CaptureGroupNames.Add("label");            
             CaptureGroupNames.Add("binByte");
             CaptureGroupNames.Add("BSL");
