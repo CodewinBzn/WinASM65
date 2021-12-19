@@ -59,7 +59,7 @@ namespace WinASM65
         private static string _currentMacro;
         private static ConditionalAsm _cAsm;
         public static LexicalScope LexicalScope { get; set; }
-        private static RepBlock _repBlock;
+        private static RepBlock _repBlock;        
 
         private static void AddNewLexicalScopeData()
         {
@@ -307,23 +307,24 @@ namespace WinASM65
                 AddError(Errors.NO_REP);
                 return;
             }
+            Listing.EndLine();
             _repBlock.IsInRepBlock = false;
             for (int i = 0; i < _repBlock.Counter; i++)
             {
                 foreach (string line in _repBlock.Lines)
                 {
+                    Listing.PrintLine(line);
                     ParseLine(line, line);
                 }
             }
-
         }
         private static void DirectiveHandler(Match lineReg)
         {
-            string directive = lineReg.Groups["directive"].Value;
+            string directive = lineReg.Groups["directive"].Value.ToLower();
             string value = lineReg.Groups["value"].Value;
-            if (DirectiveHandlersMap.ContainsKey(directive.ToLower()))
-            {
-                DelDirectiveHandler handler = DirectiveHandlersMap[directive.ToLower()];
+            if (DirectiveHandlersMap.ContainsKey(directive))
+            {                
+                DelDirectiveHandler handler = DirectiveHandlersMap[directive];
                 handler(value);
             }
         }
@@ -334,6 +335,7 @@ namespace WinASM65
             if (res.UndefinedSymbs.Count == 0)
             {
                 _currentAddr = _originAddr = (ushort)res.Result;
+                Listing.PrintLine(LineType.ORG,_currentAddr);
             }
             else
             {
@@ -366,6 +368,7 @@ namespace WinASM65
                 byte[] bytesToInc = System.IO.File.ReadAllBytes(toInclude);
                 FileOutMemory.AddRange(bytesToInc);
                 _currentAddr += (ushort)bytesToInc.Length;
+                Listing.PrintLine(LineType.INST, (ushort)bytesToInc.Length);
             }
             else
             {
@@ -392,6 +395,7 @@ namespace WinASM65
         private static void DataByteHandler(string bytesIn)
         {
             string[] bytes = bytesIn.Split(',');
+            ushort startAddr = _currentAddr;
             foreach (string db in bytes)
             {
                 string data = db.Trim();
@@ -442,11 +446,13 @@ namespace WinASM65
                     _currentAddr++;
                 }
             }
+            Listing.PrintLine(LineType.INST, (ushort)(_currentAddr - startAddr));
         }
 
         private static void DataWordHandler(string wordsIn)
         {
             string[] words = wordsIn.Split(',');
+            Listing.PrintLine(LineType.INST, (ushort)(words.Length*2));
             foreach (string dw in words)
             {
                 string data = dw.Trim();
@@ -758,6 +764,7 @@ namespace WinASM65
             {
                 _currentAddr += instInfo.NbrBytes;
                 FileOutMemory.AddRange(instBytes.ToArray());
+                Listing.PrintLine(LineType.INST, instInfo.NbrBytes);
                 MainConsole.WriteLine($"{opcode} mode {addrMode}");
             }
         }
@@ -800,6 +807,7 @@ namespace WinASM65
                 AddError(Errors.MACRO_NOT_EXISTS);
                 return;
             }
+            Listing.EndLine();
             MacroDef macroDef = _macros[macroName];
             if (!string.IsNullOrEmpty(value))
             {
@@ -813,6 +821,7 @@ namespace WinASM65
                         string paramName = macroDef.ListParam[i];
                         finalLine = finalLine.Replace(paramName, paramValue);
                     }
+                    Listing.PrintLine(line);
                     ParseLine(finalLine, finalLine);
                 }
             }
@@ -825,6 +834,7 @@ namespace WinASM65
                 }
                 foreach (string line in macroDef.Lines)
                 {
+                    Listing.PrintLine(line);
                     ParseLine(line, line);
                 }
             }
@@ -1046,6 +1056,12 @@ namespace WinASM65
                 Console.Error.WriteLine("\n Tape -help to learn more about the tool");
                 return;
             }
+            if (Listing.EnableListing)
+            {
+                //set listing file name
+                Listing.ListingFile = SourceFile;
+                Listing.StartListing();
+            }           
             OpenFiles();
             Process();
             ResolveSymbols();
@@ -1053,6 +1069,7 @@ namespace WinASM65
             CloseFiles();
             ExportUnsolvedFile();
             ExportSymbolTable();
+            Listing.EndListing();
             DisplayErrors();
 
         }
@@ -1099,7 +1116,7 @@ namespace WinASM65
         }
 
         private static void Process()
-        {
+        {            
             _filePtr = new FileInfo
             {
                 FileStreamReader = new StreamReader(SourceFile),
@@ -1114,6 +1131,8 @@ namespace WinASM65
                 _filePtr.CurrentLineNumber = 0;
                 while ((line = _filePtr.FileStreamReader.ReadLine()) != null)
                 {
+                    string currentLine = line;
+                    Listing.PrintLine(currentLine);
                     line = line.Trim();
                     _filePtr.CurrentLineNumber++;
                     if (_cAsm.InCondition &&
@@ -1122,13 +1141,14 @@ namespace WinASM65
                         !line.ToLower().Equals(".else"))
                     {
                         MainConsole.WriteLine(string.Format("{0}   --- {1}", line, "NOT Assembled"));
+                        Listing.EndLine();
                         continue;
-                    }
-                    string originalLine = line;
+                    }                    
                     line = Regex.Replace(line, ";(.)*", "").Trim();
                     if (String.IsNullOrWhiteSpace(line))
                     {
-                        MainConsole.WriteLine(originalLine);
+                        MainConsole.WriteLine(currentLine);
+                        Listing.EndLine();
                         continue;
                     }
                     if (_startMacroDef &&
@@ -1136,12 +1156,13 @@ namespace WinASM65
                         !line.ToLower().StartsWith(".macro"))
                     {
                         _macros[_currentMacro].Lines.Add(line);
-                        MainConsole.WriteLine(string.Format("{0}   --- {1}", originalLine, "MACRO DEF"));
+                        MainConsole.WriteLine(string.Format("{0}   --- {1}", currentLine, "MACRO DEF"));
+                        Listing.EndLine();
                     }
                     else
                     {
-                        ParseLine(line, originalLine);
-                    }
+                        ParseLine(line, currentLine);
+                    }                   
                 }
                 _filePtr.FileStreamReader.Close();
             }
@@ -1154,7 +1175,7 @@ namespace WinASM65
                        !line.ToLower().StartsWith(".rep"))
             {
                 _repBlock.Lines.Add(line);
-                MainConsole.WriteLine(string.Format("{0}   --- {1}", originalLine, "Repeat block line"));
+                MainConsole.WriteLine(string.Format("{0}   --- {1}", originalLine, "Repeat block line"));             
             }
             else
             {
@@ -1175,6 +1196,7 @@ namespace WinASM65
                     AddError(Errors.SYNTAX);
                 }
             }
+            Listing.EndLine();
         }
 
         private static void DisplayErrors()
@@ -1204,7 +1226,6 @@ namespace WinASM65
                 _bw.Close();
             }
         }
-
         private static byte[] GetWordBytes(string strWord)
         {
             ushort word = ushort.Parse(strWord, NumberStyles.HexNumber);

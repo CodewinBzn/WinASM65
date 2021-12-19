@@ -78,6 +78,7 @@
     <Compile Include="src\Combine.cs" />
     <Compile Include="src\CPUDef.cs" />
     <Compile Include="src\ExprEvaluator.cs" />
+    <Compile Include="src\Listing.cs" />
     <Compile Include="src\MultiSegment.cs" />
     <Compile Include="src\Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

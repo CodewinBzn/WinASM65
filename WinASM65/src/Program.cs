@@ -49,16 +49,20 @@ namespace WinASM65
                         command = CommandType.Combine;
                         Combine.ConfigFile = args[++i];
                         break;
+                    case "-l":
+                        Listing.EnableListing = true;
+                        break;
                     case "-help":
                     case "-h":
                         DisplayHelp();
-                        return;
+                        return;                
                 }
             }
             switch (command)
             {
                 case CommandType.SingleSegment:
                     Assembler.Assemble();
+                    Listing.GenerateListing();
                     break;
                 case CommandType.MultiSegment:
                     MultiSegment.Assemble();
@@ -78,7 +82,8 @@ namespace WinASM65
             Console.WriteLine("\t h \t show help \t");
             Console.WriteLine("\t f \t sourceFile \t");
             Console.WriteLine("\t o \t objectFile \t");
-            Console.WriteLine("\t m \t Assemble one or several segments \t");
+            Console.WriteLine("\t l \t Create listing \t");
+            Console.WriteLine("\t m \t Assemble one or multiple segments \t");
             Console.WriteLine("\t c \t Combine assembled segments/binary files \t");
 
             Console.WriteLine("\t Assemble segments \t");

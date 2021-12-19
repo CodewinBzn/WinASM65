@@ -13,7 +13,8 @@ by CodewinBzn.
 		
 ### Options
 		-help			Show help
-		-h			Show help		
+		-h			Show help	
+	    -l 			Create listing
 		-m 			Assemble one or multiple segments
 		-c 			Combine assembled segments/binary files
     Assemble single segment:
