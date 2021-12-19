@@ -37,6 +37,13 @@ namespace WinASM65
                 // resolve dependencies
                 foreach (Segment seg in _segments)
                 {
+                    if (Listing.EnableListing)
+                    {
+                        Listing.ListingFile = seg.FileName;
+                    }
+                    string objectFile = seg.FileName.Split('.')[0] + ".o";
+                    Assembler.FileOutMemory = new List<byte>(File.ReadAllBytes(objectFile));
+
                     Assembler.InitLexicalScope();
                     LexicalScopeData globalScope = Assembler.LexicalScope.LexicalScopeDataList[0];
                     string unsolvedFile = seg.FileName.Split('.')[0] + ".o_Unsolved.txt";
@@ -50,6 +57,7 @@ namespace WinASM65
                     else
                     {
                         Console.WriteLine($"{seg.FileName} - No Symbol to resolve");
+                        Listing.GenerateListing();
                         continue;
                     }
                     string unsolvedExpr = seg.FileName.Split('.')[0] + ".o_UnsolvedExpr.txt";
@@ -63,11 +71,10 @@ namespace WinASM65
                     else
                     {
                         Console.WriteLine($"{seg.FileName} - No Expression to resolve");
+                        Listing.GenerateListing();
                         continue;
                     }
-                    Assembler.FilePtr = new FileInfo() { SourceFile = unsolvedFile, CurrentLineNumber = -1};
-                    string objectFile = seg.FileName.Split('.')[0] + ".o";
-                    Assembler.FileOutMemory = new List<byte>(File.ReadAllBytes(objectFile));
+                    Assembler.FilePtr = new FileInfo() { SourceFile = unsolvedFile, CurrentLineNumber = -1 };                    
                     foreach (string dependence in seg.Dependencies)
                     {
                         string symbolTableFile = dependence.Split('.')[0] + ".o_Symbol.txt";
@@ -75,8 +82,8 @@ namespace WinASM65
                         {
                             globalScope.SymbolTable = (Dictionary<string, Symbol>)serializer.Deserialize(file, typeof(Dictionary<string, Symbol>));
                         }
-                        Assembler.ResolveSymbols();                        
-                        if(Assembler.UnsolvedExprList.Count == 0)
+                        Assembler.ResolveSymbols();
+                        if (Assembler.UnsolvedExprList.Count == 0)
                         {
                             File.Delete(unsolvedExpr);
                         }
@@ -90,6 +97,7 @@ namespace WinASM65
                     {
                         writer.Write(Assembler.FileOutMemory.ToArray());
                     }
+                    Listing.GenerateListing();
                 }
             }
         }
