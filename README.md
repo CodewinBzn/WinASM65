@@ -14,7 +14,7 @@ by CodewinBzn.
 ### Options
 		-help			Show help
 		-h			Show help	
-	    -l 			Create listing
+	        -l 			Create listing (don't specify the file name)
 		-m 			Assemble one or multiple segments
 		-c 			Combine assembled segments/binary files
     Assemble single segment:
