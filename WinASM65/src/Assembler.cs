@@ -504,6 +504,7 @@ namespace WinASM65
                     Type = res.Type
                 };
                 AddSymbol(label, symb, true);
+                Listing.PrintLine(LineType.CONST, (ushort)res.Result);
             }
             else
             {
@@ -781,10 +782,11 @@ namespace WinASM65
                 Symbol variable = new Symbol() { Type = ma.Type, Value = ma.Val };
                 if (!symbTable.ContainsKey(label))
                 {
+                    Listing.PrintLine(LineType.RES, (ushort)ma.Val);
                     AddSymbol(label, variable);
                     ma.Val += res.Result;
                     ma.Type = ma.Val <= 255 ? SymbolType.BYTE : SymbolType.WORD;
-                    MainConsole.WriteLine($"{label} {variable.Value.ToString("x")}");
+                    MainConsole.WriteLine($"{label} {variable.Value.ToString("x")}");                    
                 }
                 else
                 {
@@ -897,6 +899,7 @@ namespace WinASM65
             string label = lineReg.Groups["label"].Value;
             Symbol symb = new Symbol { Value = _currentAddr, Type = SymbolType.WORD };
             AddSymbol(label, symb);
+            Listing.PrintLine(LineType.LABEL, _currentAddr);
         }
 
         private static void ResolveSymbol(string label)
