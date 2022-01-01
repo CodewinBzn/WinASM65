@@ -1,10 +1,5 @@
-﻿/**********************************************************************************/
-/*                                                                                */
-/*                                                                                */
-/* 2021 Abdelghani BOUZIANE                                                       */
-/*                                                                                */
-/*                                                                                */
-/**********************************************************************************/
+﻿// Abdelghani BOUZIANE    
+// 2021
 
 using Newtonsoft.Json;
 using System;
@@ -12,7 +7,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
-using System.Data;
 
 namespace WinASM65
 {

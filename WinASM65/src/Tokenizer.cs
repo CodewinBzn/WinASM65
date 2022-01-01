@@ -1,5 +1,9 @@
-﻿using System.Collections.Generic;
+﻿// Abdelghani BOUZIANE    
+// 2021
+
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
+
 namespace WinASM65
 {
     public class Tokenizer
