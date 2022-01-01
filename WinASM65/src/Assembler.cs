@@ -53,7 +53,7 @@ namespace WinASM65
         private static string _currentMacro;
         private static ConditionalAsm _cAsm;
         public static LexicalScope LexicalScope { get; set; }
-        private static RepBlock _repBlock;        
+        private static RepBlock _repBlock;
 
         private static void AddNewLexicalScopeData()
         {
@@ -317,7 +317,7 @@ namespace WinASM65
             string directive = lineReg.Groups["directive"].Value.ToLower();
             string value = lineReg.Groups["value"].Value;
             if (DirectiveHandlersMap.ContainsKey(directive))
-            {                
+            {
                 DelDirectiveHandler handler = DirectiveHandlersMap[directive];
                 handler(value);
             }
@@ -329,7 +329,7 @@ namespace WinASM65
             if (res.UndefinedSymbs.Count == 0)
             {
                 _currentAddr = _originAddr = (ushort)res.Result;
-                Listing.PrintLine(LineType.ORG,_currentAddr);
+                Listing.PrintLine(LineType.ORG, _currentAddr);
             }
             else
             {
@@ -356,7 +356,7 @@ namespace WinASM65
         {
             fileName = fileName.Replace("\"", String.Empty);
             string directoryName = Path.GetDirectoryName(_filePtr.SourceFile);
-            string toInclude = directoryName + '/' + fileName;
+            string toInclude = string.IsNullOrEmpty(directoryName) ? fileName : directoryName + '/' + fileName;
             if (System.IO.File.Exists(toInclude))
             {
                 byte[] bytesToInc = System.IO.File.ReadAllBytes(toInclude);
@@ -373,7 +373,7 @@ namespace WinASM65
         {
             fileName = fileName.Replace("\"", String.Empty);
             string directoryName = Path.GetDirectoryName(_filePtr.SourceFile);
-            string toInclude = directoryName + '/' + fileName;
+            string toInclude = string.IsNullOrEmpty(directoryName) ? fileName : directoryName + '/' + fileName;
             if (System.IO.File.Exists(toInclude))
             {
                 _fileStack.Push(_filePtr);
@@ -446,7 +446,7 @@ namespace WinASM65
         private static void DataWordHandler(string wordsIn)
         {
             string[] words = wordsIn.Split(',');
-            Listing.PrintLine(LineType.INST, (ushort)(words.Length*2));
+            Listing.PrintLine(LineType.INST, (ushort)(words.Length * 2));
             foreach (string dw in words)
             {
                 string data = dw.Trim();
@@ -780,7 +780,7 @@ namespace WinASM65
                     AddSymbol(label, variable);
                     ma.Val += res.Result;
                     ma.Type = ma.Val <= 255 ? SymbolType.BYTE : SymbolType.WORD;
-                    MainConsole.WriteLine($"{label} {variable.Value.ToString("x")}");                    
+                    MainConsole.WriteLine($"{label} {variable.Value.ToString("x")}");
                 }
                 else
                 {
@@ -1058,7 +1058,7 @@ namespace WinASM65
                 //set listing file name
                 Listing.ListingFile = SourceFile;
                 Listing.StartListing();
-            }           
+            }
             OpenFiles();
             Process();
             ResolveSymbols();
@@ -1113,7 +1113,7 @@ namespace WinASM65
         }
 
         private static void Process()
-        {            
+        {
             _filePtr = new FileInfo
             {
                 FileStreamReader = new StreamReader(SourceFile),
@@ -1140,7 +1140,7 @@ namespace WinASM65
                         MainConsole.WriteLine(string.Format("{0}   --- {1}", line, "NOT Assembled"));
                         Listing.EndLine();
                         continue;
-                    }                    
+                    }
                     line = Regex.Replace(line, ";(.)*", "").Trim();
                     if (String.IsNullOrWhiteSpace(line))
                     {
@@ -1159,7 +1159,7 @@ namespace WinASM65
                     else
                     {
                         ParseLine(line, currentLine);
-                    }                   
+                    }
                 }
                 _filePtr.FileStreamReader.Close();
             }
@@ -1172,7 +1172,7 @@ namespace WinASM65
                        !line.ToLower().StartsWith(".rep"))
             {
                 _repBlock.Lines.Add(line);
-                MainConsole.WriteLine(string.Format("{0}   --- {1}", originalLine, "Repeat block line"));             
+                MainConsole.WriteLine(string.Format("{0}   --- {1}", originalLine, "Repeat block line"));
             }
             else
             {
