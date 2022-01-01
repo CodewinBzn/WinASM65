@@ -1,15 +1,11 @@
-﻿/**********************************************************************************/
-/*                                                                                */
-/*                                                                                */
-/* 2021 Abdelghani BOUZIANE                                                       */
-/*                                                                                */
-/*                                                                                */
-/**********************************************************************************/
+﻿// Abdelghani BOUZIANE    
+// 2021
 
 using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+
 namespace WinASM65
 {
     class Combine

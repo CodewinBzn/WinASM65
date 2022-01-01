@@ -1,4 +1,7 @@
-﻿using System;
+﻿// Abdelghani BOUZIANE    
+// 2021
+
+using System;
 using System.IO;
 
 namespace WinASM65

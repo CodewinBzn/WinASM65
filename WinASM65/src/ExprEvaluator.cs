@@ -1,9 +1,8 @@
-﻿using System;
-using System.Collections;
+﻿// Abdelghani BOUZIANE    
+// 2021
+
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace WinASM65
 {
