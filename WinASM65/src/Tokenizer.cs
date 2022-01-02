@@ -9,14 +9,14 @@ namespace WinASM65
     public class Tokenizer
     {
         private const string Dec = @"[0-9]+";
-        private const string BinByte = @"[01]+";      
-        private const string Hex = @"[a-fA-F0-9]{1,4}";
+        private const string Bin = @"[01]+";      
+        private const string Hex = @"[a-fA-F0-9]+";
         private const string Label = @"[a-zA-Z_][a-zA-Z_0-9]*";
 
         private const string DecRegex = @"(?<DEC>" + Dec + ")";        
         private const string HexRegex = @"(\$(?<HEX>" + Hex + "))";
         public const string LabelRegex = @"(?<label>" + Label + ")";
-        private const string BinByteRegex = @"(%(?<binByte>" + BinByte + "))";
+        private const string BinRegex = @"(%(?<bin>" + Bin + "))";
 
         private static readonly List<string> CaptureGroupNames;
         private const string Pattern =
@@ -28,7 +28,7 @@ namespace WinASM65
          @"(?<TRUE>(TRUE|true))|" +
          @"(?<FALSE>(FALSE|false))|" +
          "\"(?<CHAR>[\x00-\xFF])\"|" +
-         BinByteRegex + "|" +
+         BinRegex + "|" +
          DecRegex + "|" +
          HexRegex + "|" +         
          LabelRegex + "|" +
@@ -63,7 +63,7 @@ namespace WinASM65
             CaptureGroupNames.Add("DEC");            
             CaptureGroupNames.Add("HEX");
             CaptureGroupNames.Add("label");            
-            CaptureGroupNames.Add("binByte");
+            CaptureGroupNames.Add("bin");
             CaptureGroupNames.Add("BSL");
             CaptureGroupNames.Add("BSR");
             CaptureGroupNames.Add("LESSEQ");
