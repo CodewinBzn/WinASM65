@@ -39,7 +39,7 @@ namespace WinASM65
             _listingFilePtr.Write(line);
         }
 
-        public static void PrintLine(LineType type, ushort value)
+        public static void PrintLine(LineType type, int value)
         {
             if (!EnableListing)
             {
@@ -149,16 +149,12 @@ namespace WinASM65
                                         break;
                                     case LineType.RES:
                                     case LineType.CONST:
-                                        ushort val = ushort.Parse(lineValues[2]);
-                                        if(val <= 255)
-                                        {                                            
-                                            sw.WriteLine("".PadLeft(11) + "{0:X2} =   " + "{1}", val, lineValues[0]);
-                                        } else
                                         {
-                                            sw.WriteLine("".PadLeft(9) + "{0:X4} =   " + "{1}", val, lineValues[0]);
-                                        }                                        
-                                        break;                               
-                                }                                
+                                            int val = int.Parse(lineValues[2]);
+                                            sw.WriteLine("{0:X} =   ".PadLeft(18) + "{1}", val, lineValues[0]);
+                                        }
+                                        break;
+                                }
                                 break;
                         }
                     }

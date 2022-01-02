@@ -48,7 +48,6 @@ namespace WinASM65
                 _filePtr = value;
             }
         }
-        private static MemArea _memArea;
         private static bool _startMacroDef;
         private static string _currentMacro;
         private static ConditionalAsm _cAsm;
@@ -61,7 +60,7 @@ namespace WinASM65
             {
                 SymbolTable = new Dictionary<string, Symbol>(),
                 UnsolvedSymbols = new Dictionary<string, UnresolvedSymbol>(),
-                MemArea = new MemArea() { Val = 0, Type = SymbolType.BYTE }
+                MemArea = 0
             });
         }
         private static void StartLocalScopeHandler(Match lineReg)
@@ -291,7 +290,7 @@ namespace WinASM65
                 AddError(Errors.UNDEFINED_SYMBOL);
                 return;
             }
-            _repBlock.Counter = res.Result;
+            _repBlock.Counter = (int)res.Result;
         }
 
         private static void EndRepHandler(string value)
@@ -339,12 +338,11 @@ namespace WinASM65
 
         private static void MemAreaHandler(string value)
         {
-            MemArea ma = LexicalScope.LexicalScopeDataList[LexicalScope.Level].MemArea;
+            LexicalScopeData currentScopeData = LexicalScope.LexicalScopeDataList[LexicalScope.Level];
             ExprResult res = ResolveExpr(value);
             if (res.UndefinedSymbs.Count == 0)
             {
-                ma.Val = res.Result;
-                ma.Type = res.Type;
+                currentScopeData.MemArea = (ushort)res.Result;
             }
             else
             {
@@ -362,7 +360,7 @@ namespace WinASM65
                 byte[] bytesToInc = System.IO.File.ReadAllBytes(toInclude);
                 FileOutMemory.AddRange(bytesToInc);
                 _currentAddr += (ushort)bytesToInc.Length;
-                Listing.PrintLine(LineType.INST, (ushort)bytesToInc.Length);
+                Listing.PrintLine(LineType.INST, bytesToInc.Length);
             }
             else
             {
@@ -440,13 +438,13 @@ namespace WinASM65
                     _currentAddr++;
                 }
             }
-            Listing.PrintLine(LineType.INST, (ushort)(_currentAddr - startAddr));
+            Listing.PrintLine(LineType.INST, _currentAddr - startAddr);
         }
 
         private static void DataWordHandler(string wordsIn)
         {
             string[] words = wordsIn.Split(',');
-            Listing.PrintLine(LineType.INST, (ushort)(words.Length * 2));
+            Listing.PrintLine(LineType.INST, words.Length * 2);
             foreach (string dw in words)
             {
                 string data = dw.Trim();
@@ -494,11 +492,10 @@ namespace WinASM65
             {
                 Symbol symb = new Symbol()
                 {
-                    Value = res.Result,
-                    Type = res.Type
+                    Value = res.Result
                 };
                 AddSymbol(label, symb, true);
-                Listing.PrintLine(LineType.CONST, (ushort)res.Result);
+                Listing.PrintLine(LineType.CONST, (int)res.Result);
             }
             else
             {
@@ -554,21 +551,13 @@ namespace WinASM65
                         expr = $"{expr} {Convert.ToByte(token.Value[0])}";
                         break;
                     case "HEX":
-                        expr = $"{expr} {ushort.Parse(token.Value, NumberStyles.HexNumber)}";
+                        expr = $"{expr} {int.Parse(token.Value, NumberStyles.HexNumber)}";
                         break;
-                    case "binByte":
-                        expr = $"{expr} {Convert.ToByte(token.Value, 2)}";
+                    case "bin":
+                        expr = $"{expr} {Convert.ToInt32(token.Value, 2)}";
                         break;
                     case "DEC":
-                        int val = int.Parse(token.Value);
-                        if (val <= 255)
-                        {
-                            expr = $"{expr} {(byte)val}";
-                        }
-                        else
-                        {
-                            expr = $"{expr} {(ushort)val}";
-                        }
+                        expr = $"{expr} {int.Parse(token.Value)}";
                         break;
                     case "label":
                         symb = GetSymbolValue(token.Value);
@@ -595,10 +584,9 @@ namespace WinASM65
                 else
                 {
                     exprRes.Result = ExprEvaluator.Eval(expr);
-                    exprRes.Type = exprRes.Result <= 255 ? SymbolType.BYTE : SymbolType.WORD;
-                    if (addrMode == CPUDef.AddrModes.REL && exprRes.Type == SymbolType.WORD)
+                    if (addrMode == CPUDef.AddrModes.REL && exprRes.Result > 255)
                     {
-                        int delta = (ushort)exprRes.Result - (_currentAddr + 1);
+                        int delta = (int)exprRes.Result - (_currentAddr + 1);
                         byte res;
                         if (delta > 127 || delta < -128)
                         {
@@ -615,7 +603,6 @@ namespace WinASM65
                                 res = (byte)(delta - 1);
                             }
                             exprRes.Result = res;
-                            exprRes.Type = SymbolType.BYTE;
                         }
                     }
                 }
@@ -645,7 +632,7 @@ namespace WinASM65
                 }
                 else
                 {
-                    Symbol lSymb = new Symbol { Type = SymbolType.WORD, Value = _currentAddr };
+                    Symbol lSymb = new Symbol { Value = _currentAddr };
                     AddSymbol(label, lSymb);
                 }
             }
@@ -699,7 +686,7 @@ namespace WinASM65
                     if (exprRes.UndefinedSymbs.Count == 0)
                     {
                         // convert to zero page if symbol is a single byte
-                        if (CPUDef.IsAbsoluteAddr(addrMode) && exprRes.Type == SymbolType.BYTE)
+                        if (CPUDef.IsAbsoluteAddr(addrMode) && exprRes.Result <= 255)
                         {
                             addrMode += 3;
                             instInfo.NbrBytes = 2;
@@ -771,15 +758,14 @@ namespace WinASM65
             ExprResult res = ResolveExpr(value);
             if (res.UndefinedSymbs.Count == 0)
             {
-                MemArea ma = LexicalScope.LexicalScopeDataList[LexicalScope.Level].MemArea;
+                LexicalScopeData currentScopeData = LexicalScope.LexicalScopeDataList[LexicalScope.Level];
                 Dictionary<string, Symbol> symbTable = LexicalScope.LexicalScopeDataList[LexicalScope.Level].SymbolTable;
-                Symbol variable = new Symbol() { Type = ma.Type, Value = ma.Val };
+                Symbol variable = new Symbol() { Value = currentScopeData.MemArea };
                 if (!symbTable.ContainsKey(label))
                 {
-                    Listing.PrintLine(LineType.RES, (ushort)ma.Val);
+                    Listing.PrintLine(LineType.RES, currentScopeData.MemArea);
                     AddSymbol(label, variable);
-                    ma.Val += res.Result;
-                    ma.Type = ma.Val <= 255 ? SymbolType.BYTE : SymbolType.WORD;
+                    currentScopeData.MemArea += (ushort)res.Result;
                     MainConsole.WriteLine($"{label} {variable.Value.ToString("x")}");
                 }
                 else
@@ -891,7 +877,7 @@ namespace WinASM65
         private static void LabelHandler(Match lineReg)
         {
             string label = lineReg.Groups["label"].Value;
-            Symbol symb = new Symbol { Value = _currentAddr, Type = SymbolType.WORD };
+            Symbol symb = new Symbol { Value = _currentAddr };
             AddSymbol(label, symb);
             Listing.PrintLine(LineType.LABEL, _currentAddr);
         }
@@ -923,8 +909,7 @@ namespace WinASM65
                         ExprResult res = ResolveExpr(unresDep.Expr);
                         AddSymbol(dep, new Symbol()
                         {
-                            Value = res.Result,
-                            Type = res.Type
+                            Value = res.Result
                         });
                     }
                 }
@@ -948,7 +933,7 @@ namespace WinASM65
             byte[] bytes = null;
             if (expr.AddrMode == CPUDef.AddrModes.REL)
             {
-                int delta = (ushort)exprRes.Result - (expr.Position + _originAddr);
+                int delta = (int)exprRes.Result - (expr.Position + _originAddr);
                 byte res;
                 if (delta > 127 || delta < -128)
                 {
@@ -972,7 +957,7 @@ namespace WinASM65
                 switch (expr.Type)
                 {
                     case SymbolType.WORD:
-                        if (exprRes.Type == SymbolType.BYTE && !CPUDef.IsAbsoluteAddr(expr.AddrMode) && (expr.AddrMode != CPUDef.AddrModes.IND))
+                        if ((exprRes.Result <= 255) && !CPUDef.IsAbsoluteAddr(expr.AddrMode) && (expr.AddrMode != CPUDef.AddrModes.IND))
                         {
                             bytes = new byte[1] { (byte)exprRes.Result };
                         }
@@ -1020,7 +1005,6 @@ namespace WinASM65
             FileOutMemory = new List<byte>();
             _errorList = new List<Error>();
             _fileStack = new Stack<FileInfo>();
-            _memArea = new MemArea() { Val = 0, Type = SymbolType.BYTE };
             _macros = new Dictionary<string, MacroDef>();
             _startMacroDef = false;
             _repBlock = new RepBlock
@@ -1290,13 +1274,11 @@ namespace WinASM65
     {
         public dynamic Result { get; set; }
         public List<string> UndefinedSymbs { get; set; }
-        public SymbolType Type { get; set; }
     }
 
     public class Symbol
     {
         public dynamic Value { get; set; }
-        public SymbolType Type { get; set; }
     }
 
     public enum SymbolType
@@ -1353,11 +1335,6 @@ namespace WinASM65
         public int CurrentLineNumber { get; set; }
     }
 
-    public class MemArea
-    {
-        public SymbolType Type { get; set; }
-        public dynamic Val { get; set; }
-    }
     public struct MacroDef
     {
         public string[] ListParam { get; set; }
@@ -1375,7 +1352,7 @@ namespace WinASM65
     {
         public Dictionary<string, Symbol> SymbolTable { get; set; }
         public Dictionary<string, UnresolvedSymbol> UnsolvedSymbols { get; set; }
-        public MemArea MemArea { get; set; }
+        public ushort MemArea { get; set; }
     }
     public class LexicalScope
     {
@@ -1390,6 +1367,6 @@ namespace WinASM65
     {
         public bool IsInRepBlock { get; set; }
         public List<string> Lines { get; set; }
-        public dynamic Counter { get; internal set; }
+        public int Counter { get; internal set; }
     }
 }

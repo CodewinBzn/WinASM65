@@ -124,7 +124,7 @@ namespace WinASM65
         public struct InstructionInfo
         {
             public AddrModes AddrMode { get; set; }
-            public ushort NbrBytes { get; set; }
+            public byte NbrBytes { get; set; }
             public string Expr { get; set; }
 
         }

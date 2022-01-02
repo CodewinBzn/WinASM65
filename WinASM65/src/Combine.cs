@@ -30,7 +30,7 @@ namespace WinASM65
                     writer.Write(bytesOut.ToArray());
                     if (fileConf.Size != null)
                     {
-                        ushort size = ushort.Parse(fileConf.Size.Trim().Replace("$", string.Empty), NumberStyles.HexNumber);
+                        int size = int.Parse(fileConf.Size.Trim().Replace("$", string.Empty), NumberStyles.HexNumber);
                         if (bytesOut.Count < size)
                         {
                             int delta = size - bytesOut.Count;
