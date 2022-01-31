@@ -625,10 +625,11 @@ namespace WinASM65
             opcode = lineReg.Groups["opcode"].Value.ToUpper();
             if (!string.IsNullOrWhiteSpace(label))
             {
-                if (CPUDef.OpcTable.ContainsKey(label.ToUpper()))
+                string tmpLabel = label.ToUpper();
+                if (CPUDef.OpcTable.ContainsKey(tmpLabel))
                 {
                     operands = lineReg.Groups["opcode"].Value;
-                    opcode = label;
+                    opcode = tmpLabel;
                 }
                 else
                 {
