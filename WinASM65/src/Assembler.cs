@@ -804,7 +804,7 @@ namespace WinASM65
                         string paramName = macroDef.ListParam[i];
                         finalLine = finalLine.Replace(paramName, paramValue);
                     }
-                    Listing.PrintLine(line);
+                    Listing.PrintLine(finalLine);
                     ParseLine(finalLine, finalLine);
                 }
             }
@@ -1060,7 +1060,7 @@ namespace WinASM65
         {
             if (LexicalScope.GlobalScope.SymbolTable.Count > 0)
             {
-                System.IO.File.WriteAllText(ObjectFileName + "_Symbol.txt", JsonConvert.SerializeObject(LexicalScope.GlobalScope.SymbolTable));
+                System.IO.File.WriteAllText(ObjectFileName.Replace(".o",".symb"), JsonConvert.SerializeObject(LexicalScope.GlobalScope.SymbolTable));
             }
         }
 

@@ -72,7 +72,7 @@ namespace WinASM65
                     Assembler.FilePtr = new FileInfo() { SourceFile = unsolvedFile, CurrentLineNumber = -1 };                    
                     foreach (string dependence in seg.Dependencies)
                     {
-                        string symbolTableFile = dependence.Split('.')[0] + ".o_Symbol.txt";
+                        string symbolTableFile = dependence.Split('.')[0] + ".symb";
                         using (StreamReader file = File.OpenText(symbolTableFile))
                         {
                             globalScope.SymbolTable = (Dictionary<string, Symbol>)serializer.Deserialize(file, typeof(Dictionary<string, Symbol>));
