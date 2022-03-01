@@ -75,7 +75,7 @@ namespace WinASM65
                         string symbolTableFile = dependence.Split('.')[0] + ".symb";
                         using (StreamReader file = File.OpenText(symbolTableFile))
                         {
-                            globalScope.SymbolTable = (Dictionary<string, Symbol>)serializer.Deserialize(file, typeof(Dictionary<string, Symbol>));
+                            globalScope.SymbolTable = (Dictionary<string, dynamic>)serializer.Deserialize(file, typeof(Dictionary<string, dynamic>));
                         }
                         Assembler.ResolveSymbols();
                         if (Assembler.UnsolvedExprList.Count == 0)

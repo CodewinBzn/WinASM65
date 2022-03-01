@@ -58,7 +58,7 @@ namespace WinASM65
         {
             LexicalScope.LexicalScopeDataList.Add(new LexicalScopeData
             {
-                SymbolTable = new Dictionary<string, Symbol>(),
+                SymbolTable = new Dictionary<string, dynamic>(),
                 UnsolvedSymbols = new Dictionary<string, UnresolvedSymbol>(),
                 MemArea = 0
             });
@@ -490,11 +490,7 @@ namespace WinASM65
             ExprResult res = ResolveExpr(value);
             if (res.UndefinedSymbs.Count == 0)
             {
-                Symbol symb = new Symbol()
-                {
-                    Value = res.Result
-                };
-                AddSymbol(label, symb, true);
+                AddSymbol(label, res.Result, true);
                 Listing.PrintLine(LineType.CONST, (int)res.Result);
             }
             else
@@ -538,7 +534,7 @@ namespace WinASM65
         {
             List<Token> tokens = Tokenizer.Tokenize(exprIn);
             string expr = string.Empty;
-            Symbol symb;
+            dynamic symb;
             ExprResult exprRes = new ExprResult
             {
                 UndefinedSymbs = new List<string>()
@@ -563,7 +559,7 @@ namespace WinASM65
                         symb = GetSymbolValue(token.Value);
                         if (symb != null)
                         {
-                            expr = $"{expr} {symb.Value}";
+                            expr = $"{expr} {symb}";
                         }
                         else
                         {
@@ -633,8 +629,7 @@ namespace WinASM65
                 }
                 else
                 {
-                    Symbol lSymb = new Symbol { Value = _currentAddr };
-                    AddSymbol(label, lSymb);
+                    AddSymbol(label, _currentAddr);
                 }
             }
 
@@ -760,14 +755,14 @@ namespace WinASM65
             if (res.UndefinedSymbs.Count == 0)
             {
                 LexicalScopeData currentScopeData = LexicalScope.LexicalScopeDataList[LexicalScope.Level];
-                Dictionary<string, Symbol> symbTable = LexicalScope.LexicalScopeDataList[LexicalScope.Level].SymbolTable;
-                Symbol variable = new Symbol() { Value = currentScopeData.MemArea };
+                Dictionary<string, dynamic> symbTable = LexicalScope.LexicalScopeDataList[LexicalScope.Level].SymbolTable;
+                dynamic variable = currentScopeData.MemArea;
                 if (!symbTable.ContainsKey(label))
                 {
                     Listing.PrintLine(LineType.RES, currentScopeData.MemArea);
                     AddSymbol(label, variable);
                     currentScopeData.MemArea += (ushort)res.Result;
-                    MainConsole.WriteLine($"{label} {variable.Value.ToString("x")}");
+                    MainConsole.WriteLine($"{label} {variable.ToString("x")}");
                 }
                 else
                 {
@@ -855,7 +850,7 @@ namespace WinASM65
             }
         }
 
-        private static Symbol GetSymbolValue(string symbol)
+        private static dynamic GetSymbolValue(string symbol)
         {
             byte level = LexicalScope.Level;
             while (true)
@@ -878,8 +873,7 @@ namespace WinASM65
         private static void LabelHandler(Match lineReg)
         {
             string label = lineReg.Groups["label"].Value;
-            Symbol symb = new Symbol { Value = _currentAddr };
-            AddSymbol(label, symb);
+            AddSymbol(label, _currentAddr);
             Listing.PrintLine(LineType.LABEL, _currentAddr);
         }
 
@@ -908,10 +902,7 @@ namespace WinASM65
                     if (unresDep.NbrUndefinedSymb <= 0)
                     {
                         ExprResult res = ResolveExpr(unresDep.Expr);
-                        AddSymbol(dep, new Symbol()
-                        {
-                            Value = res.Result
-                        });
+                        AddSymbol(dep, res.Result);
                     }
                 }
             }
@@ -1060,7 +1051,7 @@ namespace WinASM65
         {
             if (LexicalScope.GlobalScope.SymbolTable.Count > 0)
             {
-                System.IO.File.WriteAllText(ObjectFileName.Replace(".o",".symb"), JsonConvert.SerializeObject(LexicalScope.GlobalScope.SymbolTable));
+                System.IO.File.WriteAllText(ObjectFileName.Replace(".o", ".symb"), JsonConvert.SerializeObject(LexicalScope.GlobalScope.SymbolTable));
             }
         }
 
@@ -1231,9 +1222,9 @@ namespace WinASM65
             return (byte)(word >> 8);
         }
 
-        private static void AddSymbol(string label, Symbol symb, bool replaceIfExist = false)
+        private static void AddSymbol(string label, dynamic symb, bool replaceIfExist = false)
         {
-            Dictionary<string, Symbol> symbTable = LexicalScope.LexicalScopeDataList[LexicalScope.Level].SymbolTable;
+            Dictionary<string, dynamic> symbTable = LexicalScope.LexicalScopeDataList[LexicalScope.Level].SymbolTable;
             if (symbTable.ContainsKey(label))
             {
                 if (replaceIfExist)
@@ -1275,11 +1266,6 @@ namespace WinASM65
     {
         public dynamic Result { get; set; }
         public List<string> UndefinedSymbs { get; set; }
-    }
-
-    public class Symbol
-    {
-        public dynamic Value { get; set; }
     }
 
     public enum SymbolType
@@ -1351,7 +1337,7 @@ namespace WinASM65
 
     public class LexicalScopeData
     {
-        public Dictionary<string, Symbol> SymbolTable { get; set; }
+        public Dictionary<string, dynamic> SymbolTable { get; set; }
         public Dictionary<string, UnresolvedSymbol> UnsolvedSymbols { get; set; }
         public ushort MemArea { get; set; }
     }
