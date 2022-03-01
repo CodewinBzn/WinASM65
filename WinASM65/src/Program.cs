@@ -2,6 +2,7 @@
 // 2021
 
 using System;
+using System.Collections.Generic;
 
 namespace WinASM65
 {
@@ -25,23 +26,24 @@ namespace WinASM65
         }
         static void Main(string[] args)
         {
-            CommandType command = CommandType.SingleSegment;
+            List<CommandType> commands = new List<CommandType>();
             for (int i = 0; i < args.Length; i++)
             {
                 switch (args[i])
                 {
                     case "-f":
+                        commands.Add(CommandType.SingleSegment);
                         Assembler.SourceFile = args[++i];
                         break;
                     case "-o":
                         Assembler.ObjectFileName = args[++i];
                         break;
                     case "-m":
-                        command = CommandType.MultiSegment;
+                        commands.Add(CommandType.MultiSegment);
                         MultiSegment.ConfigFile = args[++i];
                         break;
                     case "-c":
-                        command = CommandType.Combine;
+                        commands.Add(CommandType.Combine);
                         Combine.ConfigFile = args[++i];
                         break;
                     case "-l":
@@ -50,26 +52,29 @@ namespace WinASM65
                     case "-help":
                     case "-h":
                         DisplayHelp();
-                        return;                
+                        return;
                 }
             }
-            switch (command)
+            foreach (CommandType command in commands)
             {
-                case CommandType.SingleSegment:
-                    Assembler.Assemble();
-                    Listing.GenerateListing();
-                    break;
-                case CommandType.MultiSegment:
-                    MultiSegment.Assemble();
-                    break;
-                case CommandType.Combine:
-                    Combine.Process();
-                    break;
+                switch (command)
+                {
+                    case CommandType.SingleSegment:
+                        Assembler.Assemble();
+                        Listing.GenerateListing();
+                        break;
+                    case CommandType.MultiSegment:
+                        MultiSegment.Assemble();
+                        break;
+                    case CommandType.Combine:
+                        Combine.Process();
+                        break;
+                }
             }
         }
 
         private static void DisplayHelp()
-        {           
+        {
             Console.WriteLine("\t Usage \t");
             Console.WriteLine("\t WinASM65 [-option] filePath? \t");
             Console.WriteLine("\t Options \t");
@@ -116,7 +121,7 @@ namespace WinASM65
             Console.WriteLine("\t\t\t\t Size:\"$hex\"\t");
             Console.WriteLine("\t\t\t },\t");
             Console.WriteLine("\t\t\t {\t");
-            Console.WriteLine("\t\t\t\t FileName: \"path_to_seg3_object_file\"\t");          
+            Console.WriteLine("\t\t\t\t FileName: \"path_to_seg3_object_file\"\t");
             Console.WriteLine("\t\t\t },\t");
             Console.WriteLine("\t\t\t ......");
             Console.WriteLine("\t\t ]\t");
