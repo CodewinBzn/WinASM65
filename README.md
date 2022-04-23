@@ -28,16 +28,16 @@ by CodewinBzn.
 ```
 [
 	{
-		FileName: "path_to_main_file_seg1",
-		Dependencies: ["path_to_main_file_seg2"]
+		"FileName": "path_to_main_file_seg1",
+		"Dependencies": ["path_to_main_file_seg2"]
 	},
 	{
-		FileName: "path_to_main_file_seg2",
-		Dependencies: ["path_to_main_file_seg1"]			
+		"FileName": "path_to_main_file_seg2",
+		"Dependencies": ["path_to_main_file_seg1"]			
 	},
 	{
-		FileName: "path_to_main_file_seg3",
-		Dependencies: []			
+		"FileName": "path_to_main_file_seg3",
+		"Dependencies": []			
 	},
 	......
 ]
@@ -54,19 +54,19 @@ then it must mention them in this array as ["path_to_main_file_seg1", .....].
 ```
 {
 	
-	ObjectFile: "final_object_file",
-	Files: 
+	"ObjectFile": "final_object_file",
+	"Files": 
 	[
 		{
-			FileName: "path_to_seg1_object_file",
-			Size: "$hex"
+			"FileName": "path_to_seg1_object_file",
+			"Size": "$hex"
 		},
 		{
-			FileName: "path_to_seg2_object_file",
-			Size: "$hex"
+			"FileName": "path_to_seg2_object_file",
+			"Size": "$hex"
 		},
 		{
-			FileName: "path_to_seg3_object_file"			
+			"FileName": "path_to_seg3_object_file"			
 		},
 		....
 	]

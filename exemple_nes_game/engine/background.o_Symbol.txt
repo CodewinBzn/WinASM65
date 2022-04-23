@@ -1,1 +1,0 @@
-{"RESET":{"Value":49152,"Type":1},"clrmem":{"Value":49177,"Type":1},"LoadPalettes":{"Value":49212,"Type":1},"LoadPalettesLoop":{"Value":49227,"Type":1},"Forever":{"Value":49264,"Type":1},"NMI":{"Value":49267,"Type":1},"palette":{"Value":49278,"Type":1},"const_cl":{"Value":15,"Type":0}}
