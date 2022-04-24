@@ -1,0 +1,22 @@
+{
+	
+	"ObjectFile": "bomber.nes",
+	"Files": 
+	[
+		{
+			"FileName": "NES_Header.bin",
+			"Size": "$10"
+		},
+		{
+			"FileName": "BMAN_BANK1.o",
+			"Size": "$3000"
+		},
+		{
+			"FileName": "BMAN_BANK2.o",
+			"Size": "$1000"
+		},
+		{
+			"FileName": "bomber.chr"
+		}
+	]
+}
