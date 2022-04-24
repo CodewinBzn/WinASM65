@@ -1,0 +1,10 @@
+[
+	{
+		"FileName": "BMAN_BANK1.NAS",
+		"Dependencies": []
+	},
+	{
+		"FileName": "BMAN_BANK2.NAS",
+		"Dependencies": ["BMAN_BANK1.NAS"]
+	}
+]
