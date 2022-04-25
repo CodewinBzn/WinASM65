@@ -682,8 +682,8 @@ namespace WinASM65
                     if (exprRes.UndefinedSymbs.Count == 0)
                     {
                         // convert to zero page if symbol is a single byte
-                        if (CPUDef.IsAbsoluteAddr(addrMode) && exprRes.Result <= 255)
-                        {
+                        if (CPUDef.IsAbsoluteAddr(addrMode) && exprRes.Result <= 255 && addrModesValues[(int)addrMode+3] != 0xff)
+                        {                            
                             addrMode += 3;
                             instInfo.NbrBytes = 2;
                         }
