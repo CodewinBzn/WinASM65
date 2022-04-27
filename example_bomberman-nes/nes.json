@@ -13,7 +13,10 @@
 		},
 		{
 			"FileName": "BMAN_BANK2.o",
-			"Size": "$1000"
+			"Size": "$0FFA"
+		},
+		{
+			"FileName": "vectors.o"			
 		},
 		{
 			"FileName": "bomber.chr"
