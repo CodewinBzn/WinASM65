@@ -6,5 +6,9 @@
 	{
 		"FileName": "BMAN_BANK2.NAS",
 		"Dependencies": ["BMAN_BANK1.NAS"]
+	},
+	{
+		"FileName": "vectors.NAS",
+		"Dependencies": ["BMAN_BANK1.NAS","BMAN_BANK2.NAS"]
 	}
 ]

@@ -4512,7 +4512,7 @@ unk_DC53:
         .BYTE   0
         .BYTE $20
         .BYTE $E4
-        .BYTE "YOU:HAVE:SUCCEED"
+        .BYTE "YOU:HAVE:SUCCEED"		
         .BYTE "ED:IN"
         .BYTE   0
         .BYTE $21

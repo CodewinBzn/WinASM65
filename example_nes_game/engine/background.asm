@@ -67,6 +67,12 @@ LoadPalettesLoop:
   LDA #%00010000   ; enable sprites
   STA $2001
 
+  LDA #0
+  beq Forever
+  lda #0
+  lda #0
+
+
 Forever:
   JMP Forever     ;jump back to Forever, infinite loop
   

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 
 namespace WinASM65
 {
@@ -75,6 +76,7 @@ namespace WinASM65
 
         private static void DisplayHelp()
         {
+            Console.WriteLine($"\t Version   {(Assembly.GetExecutingAssembly()).GetName().Version} \t");
             Console.WriteLine("\t Usage \t");
             Console.WriteLine("\t WinASM65 [-option] filePath? \t");
             Console.WriteLine("\t Options \t");
@@ -90,16 +92,16 @@ namespace WinASM65
             Console.WriteLine("\t JSON File format \t");
             Console.WriteLine("\t [\t");
             Console.WriteLine("\t\t {\t");
-            Console.WriteLine("\t\t\t FileName: \"path_to_main_file_seg1\",\t");
-            Console.WriteLine("\t\t\t Dependencies:[\"path_to_main_file_seg2\"]\t");
+            Console.WriteLine("\t\t\t \"FileName\": \"path_to_main_file_seg1\",\t");
+            Console.WriteLine("\t\t\t \"Dependencies\":[\"path_to_main_file_seg2\"]\t");
             Console.WriteLine("\t\t },\t");
             Console.WriteLine("\t\t {\t");
-            Console.WriteLine("\t\t\t FileName: \"path_to_main_file_seg2\",\t");
-            Console.WriteLine("\t\t\t Dependencies:[\"path_to_main_file_seg1\"]\t");
+            Console.WriteLine("\t\t\t \"FileName\": \"path_to_main_file_seg2\",\t");
+            Console.WriteLine("\t\t\t \"Dependencies\":[\"path_to_main_file_seg1\"]\t");
             Console.WriteLine("\t\t },\t");
             Console.WriteLine("\t\t {\t");
-            Console.WriteLine("\t\t\t FileName: \"path_to_main_file_seg3\",\t");
-            Console.WriteLine("\t\t\t Dependencies:[]\t");
+            Console.WriteLine("\t\t\t \"FileName\": \"path_to_main_file_seg3\",\t");
+            Console.WriteLine("\t\t\t \"Dependencies\":[]\t");
             Console.WriteLine("\t\t },\t");
             Console.WriteLine("\t\t ......");
             Console.WriteLine("\t ]\t");
@@ -109,19 +111,19 @@ namespace WinASM65
             Console.WriteLine("\t Combine assembled segments / Binary files \t");
             Console.WriteLine("\t JSON File format \t");
             Console.WriteLine("\t {\t");
-            Console.WriteLine("\t\t ObjectFile: \"final_object_file\",\t");
-            Console.WriteLine("\t\t Files:\t");
+            Console.WriteLine("\t\t \"ObjectFile\": \"final_object_file\",\t");
+            Console.WriteLine("\t\t \"Files\":\t");
             Console.WriteLine("\t\t [\t");
             Console.WriteLine("\t\t\t {\t");
-            Console.WriteLine("\t\t\t\t FileName: \"path_to_seg1_object_file\",\t");
-            Console.WriteLine("\t\t\t\t Size:\"$hex\"\t");
+            Console.WriteLine("\t\t\t\t \"FileName\": \"path_to_seg1_object_file\",\t");
+            Console.WriteLine("\t\t\t\t \"Size\":\"$hex\"\t");
             Console.WriteLine("\t\t\t },\t");
             Console.WriteLine("\t\t\t {\t");
-            Console.WriteLine("\t\t\t\t FileName: \"path_to_seg2_object_file\",\t");
-            Console.WriteLine("\t\t\t\t Size:\"$hex\"\t");
+            Console.WriteLine("\t\t\t\t \"FileName\": \"path_to_seg2_object_file\",\t");
+            Console.WriteLine("\t\t\t\t \"Size\":\"$hex\"\t");
             Console.WriteLine("\t\t\t },\t");
             Console.WriteLine("\t\t\t {\t");
-            Console.WriteLine("\t\t\t\t FileName: \"path_to_seg3_object_file\"\t");
+            Console.WriteLine("\t\t\t\t \"FileName\": \"path_to_seg3_object_file\"\t");
             Console.WriteLine("\t\t\t },\t");
             Console.WriteLine("\t\t\t ......");
             Console.WriteLine("\t\t ]\t");
