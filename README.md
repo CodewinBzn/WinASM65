@@ -29,14 +29,17 @@ by CodewinBzn.
 [
 	{
 		"FileName": "path_to_main_file_seg1",
+		"OutputFile": "path_to_seg1_output_file",
 		"Dependencies": ["path_to_main_file_seg2"]
 	},
 	{
-		"FileName": "path_to_main_file_seg2",
+		"FileName": "path_to_main_file_seg2",*
+		"OutputFile": "path_to_seg2_output_file",
 		"Dependencies": ["path_to_main_file_seg1"]			
 	},
 	{
 		"FileName": "path_to_main_file_seg3",
+		"OutputFile": "path_to_seg3_output_file",
 		"Dependencies": []			
 	},
 	......
@@ -48,6 +51,8 @@ by CodewinBzn.
 If a segment refers to labels, variables ... or to routines declared in other segments 
 then it must mention them in this array as ["path_to_main_file_seg1", .....].
 
+### OutputFile
+The OutputFile is optional.
 
 ## Combine assembled segments / Binary files
 ### JSON File format:
@@ -58,15 +63,15 @@ then it must mention them in this array as ["path_to_main_file_seg1", .....].
 	"Files": 
 	[
 		{
-			"FileName": "path_to_seg1_object_file",
+			"FileName": "path_to_seg1_output_file",
 			"Size": "$hex"
 		},
 		{
-			"FileName": "path_to_seg2_object_file",
+			"FileName": "path_to_seg2_output_file",
 			"Size": "$hex"
 		},
 		{
-			"FileName": "path_to_seg3_object_file"			
+			"FileName": "path_to_seg3_output_file"			
 		},
 		....
 	]
