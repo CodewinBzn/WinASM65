@@ -53,6 +53,7 @@ namespace WinASM65
         private static ConditionalAsm _cAsm;
         public static LexicalScope LexicalScope { get; set; }
         private static RepBlock _repBlock;
+        private static bool _stopAssembling;
 
         private static void AddNewLexicalScopeData()
         {
@@ -135,6 +136,7 @@ namespace WinASM65
             { ".endif", EndIfHandler },
             { ".rep", RepHandler },
             { ".endrep", EndRepHandler },
+            { ".end", EndHandler },
         };
 
         private static void IfHandler(string value)
@@ -311,6 +313,12 @@ namespace WinASM65
                 }
             }
         }
+
+        private static void EndHandler(string value)
+        {
+            _stopAssembling = true;
+        }
+
         private static void DirectiveHandler(Match lineReg)
         {
             string directive = lineReg.Groups["directive"].Value.ToLower();
@@ -682,8 +690,8 @@ namespace WinASM65
                     if (exprRes.UndefinedSymbs.Count == 0)
                     {
                         // convert to zero page if symbol is a single byte
-                        if (CPUDef.IsAbsoluteAddr(addrMode) && exprRes.Result <= 255 && addrModesValues[(int)addrMode+3] != 0xff)
-                        {                            
+                        if (CPUDef.IsAbsoluteAddr(addrMode) && exprRes.Result <= 255 && addrModesValues[(int)addrMode + 3] != 0xff)
+                        {
                             addrMode += 3;
                             instInfo.NbrBytes = 2;
                         }
@@ -992,6 +1000,7 @@ namespace WinASM65
         }
         public static void Assemble()
         {
+            _stopAssembling = false;
             UnsolvedExprList = new Dictionary<ushort, UnresolvedExpr>();
             InitLexicalScope();
             FileOutMemory = new List<byte>();
@@ -1102,7 +1111,7 @@ namespace WinASM65
                 _filePtr = _fileStack.Pop();
                 string line;
                 _filePtr.CurrentLineNumber = 0;
-                while ((line = _filePtr.FileStreamReader.ReadLine()) != null)
+                while (!_stopAssembling && (line = _filePtr.FileStreamReader.ReadLine()) != null)
                 {
                     string currentLine = line;
                     Listing.PrintLine(currentLine);

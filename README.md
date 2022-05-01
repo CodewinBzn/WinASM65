@@ -244,6 +244,9 @@ lastbyte:
 .endrep
 ```
 
+#### .END/.end
+-  Forced end of assembly. Assembly stops at this point, even if the command is read from an include file.
+
 ### Expressions
 #### Supported operators (listed by precedence)
 ```
