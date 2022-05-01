@@ -389,7 +389,6 @@ namespace WinASM65
             {
                 AddError(Errors.FILE_NOT_EXISTS);
             }
-
         }
 
         private static void DataByteHandler(string bytesIn)
@@ -1060,7 +1059,7 @@ namespace WinASM65
         {
             if (LexicalScope.GlobalScope.SymbolTable.Count > 0)
             {
-                System.IO.File.WriteAllText(ObjectFileName.Replace(".o", ".symb"), JsonConvert.SerializeObject(LexicalScope.GlobalScope.SymbolTable));
+                System.IO.File.WriteAllText($"{SourceFile.Split('.')[0]}.symb", JsonConvert.SerializeObject(LexicalScope.GlobalScope.SymbolTable));
             }
         }
 
@@ -1069,11 +1068,11 @@ namespace WinASM65
             Dictionary<string, UnresolvedSymbol> unsolvedSymbols = LexicalScope.GlobalScope.UnsolvedSymbols;
             if (unsolvedSymbols.Count > 0)
             {
-                System.IO.File.WriteAllText(ObjectFileName + "_Unsolved.txt", JsonConvert.SerializeObject(unsolvedSymbols));
+                System.IO.File.WriteAllText($"{SourceFile.Split('.')[0]}.Unsolved", JsonConvert.SerializeObject(unsolvedSymbols));
             }
             if (UnsolvedExprList.Count > 0)
             {
-                System.IO.File.WriteAllText(ObjectFileName + "_UnsolvedExpr.txt", JsonConvert.SerializeObject(UnsolvedExprList));
+                System.IO.File.WriteAllText($"{SourceFile.Split('.')[0]}.UnsolvedExpr", JsonConvert.SerializeObject(UnsolvedExprList));
             }
         }
 
@@ -1196,6 +1195,11 @@ namespace WinASM65
 
         private static void OpenFiles()
         {
+            string dir = Path.GetDirectoryName(ObjectFileName);
+            if(!string.IsNullOrWhiteSpace(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }            
             _stream = new FileStream(ObjectFileName, FileMode.Create);
             _bw = new BinaryWriter(_stream);
         }

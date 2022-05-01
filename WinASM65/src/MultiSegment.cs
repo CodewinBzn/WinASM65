@@ -26,7 +26,7 @@ namespace WinASM65
                 foreach (Segment seg in _segments)
                 {
                     Assembler.SourceFile = seg.FileName;
-                    Assembler.ObjectFileName = seg.FileName.Split('.')[0] + ".o";
+                    Assembler.ObjectFileName = !string.IsNullOrWhiteSpace(seg.OutputFile) ? seg.OutputFile : seg.FileName.Split('.')[0] + ".o";
                     Assembler.Assemble();
                 }
                 // resolve dependencies
@@ -36,12 +36,12 @@ namespace WinASM65
                     {
                         Listing.ListingFile = seg.FileName;
                     }
-                    string objectFile = seg.FileName.Split('.')[0] + ".o";
+                    string objectFile = !string.IsNullOrWhiteSpace(seg.OutputFile) ? seg.OutputFile : seg.FileName.Split('.')[0] + ".o";
                     Assembler.FileOutMemory = new List<byte>(File.ReadAllBytes(objectFile));
 
                     Assembler.InitLexicalScope();
                     LexicalScopeData globalScope = Assembler.LexicalScope.LexicalScopeDataList[0];
-                    string unsolvedFile = seg.FileName.Split('.')[0] + ".o_Unsolved.txt";
+                    string unsolvedFile = $"{seg.FileName.Split('.')[0]}.Unsolved";
                     if (File.Exists(unsolvedFile))
                     {
                         using (StreamReader file = File.OpenText(unsolvedFile))
@@ -55,7 +55,7 @@ namespace WinASM65
                         Listing.GenerateListing();
                         continue;
                     }
-                    string unsolvedExpr = seg.FileName.Split('.')[0] + ".o_UnsolvedExpr.txt";
+                    string unsolvedExpr = $"{seg.FileName.Split('.')[0]}.UnsolvedExpr";
                     if (File.Exists(unsolvedExpr))
                     {
                         using (StreamReader file = File.OpenText(unsolvedExpr))
@@ -72,7 +72,7 @@ namespace WinASM65
                     Assembler.FilePtr = new FileInfo() { SourceFile = unsolvedFile, CurrentLineNumber = -1 };                    
                     foreach (string dependence in seg.Dependencies)
                     {
-                        string symbolTableFile = dependence.Split('.')[0] + ".symb";
+                        string symbolTableFile = $"{dependence.Split('.')[0]}.symb";
                         using (StreamReader file = File.OpenText(symbolTableFile))
                         {
                             globalScope.SymbolTable = (Dictionary<string, dynamic>)serializer.Deserialize(file, typeof(Dictionary<string, dynamic>));
@@ -100,6 +100,7 @@ namespace WinASM65
     class Segment
     {
         public string FileName { get; set; }
+        public string OutputFile { get; set; }
         public string[] Dependencies { get; set; }
     }
 }
