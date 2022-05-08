@@ -1,8 +1,10 @@
 ﻿// Abdelghani BOUZIANE    
 // 2021
 
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 
 namespace WinASM65
@@ -19,12 +21,20 @@ namespace WinASM65
 
     class Program
     {
+        private static string _configFilePath;
         enum CommandType
         {
             SingleSegment = 0,
             MultiSegment = 1,
             Combine = 2
         }
+
+        struct ConfigFile
+        {
+            public List<Segment> Input { get; set; }
+            public CombineConf Output { get; set; }
+        }
+
         static void Main(string[] args)
         {
             List<CommandType> commands = new List<CommandType>();
@@ -39,13 +49,24 @@ namespace WinASM65
                     case "-o":
                         Assembler.ObjectFileName = args[++i];
                         break;
-                    case "-m":
-                        commands.Add(CommandType.MultiSegment);
-                        MultiSegment.ConfigFile = args[++i];
-                        break;
-                    case "-c":
-                        commands.Add(CommandType.Combine);
-                        Combine.ConfigFile = args[++i];
+                    case "-c":                        
+                        _configFilePath = args[++i];
+                        JsonSerializer serializer;
+                        using (StreamReader file = File.OpenText(_configFilePath))
+                        {
+                            serializer = new JsonSerializer();
+                            ConfigFile _configFile = (ConfigFile)serializer.Deserialize(file, typeof(ConfigFile));
+                            if(_configFile.Input != null)
+                            {
+                                commands.Add(CommandType.MultiSegment);
+                                MultiSegment.SegmentList = _configFile.Input;
+                            }
+                            if(_configFile.Output != null)
+                            {
+                                commands.Add(CommandType.Combine);
+                                Combine.ConfigFile = _configFile.Output;
+                            }
+                        }
                         break;
                     case "-l":
                         Listing.EnableListing = true;
