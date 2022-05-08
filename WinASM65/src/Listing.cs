@@ -64,7 +64,6 @@ namespace WinASM65
                 return;
             }
             _listingFilePtr = new StreamWriter($"{_listingFile}.tmp", false);
-
         }
         public static void EndListing()
         {

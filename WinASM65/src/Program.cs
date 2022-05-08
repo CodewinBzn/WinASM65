@@ -1,8 +1,10 @@
 ﻿// Abdelghani BOUZIANE    
 // 2021
 
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 
 namespace WinASM65
@@ -19,12 +21,20 @@ namespace WinASM65
 
     class Program
     {
+        private static string _configFilePath;
         enum CommandType
         {
             SingleSegment = 0,
             MultiSegment = 1,
             Combine = 2
         }
+
+        struct ConfigFile
+        {
+            public List<Segment> Input { get; set; }
+            public CombineConf Output { get; set; }
+        }
+
         static void Main(string[] args)
         {
             List<CommandType> commands = new List<CommandType>();
@@ -39,13 +49,24 @@ namespace WinASM65
                     case "-o":
                         Assembler.ObjectFileName = args[++i];
                         break;
-                    case "-m":
-                        commands.Add(CommandType.MultiSegment);
-                        MultiSegment.ConfigFile = args[++i];
-                        break;
-                    case "-c":
-                        commands.Add(CommandType.Combine);
-                        Combine.ConfigFile = args[++i];
+                    case "-c":                        
+                        _configFilePath = args[++i];
+                        JsonSerializer serializer;
+                        using (StreamReader file = File.OpenText(_configFilePath))
+                        {
+                            serializer = new JsonSerializer();
+                            ConfigFile _configFile = (ConfigFile)serializer.Deserialize(file, typeof(ConfigFile));
+                            if(_configFile.Input != null)
+                            {
+                                commands.Add(CommandType.MultiSegment);
+                                MultiSegment.SegmentList = _configFile.Input;
+                            }
+                            if(_configFile.Output != null)
+                            {
+                                commands.Add(CommandType.Combine);
+                                Combine.ConfigFile = _configFile.Output;
+                            }
+                        }
                         break;
                     case "-l":
                         Listing.EnableListing = true;
@@ -90,47 +111,51 @@ namespace WinASM65
 
             Console.WriteLine("\t Assemble segments \t");
             Console.WriteLine("\t JSON File format \t");
-            Console.WriteLine("\t [\t");
-            Console.WriteLine("\t\t {\t");
-            Console.WriteLine("\t\t\t \"FileName\": \"path_to_main_file_seg1\",\t");
-            Console.WriteLine("\t\t\t \"OutputFile\": \"path_to_seg1_output_file\",\t");
-            Console.WriteLine("\t\t\t \"Dependencies\":[\"path_to_main_file_seg2\"]\t");
-            Console.WriteLine("\t\t },\t");
-            Console.WriteLine("\t\t {\t");
-            Console.WriteLine("\t\t\t \"FileName\": \"path_to_main_file_seg2\",\t");
-            Console.WriteLine("\t\t\t \"OutputFile\": \"path_to_seg2_output_file\",\t");
-            Console.WriteLine("\t\t\t \"Dependencies\":[\"path_to_main_file_seg1\"]\t");
-            Console.WriteLine("\t\t },\t");
-            Console.WriteLine("\t\t {\t");
-            Console.WriteLine("\t\t\t \"FileName\": \"path_to_main_file_seg3\",\t");
-            Console.WriteLine("\t\t\t \"OutputFile\": \"path_to_seg3_output_file\",\t");
-            Console.WriteLine("\t\t\t \"Dependencies\":[]\t");
-            Console.WriteLine("\t\t },\t");
-            Console.WriteLine("\t\t ......");
-            Console.WriteLine("\t ]\t");
+            Console.WriteLine("\t {\t");
+            Console.WriteLine("\t\t \"Input\": [");          
+            Console.WriteLine("\t\t\t {\t");
+            Console.WriteLine("\t\t\t\t \"FileName\": \"path_to_main_file_seg1\",\t");
+            Console.WriteLine("\t\t\t\t \"OutputFile\": \"path_to_seg1_output_file\",\t");
+            Console.WriteLine("\t\t\t\t \"Dependencies\":[\"path_to_main_file_seg2\"]\t");
+            Console.WriteLine("\t\t\t },\t");
+            Console.WriteLine("\t\t\t {\t");
+            Console.WriteLine("\t\t\t\t \"FileName\": \"path_to_main_file_seg2\",\t");
+            Console.WriteLine("\t\t\t\t \"OutputFile\": \"path_to_seg2_output_file\",\t");
+            Console.WriteLine("\t\t\t\t \"Dependencies\":[\"path_to_main_file_seg1\"]\t");
+            Console.WriteLine("\t\t\t },\t");
+            Console.WriteLine("\t\t\t {\t");
+            Console.WriteLine("\t\t\t\t \"FileName\": \"path_to_main_file_seg3\",\t");
+            Console.WriteLine("\t\t\t\t \"OutputFile\": \"path_to_seg3_output_file\",\t");
+            Console.WriteLine("\t\t\t\t \"Dependencies\":[]\t");
+            Console.WriteLine("\t\t\t },\t");
+            Console.WriteLine("\t\t\t ......");
+            Console.WriteLine("\t\t ]\t");
+            Console.WriteLine("\t }\t");
             Console.WriteLine("\t Dependencies \t");
             Console.WriteLine("\t\t - If a segment refers to labels, variables ... or to routines declared in other segments then it must mention them in this array as [\"path_to_main_file_seg1\", .....]. \t");
             Console.WriteLine("\t OutputFile \t");
             Console.WriteLine("\t\t - The OutputFile is optional. \t");
             Console.WriteLine("\t Combine assembled segments / Binary files \t");
             Console.WriteLine("\t JSON File format \t");
-            Console.WriteLine("\t {\t");
-            Console.WriteLine("\t\t \"ObjectFile\": \"final_object_file\",\t");
-            Console.WriteLine("\t\t \"Files\":\t");
-            Console.WriteLine("\t\t [\t");
-            Console.WriteLine("\t\t\t {\t");
-            Console.WriteLine("\t\t\t\t \"FileName\": \"path_to_seg1_output_file\",\t");
-            Console.WriteLine("\t\t\t\t \"Size\":\"$hex\"\t");
-            Console.WriteLine("\t\t\t },\t");
-            Console.WriteLine("\t\t\t {\t");
-            Console.WriteLine("\t\t\t\t \"FileName\": \"path_to_seg2_output_file\",\t");
-            Console.WriteLine("\t\t\t\t \"Size\":\"$hex\"\t");
-            Console.WriteLine("\t\t\t },\t");
-            Console.WriteLine("\t\t\t {\t");
-            Console.WriteLine("\t\t\t\t \"FileName\": \"path_to_seg3_output_file\"\t");
-            Console.WriteLine("\t\t\t },\t");
-            Console.WriteLine("\t\t\t ......");
-            Console.WriteLine("\t\t ]\t");
+            Console.WriteLine("\t {\t");            
+            Console.WriteLine("\t\t \"Output\": {");
+            Console.WriteLine("\t\t\t \"ObjectFile\": \"final_object_file\",\t");
+            Console.WriteLine("\t\t\t \"Files\":\t");
+            Console.WriteLine("\t\t\t [\t");
+            Console.WriteLine("\t\t\t\t {\t");
+            Console.WriteLine("\t\t\t\t\t \"FileName\": \"path_to_seg1_output_file\",\t");
+            Console.WriteLine("\t\t\t\t\t \"Size\":\"$hex\"\t");
+            Console.WriteLine("\t\t\t\t },\t");
+            Console.WriteLine("\t\t\t\t {\t");
+            Console.WriteLine("\t\t\t\t\t \"FileName\": \"path_to_seg2_output_file\",\t");
+            Console.WriteLine("\t\t\t\t\t \"Size\":\"$hex\"\t");
+            Console.WriteLine("\t\t\t\t },\t");
+            Console.WriteLine("\t\t\t\t {\t");
+            Console.WriteLine("\t\t\t\t\t \"FileName\": \"path_to_seg3_output_file\"\t");
+            Console.WriteLine("\t\t\t\t },\t");
+            Console.WriteLine("\t\t\t\t ......");
+            Console.WriteLine("\t\t\t ]\t");
+            Console.WriteLine("\t\t }\t");
             Console.WriteLine("\t }\t");
             Console.WriteLine("\t The Segments are declared in the order of their insertion in the final object file.\t");
             Console.WriteLine("\t Size\t");
