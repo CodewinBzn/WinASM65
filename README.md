@@ -15,8 +15,8 @@ by CodewinBzn.
 		-help			Show help
 		-h			Show help	
 	        -l 			Create listing (don't specify the file name)
-		-m 			Assemble one or multiple segments
-		-c 			Combine assembled segments/binary files
+		-c 			Assemble one or multiple segments
+					Combine assembled segments/binary files
     Assemble single segment:
 		-f			Source file 
 		-o			Object file
@@ -26,24 +26,26 @@ by CodewinBzn.
 
 ### JSON File format 
 ```
-[
-	{
-		"FileName": "path_to_main_file_seg1",
-		"OutputFile": "path_to_seg1_output_file",
-		"Dependencies": ["path_to_main_file_seg2"]
-	},
-	{
-		"FileName": "path_to_main_file_seg2",*
-		"OutputFile": "path_to_seg2_output_file",
-		"Dependencies": ["path_to_main_file_seg1"]			
-	},
-	{
-		"FileName": "path_to_main_file_seg3",
-		"OutputFile": "path_to_seg3_output_file",
-		"Dependencies": []			
-	},
-	......
-]
+{
+	"Input": [
+		  	{
+				"FileName": "path_to_main_file_seg1",
+				"OutputFile": "path_to_seg1_output_file",
+				"Dependencies": ["path_to_main_file_seg2"]
+		  	},
+		  	{
+				"FileName": "path_to_main_file_seg2",*
+				"OutputFile": "path_to_seg2_output_file",
+				"Dependencies": ["path_to_main_file_seg1"]			
+		  	},
+	          	{
+				"FileName": "path_to_main_file_seg3",
+				"OutputFile": "path_to_seg3_output_file",
+				"Dependencies": []			
+		  	},
+		   	......
+		]
+}
 
 ```
 
@@ -58,23 +60,24 @@ The OutputFile is optional.
 ### JSON File format:
 ```
 {
-	
-	"ObjectFile": "final_object_file",
-	"Files": 
-	[
-		{
-			"FileName": "path_to_seg1_output_file",
-			"Size": "$hex"
-		},
-		{
-			"FileName": "path_to_seg2_output_file",
-			"Size": "$hex"
-		},
-		{
-			"FileName": "path_to_seg3_output_file"			
-		},
-		....
-	]
+	"Output": { 	
+			"ObjectFile": "final_object_file",
+			"Files": 
+			[
+				{
+					"FileName": "path_to_seg1_output_file",
+					"Size": "$hex"
+				},
+				{
+					"FileName": "path_to_seg2_output_file",
+					"Size": "$hex"
+				},
+				{
+					"FileName": "path_to_seg3_output_file"			
+				},
+				....
+			]
+		}
 }
 ```
 

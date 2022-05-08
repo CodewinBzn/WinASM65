@@ -1199,7 +1199,7 @@ namespace WinASM65
             if(!string.IsNullOrWhiteSpace(dir))
             {
                 Directory.CreateDirectory(dir);
-            }            
+            }
             _stream = new FileStream(ObjectFileName, FileMode.Create);
             _bw = new BinaryWriter(_stream);
         }

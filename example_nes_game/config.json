@@ -1,0 +1,37 @@
+{
+	"Input": [
+				{
+					"FileName": "engine/headers.asm",
+					"Dependencies": []
+				},
+				{
+					"FileName": "engine/background.asm",
+					"Dependencies": []
+				},
+				{
+					"FileName": "engine/vectors.asm",
+					"Dependencies": ["engine/background.asm"]
+				}
+			],
+	"Output": {
+		
+				"ObjectFile": "generated_Nes_Rom/game.nes",
+				"Files": 
+				[
+					{
+						"FileName": "engine/headers.o",
+						"Size": "$10"
+					},
+					{
+						"FileName": "engine/background.o",
+						"Size": "$3FFA"
+					},
+					{
+						"FileName": "engine/vectors.o"
+					},
+					{
+						"FileName": "chr/mario.chr"
+					}
+				]
+			} 
+}
