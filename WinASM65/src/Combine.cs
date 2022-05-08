@@ -1,7 +1,6 @@
 ﻿// Abdelghani BOUZIANE    
 // 2021
 
-using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -10,21 +9,25 @@ namespace WinASM65
 {
     class Combine
     {
-        public static string ConfigFile { get; set; }
+        private static CombineConf _config;
+        public static CombineConf ConfigFile
+        {
+            get
+            {
+                return _config;
+            }
+            set
+            {
+                _config = value;
+            }
+        }
         public static List<byte> OutMemory { get; set; }
         public static void Process()
         {
             OutMemory = new List<byte>();
-            JsonSerializer serializer;
-            CombineConf config;
-            using (StreamReader file = File.OpenText(ConfigFile))
+            using (BinaryWriter writer = new BinaryWriter(File.Open(_config.ObjectFile, FileMode.Create)))
             {
-                serializer = new JsonSerializer();
-                config = (CombineConf)serializer.Deserialize(file, typeof(CombineConf));
-            }
-            using (BinaryWriter writer = new BinaryWriter(File.Open(config.ObjectFile, FileMode.Append)))
-            {                
-                foreach (FileConf fileConf in config.Files)
+                foreach (FileConf fileConf in _config.Files)
                 {
                     List<byte> bytesOut = new List<byte>(File.ReadAllBytes(fileConf.FileName));
                     writer.Write(bytesOut.ToArray());
@@ -39,8 +42,8 @@ namespace WinASM65
                                 writer.Write((byte)0);
                             }
                         }
-                    }                   
-                }                
+                    }
+                }
             }
         }
     }

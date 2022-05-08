@@ -10,27 +10,21 @@ namespace WinASM65
 {
     class MultiSegment
     {
-        public static string ConfigFile { get; set; }
-        private static List<Segment> _segments = new List<Segment>();
+        public static List<Segment> SegmentList { get; set; }
         public static void Assemble()
         {
-            JsonSerializer serializer;
-            using (StreamReader file = File.OpenText(ConfigFile))
-            {
-                serializer = new JsonSerializer();
-                _segments = (List<Segment>)serializer.Deserialize(file, typeof(List<Segment>));
-            }
-            if (_segments.Count > 0)
+            JsonSerializer serializer = new JsonSerializer();
+            if (SegmentList.Count > 0)
             {
                 // assemble segments
-                foreach (Segment seg in _segments)
+                foreach (Segment seg in SegmentList)
                 {
                     Assembler.SourceFile = seg.FileName;
                     Assembler.ObjectFileName = !string.IsNullOrWhiteSpace(seg.OutputFile) ? seg.OutputFile : seg.FileName.Split('.')[0] + ".o";
                     Assembler.Assemble();
                 }
                 // resolve dependencies
-                foreach (Segment seg in _segments)
+                foreach (Segment seg in SegmentList)
                 {
                     if (Listing.EnableListing)
                     {
@@ -69,7 +63,7 @@ namespace WinASM65
                         Listing.GenerateListing();
                         continue;
                     }
-                    Assembler.FilePtr = new FileInfo() { SourceFile = unsolvedFile, CurrentLineNumber = -1 };                    
+                    Assembler.FilePtr = new FileInfo() { SourceFile = unsolvedFile, CurrentLineNumber = -1 };
                     foreach (string dependence in seg.Dependencies)
                     {
                         string symbolTableFile = $"{dependence.Split('.')[0]}.symb";
