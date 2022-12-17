@@ -1116,15 +1116,6 @@ namespace WinASM65
                     Listing.PrintLine(currentLine);
                     line = line.Trim();
                     _filePtr.CurrentLineNumber++;
-                    if (_cAsm.InCondition &&
-                        !_cAsm.Values[_cAsm.Level] &&
-                        !line.ToLower().Equals(".endif") &&
-                        !line.ToLower().Equals(".else"))
-                    {
-                        MainConsole.WriteLine(string.Format("{0}   --- {1}", line, "NOT Assembled"));
-                        Listing.EndLine();
-                        continue;
-                    }
                     line = Regex.Replace(line, ";(.)*", "").Trim();
                     if (String.IsNullOrWhiteSpace(line))
                     {
@@ -1151,7 +1142,14 @@ namespace WinASM65
 
         private static void ParseLine(string line, string originalLine)
         {
-            if (_repBlock.IsInRepBlock &&
+            if (_cAsm.InCondition &&
+            !_cAsm.Values[_cAsm.Level] &&
+            !line.ToLower().Equals(".endif") &&
+            !line.ToLower().Equals(".else"))
+            {
+                MainConsole.WriteLine(string.Format("{0}   --- {1}", line, "NOT Assembled"));                
+            }
+            else if (_repBlock.IsInRepBlock &&
                        !line.ToLower().Equals(".endrep") &&
                        !line.ToLower().StartsWith(".rep"))
             {
@@ -1196,7 +1194,7 @@ namespace WinASM65
         private static void OpenFiles()
         {
             string dir = Path.GetDirectoryName(ObjectFileName);
-            if(!string.IsNullOrWhiteSpace(dir))
+            if (!string.IsNullOrWhiteSpace(dir))
             {
                 Directory.CreateDirectory(dir);
             }
