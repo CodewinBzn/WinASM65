@@ -99,6 +99,10 @@ namespace WinASM65
 
                     ops.Push(tokenType);
                 }
+                else if (token.Type.Equals("TRUE") || token.Type.Equals("FALSE"))
+                {
+                    values.Push(bool.Parse(token.Value));
+                }
                 else
                 {
                     // current token is digit                        
@@ -198,18 +202,18 @@ namespace WinASM65
                 case "EQ": return a == b;
                 case "AF": return b;
                 case "LESS": return a < b;
-                case "GREATER": return a > b;                
+                case "GREATER": return a > b;
                 default:
                     return -1;
             }
         }
 
         private static bool IsOperator(string op)
-        {            
+        {
             return Operators.Contains(op);
         }
         private static bool IsUnary(string op)
-        {            
+        {
             return UnaryOperators.Contains(op);
         }
     }

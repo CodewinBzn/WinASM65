@@ -106,8 +106,8 @@ namespace WinASM65
             Console.WriteLine("\t f \t sourceFile \t");
             Console.WriteLine("\t o \t objectFile \t");
             Console.WriteLine("\t l \t Create listing \t");
-            Console.WriteLine("\t m \t Assemble one or multiple segments \t");
-            Console.WriteLine("\t c \t Combine assembled segments/binary files \t");
+            Console.WriteLine("\t c \t Assemble one or multiple segments \t");
+            Console.WriteLine("\t   \t Combine assembled segments/binary files \t");
 
             Console.WriteLine("\t Assemble segments \t");
             Console.WriteLine("\t JSON File format \t");
