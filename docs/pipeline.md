@@ -268,6 +268,30 @@ frontiere entre deux fichiers, mais il **confond l'operande de donnees et
 l'operande d'adresse** : dans les deux cas on ne retient qu'une position et
 une largeur. Rien ne dit que l'octet a cet endroit est une adresse.
 
+### T1+T2 : le type atteint l'emetteur, et la table de relocations
+
+**Corrige.** `ExpressionResult` porte desormais, en plus de sa valeur :
+
+- `Role` — `Immediate`, `Address`, `RelativeBranch` ou `Data`. Le role est
+  pose par `AssemblerEngine.RoleFor(addrMode)` a partir du mode d'adressage
+  decode, jamais par l'evaluateur : `LDA #$05` et `LDA TARGET` sont la meme
+  forme d'expression, et seul le mode les distingue.
+- `UsedSymbols` — tous les identifiants reellement lus, resolus ou non, avec
+  le fichier et la ligne de chacun. Une expression qui ne lit aucun symbole
+  est marquee `IsConstant` et ne produit aucune relocation.
+- `Expression` et `Location` — le texte source et sa provenance.
+
+`BinaryEmitter` tient une table de `RelocationRecord` : segment, offset,
+largeur, type, liste des symboles, cible, fichier, ligne, valeur ecrite. Un
+site est enregistre **seulement** si l'expression a lu un symbole, et sa
+largeur suit le mode d'adressage **apres** `TryOptimizeZeroPage`.
+
+Le champ `UnresolvedExpr.Position` reste une adresse relative a
+`OriginAddress`, ce que la passe 2 utilise. `UnresolvedExpr.BufferOffset` a
+ete ajoute : c'est la position reelle dans le buffer, et c'est elle que la
+table de relocations indexe, parce qu'un `.org` ulterieur deplace
+`OriginAddress` sans bouger les octets deja emis.
+
 ---
 
 ## 6. Passe 2 et dependances symboliques
@@ -381,18 +405,42 @@ concatenation.
 ## 8. Ce qui manque pour les relocations
 
 Resume des trois points identifies dans le plan, avec leur localisation
-exacte.
+exacte. Deux des quatre sont corriges par T1+T2.
 
-| Manque | Localisation | Consequence |
+| Manque | Localisation | Etat |
 |---|---|---|
-| Le type d'expression n'atteint pas l'emetteur | `ExpressionResult` n'expose que `IsResolved` (`ExpressionResult.cs:14`) | impossible de distinguer `lda #$05` de `lda label` |
-| L'aplatissement des adresses | `HandleInstruction` : `val = exprRes.Value.AsInteger` puis `EmitWord((ushort)(val & 0xFFFF))` (`AssemblerEngine.cs:485`, `:538`) | aucune trace du site, aucune possibilite de relocaliser |
-| Aucun segment | `BinaryEmitter` : un `List<byte>`, un `CurrentAddress` (`BinaryEmitter.cs:28`) | pas de placement multi-regions |
-| Pas d'export/import | `MultiSegmentOrchestrator` : echanges par `.symb` / `.Unsolved` | dependances declarees a la main, pas de diagnostic nomme |
+| Le type d'expression n'atteint pas l'emetteur | `ExpressionResult` n'exposait que `IsResolved` | **corrige (T1)** : `Role`, `UsedSymbols`, `Expression`, `Location` |
+| L'aplatissement des adresses | `HandleInstruction` : `val = exprRes.Value.AsInteger` puis `EmitWord((ushort)(val & 0xFFFF))` | **corrige (T2)** : chaque site dont la valeur depend d'un symbole est enregistre dans `BinaryEmitter.Relocations` |
+| Aucun segment | `BinaryEmitter` : un `List<byte>`, un `CurrentAddress` | **partiel (T2)** : `SegmentIndex` / `SegmentName` existent, toujours a 0 en mode direct ; le placement multi-regions reste a faire |
+| Pas d'export/import | `MultiSegmentOrchestrator` : echanges par `.symb` / `.Unsolved` | ouvert, prevu en T3 |
 
 Le risque associe au premier point est le plus eleve du chantier : une
 relocation produite sans le type d'expression est **fausse et silencieuse**.
-C'est la raison pour laquelle T1 et T2 doivent former une seule PR.
+C'est la raison pour laquelle T1 et T2 forment une seule PR.
+
+### Deux defauts preexistants rencontres en ecrivant T1/T2
+
+Aucun des deux n'est introduit par T1/T2 ; les deux ont ete reproduits a
+l'identique sur le commit de base `86616fd`. Ils sont signales ici parce
+qu'ils toucheront T3 et T4.
+
+**1. Un operande en minuscules casse silencieusement la resolution.**
+`InstructionRegex` autorise un label en tete de ligne. Sur `lda tgt`, il
+prend `lda` pour le label et `tgt` pour l'opcode ; `HandleInstruction` voit
+que le label est une instruction et reecrit la ligne en `LDA tgt`, **en
+mettant l'operande en majuscules**. La table des symboles est sensible a la
+casse, donc la recherche echoue et l'operande reste a zero, sans diagnostic.
+Le declencheur est un mnemonique de trois lettres suivi d'un operande.
+Pine par `RelocationTests.LowercaseOperand_IsReparsedByTheInstructionRegex`.
+
+**2. L'assembleur ne distingue pas largeur et mode au moment du placeholder.**
+Sur une reference en avant, le placeholder est emis avant que la valeur ne
+soit connue, donc l'optimisation zero-page ne peut pas tourner : `JSR LATER`
+ou `LATER = $10` occupe 3 octets, alors que la meme reference resolue
+immediatement serait ramenee a 2 octets. Le mode direct garde ce
+comportement, et la table de relocations doit decrire les octets **reels**,
+donc 2 octets. C'est le sens de
+`RelocationTests.ForwardReference_InZeroPage_KeepsTheWordWidthOfThePlaceholder`.
 
 ---
 
@@ -407,3 +455,16 @@ C'est la raison pour laquelle T1 et T2 doivent former une seule PR.
 
 Toute evolution doit preserver ces proprietes. Le format `.w65` et le linker
 sont **ajoutes** a cote, ils ne remplacent pas ce mode.
+
+La sortie `ihex` est verifiee hors du code de l'assembleur : les
+enregistrements sont relus et leur somme de controle recalculee
+independamment, le fichier est decode par la bibliotheque tierce `intelhex`,
+et par `objcopy` de binutils pour `ihex` comme pour `srec`. Cela a mis en
+evidence un **troisieme** defaut preexistant, lui aussi present sur la base :
+`IntelHexFormat` ecrit l'adresse de depart dans un enregistrement de type
+`03` (« Start Segment Address », `CS:IP`) alors qu'une adresse de depart
+lineaire appartient a un enregistrement de type `05` (« Start Linear
+Address »). L'enregistrement est bien forme pour le type qu'il annonce et
+tous les decodeurs testes l'ignorent, donc la charge utile est recuperable ;
+c'est la semantique du champ qui est fausse. Corrige par T3, pas ici.
+

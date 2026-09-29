@@ -31,6 +31,14 @@ namespace WinASM65.Symbols
         public string Expr { get; set; }
         public int NbrUndefinedSymb { get; set; }
         public ushort Position { get; set; }
+
+        /// <summary>
+        /// Offset of the field inside the emitted buffer. Unlike <see cref="Position"/>,
+        /// which is an address made relative to the current OriginAddress, this does not
+        /// move when a later <c>.org</c> changes the origin.
+        /// </summary>
+        public int BufferOffset { get; set; }
+
         public SymbolType Type { get; set; }
         public AddressingMode AddrMode { get; set; }
 

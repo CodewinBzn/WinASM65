@@ -13,6 +13,40 @@ using WinASM65.Symbols;
 
 namespace WinASM65.Directives
 {
+    /// <summary>
+    /// Records the relocation of a <c>.byte</c> or <c>.word</c> field whose value
+    /// depends on a symbol. A literal field records nothing.
+    /// </summary>
+    internal static class DataRelocation
+    {
+        public static void Record(IAssemblyContext context, ExpressionResult res, int bufferOffset, byte width, long value)
+        {
+            if (res == null || res.IsConstant)
+                return;
+
+            List<string> symbols = new List<string>();
+            foreach (SymbolReference reference in res.UsedSymbols)
+            {
+                if (!symbols.Contains(reference.Name))
+                    symbols.Add(reference.Name);
+            }
+
+            RelocationRecord record = new RelocationRecord(
+                context.Emitter.SegmentIndex,
+                context.Emitter.SegmentName,
+                bufferOffset,
+                (ushort)(context.Emitter.CurrentAddress - width),
+                width,
+                RelocationRecord.TypeFor(res.Role, width),
+                symbols,
+                res.Location,
+                res.Expression);
+
+            record.MarkResolved(value);
+            context.Emitter.RecordRelocation(record);
+        }
+    }
+
     public class OrgDirectiveHandler : IDirectiveHandler
     {
         public string Name { get { return ".org"; } }
@@ -121,25 +155,31 @@ namespace WinASM65.Directives
                 }
                 else
                 {
-                    ExpressionResult res = context.ResolveExpression(data);
+                    ExpressionResult res = context.ResolveExpression(data, AddressingMode.None, false);
                     if (res.IsResolved)
                     {
+                        int fieldOffset = context.Emitter.Length;
                         context.Emitter.EmitByte(res.Value.ToByte());
+                        DataRelocation.Record(context, res.WithRole(ExpressionRole.Data), fieldOffset, 1, res.Value.AsInteger);
                     }
                     else
                     {
                         ushort position = (ushort)(context.Emitter.CurrentAddress - context.Emitter.OriginAddress);
+                        int bufferOffset = context.Emitter.Length;
                         context.Emitter.EmitByte(0);
 
                         UnresolvedExpr expr = new UnresolvedExpr
                         {
                             Position = position,
+                            BufferOffset = bufferOffset,
                             Type = SymbolType.Byte,
                             AddrMode = AddressingMode.None,
                             NbrUndefinedSymb = res.UndefinedSymbols.Count,
                             Expr = data
                         };
                         context.ScopeManager.AddUnresolvedExpression(position, expr);
+
+                        DataRelocation.Record(context, res.WithRole(ExpressionRole.Data), bufferOffset, 1, 0);
 
                         foreach (string symb in res.UndefinedSymbols)
                         {
@@ -171,25 +211,31 @@ namespace WinASM65.Directives
             foreach (string entry in wordEntries)
             {
                 string data = entry.Trim();
-                ExpressionResult res = context.ResolveExpression(data);
+                ExpressionResult res = context.ResolveExpression(data, AddressingMode.None, false);
                 if (res.IsResolved)
                 {
+                    int fieldOffset = context.Emitter.Length;
                     context.Emitter.EmitWord(res.Value.ToUInt16());
+                    DataRelocation.Record(context, res.WithRole(ExpressionRole.Data), fieldOffset, 2, res.Value.AsInteger);
                 }
                 else
                 {
                     ushort position = (ushort)(context.Emitter.CurrentAddress - context.Emitter.OriginAddress);
+                    int bufferOffset = context.Emitter.Length;
                     context.Emitter.EmitWord(0);
 
                     UnresolvedExpr expr = new UnresolvedExpr
                     {
                         Position = position,
+                        BufferOffset = bufferOffset,
                         Type = SymbolType.Word,
                         AddrMode = AddressingMode.None,
                         NbrUndefinedSymb = res.UndefinedSymbols.Count,
                         Expr = data
                     };
                     context.ScopeManager.AddUnresolvedExpression(position, expr);
+
+                    DataRelocation.Record(context, res.WithRole(ExpressionRole.Data), bufferOffset, 2, 0);
 
                     foreach (string symb in res.UndefinedSymbols)
                     {
