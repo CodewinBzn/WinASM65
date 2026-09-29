@@ -21,14 +21,41 @@ namespace WinASM65.Output
         void PatchBytes(int position, byte[] bytes);
         void SaveToFile(string filePath);
         void Reset();
+
+        /// <summary>Relocation sites recorded so far, in emission order.</summary>
+        IReadOnlyList<RelocationRecord> Relocations { get; }
+
+        /// <summary>Index of the segment currently being emitted. Direct-burn mode only ever has one.</summary>
+        int SegmentIndex { get; set; }
+
+        /// <summary>Name of the segment currently being emitted. Empty in direct-burn mode.</summary>
+        string SegmentName { get; set; }
+
+        /// <summary>Records a site whose emitted value depends on a symbol.</summary>
+        void RecordRelocation(RelocationRecord record);
+
+        /// <summary>Looks a recorded site up by its segment and segment-relative offset.</summary>
+        bool TryGetRelocation(int segmentIndex, int offset, out RelocationRecord record);
+
+        /// <summary>Marks a recorded site as resolved with the value written into it.</summary>
+        void ResolveRelocation(int segmentIndex, int offset, long value);
     }
 
     public class BinaryEmitter : IBinaryEmitter
     {
         private readonly List<byte> _buffer = new List<byte>();
+        private readonly List<RelocationRecord> _relocations = new List<RelocationRecord>();
 
         public ushort CurrentAddress { get; set; }
         public ushort OriginAddress { get; set; }
+
+        public int SegmentIndex { get; set; }
+        public string SegmentName { get; set; }
+
+        public IReadOnlyList<RelocationRecord> Relocations
+        {
+            get { return _relocations; }
+        }
 
         public int Length
         {
@@ -100,8 +127,39 @@ namespace WinASM65.Output
         public void Reset()
         {
             _buffer.Clear();
+            _relocations.Clear();
             CurrentAddress = 0;
             OriginAddress = 0;
+            SegmentIndex = 0;
+            SegmentName = string.Empty;
+        }
+
+        public void RecordRelocation(RelocationRecord record)
+        {
+            if (record == null)
+                return;
+            _relocations.Add(record);
+        }
+
+        public bool TryGetRelocation(int segmentIndex, int offset, out RelocationRecord record)
+        {
+            for (int i = 0; i < _relocations.Count; i++)
+            {
+                if (_relocations[i].SegmentIndex == segmentIndex && _relocations[i].Offset == offset)
+                {
+                    record = _relocations[i];
+                    return true;
+                }
+            }
+            record = null;
+            return false;
+        }
+
+        public void ResolveRelocation(int segmentIndex, int offset, long value)
+        {
+            RelocationRecord record;
+            if (TryGetRelocation(segmentIndex, offset, out record))
+                record.MarkResolved(value);
         }
     }
 }

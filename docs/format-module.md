@@ -138,6 +138,10 @@ symbole, le module qui l'importe et le module exporteur attendu** ; sans la
 provenance, un echec de resolution ne peut produire qu'un numero de ligne
 dans un fichier inconnu, ce qui n'aide personne a corriger quoi que ce soit.
 
+Une implementation ne doit pas retenir un seul symbole par site : une
+expression comme `lda BASE+DELTA` lit deux symboles, et un linker qui n'en
+garde qu'un resolvra le site contre la mauvaise valeur.
+
 ### Types de relocation
 
 | Type | Signification |
@@ -148,6 +152,28 @@ dans un fichier inconnu, ce qui n'aide personne a corriger quoi que ce soit.
 | `rel8` | branchement conditionnel, 1 octet |
 | `seg` | adresse de segment, pour le chargement dynamique |
 
+Cette table est la specification de reference. Elle ne couvre pas encore deux
+cas que la cible GEOS rend necessaires et que l'implementation de T1/T2 a
+donc dut nommer :
+
+| Type | Signification | Pourquoi la table ci-dessus ne suffit pas |
+|---|---|---|
+| `imm8` | valeur 1 octet tiree d'un symbole, `lda #MASK` | ni une adresse ni une branche : le linker ecrit une **valeur**, pas une adresse |
+| `data8` / `data16` | champ de donnee, `.byte COUNT` / `.word TABLE` | une table de sauts est une suite d'adresses, mais rien dans la syntaxe ne dit que l'auteur y met des adresses |
+
+Ces deux constats ne sont pas des corrections de code face a une doc
+fautive : le code n'existait pas. Ce sont des trous de la specification,
+signales ici parce que T3 et T4 dependront de la liste reelle des types.
+
+### Etat de l'implementation apres T1/T2
+
+`BinaryEmitter` tient desormais une table de relocations, exposee par
+`AssemblyResult.Relocations`. `RelocationRecord` porte le segment, l'offset
+dans le segment, la largeur, le type, **tous** les symboles lus, le fichier et
+la ligne. `Seg` existe dans l'enumeration mais n'est jamais produit : il
+suppose les segments nommes de `.w65`, qui arrivent en T3.
+
+
 La distinction `abs8` / `abs16` est le point le plus subtil du format, et
 celui que le plan designe comme **risque numero 1** du chantier. Aujourd'hui
 `lda #$05` et `lda label` produisent le meme `ExpressionResult` resolu. Si le
@@ -155,6 +181,17 @@ type de relocation est choisi sans savoir si l'operande contenait un
 symbole, la sortie est fausse **et silencieuse**. C'est pourquoi T1 (le type
 d'expression atteint l'emetteur) et T2 (la table dans l'emetteur) sont
 indissociables et doivent former une seule PR.
+
+**Resolution.** T1 et T2 sont livres. `ExpressionResult` porte desormais le
+role de l'expression (`Immediate`, `Address`, `RelativeBranch`, `Data`), la
+liste des symboles reellement lus, et la provenance de chacun. Le role est
+attribue par l'appelant a partir du mode d'adressage decode, jamais devine
+par l'evaluateur : `lda #$05` et `lda label` ont la meme forme, et seul le
+mode les distingue.
+
+La largeur est decidee **apres** `Cpu6502.TryOptimizeZeroPage`, qui peut
+reduire un operande absolu a un octet. Enregistrer la largeur avant cette
+decision produit une relocation fausse de facon silencieuse.
 
 ---
 

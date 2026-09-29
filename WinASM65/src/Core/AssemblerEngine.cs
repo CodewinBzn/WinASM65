@@ -23,12 +23,22 @@ namespace WinASM65.Core
 
         public ushort OriginAddress { get; private set; }
 
-        public AssemblyResult(bool success, byte[] outputBytes, IReadOnlyList<Diagnostic> diagnostics, ushort originAddress = 0)
+        /// <summary>
+        /// Every site whose emitted value depends on a symbol, with its width, its
+        /// type, the symbols it reads and the source it was written in. In
+        /// direct-burn mode these are already patched, so they are informational
+        /// here; they are what the .w65 writer (T3) and the linker (T4) consume.
+        /// </summary>
+        public IReadOnlyList<RelocationRecord> Relocations { get; private set; }
+
+        public AssemblyResult(bool success, byte[] outputBytes, IReadOnlyList<Diagnostic> diagnostics, ushort originAddress = 0,
+            IReadOnlyList<RelocationRecord> relocations = null)
         {
             Success = success;
             OutputBytes = outputBytes ?? new byte[0];
             Diagnostics = diagnostics ?? new List<Diagnostic>();
             OriginAddress = originAddress;
+            Relocations = relocations ?? new List<RelocationRecord>();
         }
     }
 
@@ -187,7 +197,8 @@ namespace WinASM65.Core
 
             ExportSymbolFiles(sourceFile);
 
-            return new AssemblyResult(!_diagnostics.HasErrors, _emitter.ToArray(), _diagnostics.Diagnostics, _emitter.OriginAddress);
+            return new AssemblyResult(!_diagnostics.HasErrors, _emitter.ToArray(), _diagnostics.Diagnostics,
+                _emitter.OriginAddress, _emitter.Relocations);
         }
 
         private void ApplyDefaultOrigin()
@@ -363,7 +374,35 @@ namespace WinASM65.Core
 
         public ExpressionResult ResolveExpression(string expr, AddressingMode addrMode = AddressingMode.None, bool isLogical = false)
         {
-            return _evaluator.Evaluate(expr, _scopeManager);
+            // The role comes from the decoded addressing mode, never from the value:
+            // it is the addressing mode that says whether the byte about to be emitted
+            // holds a data value, an address, or a branch displacement.
+            ExpressionResult result = _evaluator.Evaluate(expr, _scopeManager, CurrentLocation);
+            return result.WithRole(RoleFor(addrMode, isLogical));
+        }
+
+        /// <summary>
+        /// Maps a decoded addressing mode to the role the emitter must play.
+        /// The evaluator cannot know this: <c>lda #$05</c> and <c>lda label</c> are the
+        /// same expression shape, and only the mode tells them apart.
+        /// </summary>
+        public static ExpressionRole RoleFor(AddressingMode addrMode, bool isLogical = false)
+        {
+            if (isLogical)
+                return ExpressionRole.None;
+            switch (addrMode)
+            {
+                case AddressingMode.Immediate:
+                    return ExpressionRole.Immediate;
+                case AddressingMode.Relative:
+                    return ExpressionRole.RelativeBranch;
+                case AddressingMode.Implicit:
+                case AddressingMode.Accumulator:
+                case AddressingMode.None:
+                    return ExpressionRole.None;
+                default:
+                    return ExpressionRole.Address;
+            }
         }
 
         private void HandleLabel(Match match)
@@ -492,6 +531,8 @@ namespace WinASM65.Core
                     {
                         _emitter.EmitByte(info.Opcode);
                         _emitter.EmitByte(offset);
+                        // Signed: a branch displacement is signed, and 0xFD is -3.
+                        RecordRelocation(exprRes, 1, (sbyte)offset);
                         _listingService.PrintLine(LineType.INST, 2);
                     }
                     else
@@ -515,7 +556,10 @@ namespace WinASM65.Core
                 }
                 else
                 {
-                    // Check for zero-page optimization
+                    // Check for zero-page optimization. This decision has to happen
+                    // before the relocation is recorded: it can shrink the operand
+                    // from two bytes to one, and the recorded width must follow the
+                    // bytes that were actually emitted.
                     AddressingMode optMode;
                     byte optOpc;
                     byte optLen;
@@ -523,27 +567,29 @@ namespace WinASM65.Core
                     {
                         _emitter.EmitByte(optOpc);
                         _emitter.EmitByte((byte)(val & 0xFF));
+                        RecordRelocation(exprRes, 1, val);
                         _listingService.PrintLine(LineType.INST, optLen);
+                    }
+                    else if (info.Length == 2)
+                    {
+                        _emitter.EmitByte(info.Opcode);
+                        _emitter.EmitByte((byte)(val & 0xFF));
+                        RecordRelocation(exprRes, 1, val);
+                        _listingService.PrintLine(LineType.INST, 2);
                     }
                     else
                     {
                         _emitter.EmitByte(info.Opcode);
-                        if (info.Length == 2)
-                        {
-                            _emitter.EmitByte((byte)(val & 0xFF));
-                            _listingService.PrintLine(LineType.INST, 2);
-                        }
-                        else
-                        {
-                            _emitter.EmitWord((ushort)(val & 0xFFFF));
-                            _listingService.PrintLine(LineType.INST, 3);
-                        }
+                        _emitter.EmitWord((ushort)(val & 0xFFFF));
+                        RecordRelocation(exprRes, 2, val);
+                        _listingService.PrintLine(LineType.INST, 3);
                     }
                 }
             }
             else
             {
                 // Unresolved operand - emit placeholders and record for second pass
+                int bufferOffset = _emitter.Length + 1;
                 _emitter.EmitByte(info.Opcode);
                 SymbolType symbolType;
 
@@ -562,12 +608,18 @@ namespace WinASM65.Core
                 UnresolvedExpr unresExpr = new UnresolvedExpr
                 {
                     Position = position,
+                    BufferOffset = bufferOffset,
                     Type = symbolType,
                     AddrMode = mode,
                     NbrUndefinedSymb = exprRes.UndefinedSymbols.Count,
                     Expr = info.OperandExpression
                 };
                 _scopeManager.AddUnresolvedExpression(position, unresExpr);
+
+                // The cross-file JSR case lands here: a placeholder is emitted now
+                // and patched in a second pass, but the site is still a relocation and
+                // must be recorded with its width, its type and its provenance.
+                RecordRelocation(exprRes, symbolType == SymbolType.Byte ? (byte)1 : (byte)2, 0, false);
 
                 foreach (string symb in exprRes.UndefinedSymbols)
                 {
@@ -578,6 +630,50 @@ namespace WinASM65.Core
 
                 _listingService.PrintLine(LineType.INST, info.Length);
             }
+        }
+
+        /// <summary>
+        /// Records a relocation for a site whose value depends on a symbol. Nothing is
+        /// recorded when the expression read no symbol: <c>lda #$05</c> holds a fixed
+        /// byte and a relocation there would be a lie.
+        ///
+        /// The field is the last <paramref name="width"/> bytes just emitted, so the
+        /// segment offset is the buffer offset — not the address made relative to the
+        /// current OriginAddress, which a later <c>.org</c> would move.
+        /// </summary>
+        private void RecordRelocation(ExpressionResult exprRes, byte width, long value, bool resolved = true)
+        {
+            if (exprRes == null || exprRes.IsConstant)
+                return;
+
+            RelocationType type = RelocationRecord.TypeFor(exprRes.Role, width);
+            if (type == RelocationType.None)
+                return;
+
+            int offset = _emitter.Length - width;
+            ushort address = (ushort)(_emitter.CurrentAddress - width);
+
+            List<string> symbols = new List<string>();
+            foreach (SymbolReference reference in exprRes.UsedSymbols)
+            {
+                if (!symbols.Contains(reference.Name))
+                    symbols.Add(reference.Name);
+            }
+
+            RelocationRecord record = new RelocationRecord(
+                _emitter.SegmentIndex,
+                _emitter.SegmentName,
+                offset,
+                address,
+                width,
+                type,
+                symbols,
+                exprRes.Location,
+                exprRes.Expression);
+
+            if (resolved)
+                record.MarkResolved(value);
+            _emitter.RecordRelocation(record);
         }
 
         private void ReportOperandOutOfRange(long value, bool byteSized)
@@ -631,6 +727,11 @@ namespace WinASM65.Core
 
         private void PatchResolvedExpression(UnresolvedExpr expr, Value value)
         {
+            // Position is relative to OriginAddress, which a later .org may have moved.
+            // BufferOffset is where the field really is in the buffer, so it is what the
+            // relocation lookup uses.
+            int relocationOffset = expr.BufferOffset > 0 ? expr.BufferOffset : expr.Position;
+
             if (expr.AddrMode == AddressingMode.Relative)
             {
                 byte offset;
@@ -640,6 +741,7 @@ namespace WinASM65.Core
                 if (_cpu.TryCalculateRelativeOffset(value.AsInteger, instrAddr, out offset, out relErr))
                 {
                     _emitter.PatchByte(expr.Position, offset);
+                    _emitter.ResolveRelocation(_emitter.SegmentIndex, relocationOffset, (sbyte)offset);
                 }
                 else
                 {
@@ -656,6 +758,7 @@ namespace WinASM65.Core
                         return;
                     }
                     _emitter.PatchWord(expr.Position, (ushort)(value.AsInteger & 0xFFFF));
+                    _emitter.ResolveRelocation(_emitter.SegmentIndex, relocationOffset, value.AsInteger);
                 }
                 else
                 {
@@ -665,6 +768,7 @@ namespace WinASM65.Core
                         return;
                     }
                     _emitter.PatchByte(expr.Position, (byte)(value.AsInteger & 0xFF));
+                    _emitter.ResolveRelocation(_emitter.SegmentIndex, relocationOffset, value.AsInteger);
                 }
             }
         }
