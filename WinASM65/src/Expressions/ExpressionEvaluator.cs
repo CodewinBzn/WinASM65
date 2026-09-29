@@ -10,7 +10,13 @@ namespace WinASM65.Expressions
 {
     public interface IExpressionEvaluator
     {
-        ExpressionResult Evaluate(string expression, ISymbolResolver resolver = null);
+        /// <summary>
+        /// <paramref name="location"/> is the file and line the expression was read
+        /// from. It is attached to every symbol the expression uses, so a relocation
+        /// recorded later can name the source it came from.
+        /// </summary>
+        ExpressionResult Evaluate(string expression, ISymbolResolver resolver = null,
+            SourceLocation location = default(SourceLocation));
     }
 
     public class ExpressionEvaluator : IExpressionEvaluator
@@ -24,16 +30,18 @@ namespace WinASM65.Expressions
             _tokenizer = tokenizer;
         }
 
-        public ExpressionResult Evaluate(string expression, ISymbolResolver resolver = null)
+        public ExpressionResult Evaluate(string expression, ISymbolResolver resolver = null,
+            SourceLocation location = default(SourceLocation))
         {
             if (string.IsNullOrWhiteSpace(expression))
-                return ExpressionResult.Success(new Value(0));
+                return ExpressionResult.Success(new Value(0), ExpressionRole.None, null, string.Empty, location);
 
             IReadOnlyList<Token> tokens = _tokenizer.Tokenize(expression);
             if (tokens.Count == 0)
-                return ExpressionResult.Success(new Value(0));
+                return ExpressionResult.Success(new Value(0), ExpressionRole.None, null, string.Empty, location);
 
             List<string> undefinedSymbols = new List<string>();
+            List<SymbolReference> usedSymbols = new List<SymbolReference>();
             List<EvaluatorToken> evalTokens = new List<EvaluatorToken>();
 
             for (int i = 0; i < tokens.Count; i++)
@@ -68,6 +76,10 @@ namespace WinASM65.Expressions
                         break;
 
                     case TokenType.Identifier:
+                        // The symbol is recorded as used whether or not it resolves.
+                        // A resolved expression that read a symbol still needs a
+                        // relocation; that is exactly what used to be lost here.
+                        usedSymbols.Add(new SymbolReference(token.Value, location));
                         Value resolvedVal;
                         if (resolver != null && resolver.TryResolveSymbol(token.Value, out resolvedVal))
                         {
@@ -86,13 +98,16 @@ namespace WinASM65.Expressions
                 }
             }
 
+            // Undefined symbols abort before any reduction: a partially evaluated
+            // result is never returned. The symbols read are still reported.
             if (undefinedSymbols.Count > 0)
             {
-                return ExpressionResult.WithUndefinedSymbols(undefinedSymbols);
+                return ExpressionResult.WithUndefinedSymbols(undefinedSymbols, ExpressionRole.None,
+                    usedSymbols, expression, location);
             }
 
             Value result = EvaluateTokens(evalTokens);
-            return ExpressionResult.Success(result);
+            return ExpressionResult.Success(result, ExpressionRole.None, usedSymbols, expression, location);
         }
 
         private Value EvaluateTokens(List<EvaluatorToken> tokens)
