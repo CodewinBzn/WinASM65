@@ -196,26 +196,15 @@ PublishScripts/
 *.nupkg
 # NuGet Symbol Packages
 *.snupkg
-# The packages folder can be ignored because of Package Restore
-**/[Pp]ackages/*
-# except build/, which is used as an MSBuild target.
-!**/[Pp]ackages/build/
-# Uncomment if necessary however generally it will be regenerated when needed
-#!**/[Pp]ackages/repositories.config
-# NuGet v3's project.json files produces more ignorable files
-*.nuget.props
-*.nuget.targets
+# .NET SDK build output
+[Bb]in/
+[Oo]bj/
+.vs/
+artifacts/
 
-# Nuget personal access tokens and Credentials
-nuget.config
-
-# Microsoft Azure Build Output
-csx/
-*.build.csdef
-
-# Microsoft Azure Emulator
-ecf/
-rcf/
+# TestResults for old TestRunner
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
 
 # Windows Store app package directories and files
 AppPackages/
@@ -391,3 +380,12 @@ apple2_exemple/*
 exemple_apple2/*
 nes_apple/*
 WinASM65_UnitTest/*
+
+# WinASM65 assembler build output
+*.o
+*.symb
+*.lst
+*.Unsolved
+*.UnsolvedExpr
+*.nes
+test_suite.asm

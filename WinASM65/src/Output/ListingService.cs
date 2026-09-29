@@ -1,93 +1,98 @@
-﻿// Abdelghani BOUZIANE    
-// 2021
+// Abdelghani BOUZIANE / Refactored to Pure OOP
+// WinASM65 - Listing Service (Pure OOP, SOLID)
 
 using System;
 using System.IO;
 
-namespace WinASM65
+namespace WinASM65.Output
 {
-    class Listing
+    public enum LineType
+    {
+        NONE,
+        ORG,
+        INST,
+        LABEL,
+        RES,
+        CONST
+    }
+
+    public interface IListingService
+    {
+        bool IsEnabled { get; set; }
+        void Start(string sourceFilePath);
+        void PrintLine(string line);
+        void PrintLine(LineType type, int value);
+        void EndLine();
+        void Finish(byte[] memoryBytes);
+    }
+
+    public class ListingService : IListingService
     {
         private const string LineDelimiter = "±|±";
-        public static bool EnableListing { get; set; }
-        private static StreamWriter _listingFilePtr;
-        private static string _listingFile;
-        public static string ListingFile
+        private StreamWriter _writer;
+        private string _listingFilePath;
+        private string _tempFilePath;
+
+        public bool IsEnabled { get; set; }
+
+        public ListingService()
         {
-            get
-            {
-                return _listingFile;
-            }
-            set
-            {
-                _listingFile = $"{value.Split('.')[0]}.lst";
-            }
+            IsEnabled = false;
         }
 
-
-        static Listing()
+        public void Start(string sourceFilePath)
         {
-            EnableListing = false;
-        }
-
-        public static void PrintLine(string line)
-        {
-            if (!EnableListing)
-            {
+            if (!IsEnabled || string.IsNullOrEmpty(sourceFilePath))
                 return;
-            }
-            _listingFilePtr.Write(line);
+
+            string baseName = sourceFilePath.Split('.')[0];
+            _listingFilePath = string.Format("{0}.lst", baseName);
+            _tempFilePath = string.Format("{0}.tmp", _listingFilePath);
+
+            _writer = new StreamWriter(_tempFilePath, false);
         }
 
-        public static void PrintLine(LineType type, int value)
+        public void PrintLine(string line)
         {
-            if (!EnableListing)
-            {
+            if (!IsEnabled || _writer == null)
                 return;
-            }
-            _listingFilePtr.Write($"{LineDelimiter}{type}{LineDelimiter}{value}");
+            _writer.Write(line);
         }
 
-        public static void EndLine()
+        public void PrintLine(LineType type, int value)
         {
-            if (!EnableListing)
-            {
+            if (!IsEnabled || _writer == null)
                 return;
-            }
-            _listingFilePtr.Write("\n");
+            _writer.Write(string.Format("{0}{1}{0}{2}", LineDelimiter, type, value));
         }
 
-        public static void StartListing()
+        public void EndLine()
         {
-            if (!EnableListing)
-            {
+            if (!IsEnabled || _writer == null)
                 return;
-            }
-            _listingFilePtr = new StreamWriter($"{_listingFile}.tmp", false);
+            _writer.Write("\n");
         }
-        public static void EndListing()
+
+        public void Finish(byte[] memoryBytes)
         {
-            if (!EnableListing)
-            {
+            if (!IsEnabled || _writer == null)
                 return;
-            }
-            _listingFilePtr.Flush();
-            _listingFilePtr.Close();
-        }
-        public static void GenerateListing()
-        {
-            if (!EnableListing)
-            {
+
+            _writer.Flush();
+            _writer.Close();
+            _writer = null;
+
+            if (!File.Exists(_tempFilePath))
                 return;
-            }
+
             string[] stringSeparators = new string[] { LineDelimiter };
             ushort currentAddr = 0;
             ushort memoryIndex = 0;
-            Byte[] memory = Assembler.FileOutMemory.ToArray();
-            string listingTmpFilePath = $"{_listingFile}.tmp";
-            using (StreamReader sr = new StreamReader(listingTmpFilePath))
+            byte[] memory = memoryBytes ?? new byte[0];
+
+            using (StreamReader sr = new StreamReader(_tempFilePath))
             {
-                using (StreamWriter sw = new StreamWriter(_listingFile))
+                using (StreamWriter sw = new StreamWriter(_listingFilePath))
                 {
                     string line;
                     while ((line = sr.ReadLine()) != null)
@@ -97,25 +102,28 @@ namespace WinASM65
                         switch (lineValues.Length)
                         {
                             case 1:
-                                sw.WriteLine("".PadLeft(18) + $"{lineValues[0]}");
+                                sw.WriteLine("".PadLeft(18) + lineValues[0]);
                                 break;
+
                             case 3:
                                 LineType lineType = (LineType)Enum.Parse(typeof(LineType), lineValues[1]);
                                 switch (lineType)
                                 {
                                     case LineType.ORG:
                                         currentAddr = ushort.Parse(lineValues[2]);
-                                        sw.WriteLine("{0:X4}" + "".PadLeft(14) + "{1}", currentAddr, lineValues[0]);
+                                        sw.WriteLine(string.Format("{0:X4}", currentAddr) + "".PadLeft(14) + lineValues[0]);
                                         break;
+
                                     case LineType.INST:
                                         int nbrBytes = int.Parse(lineValues[2]);
                                         int bytesWritten = 0;
-                                        sw.Write("{0:X4} ", currentAddr);
+                                        sw.Write(string.Format("{0:X4} ", currentAddr));
                                         bool lineWritten = false;
                                         while (nbrBytes > 0)
                                         {
                                             bytesWritten++;
-                                            sw.Write("{0:X2} ", memory[memoryIndex]);
+                                            byte b = memoryIndex < memory.Length ? memory[memoryIndex] : (byte)0;
+                                            sw.Write(string.Format("{0:X2} ", b));
                                             memoryIndex++;
                                             currentAddr++;
                                             nbrBytes--;
@@ -124,11 +132,11 @@ namespace WinASM65
                                                 if (!lineWritten)
                                                 {
                                                     lineWritten = true;
-                                                    sw.Write(" {0}", lineValues[0]);
+                                                    sw.Write(string.Format(" {0}", lineValues[0]));
                                                 }
                                                 if (nbrBytes > 0)
                                                 {
-                                                    sw.Write("\n{0:X4} ", currentAddr);
+                                                    sw.Write(string.Format("\n{0:X4} ", currentAddr));
                                                 }
                                                 bytesWritten = 0;
                                             }
@@ -138,20 +146,20 @@ namespace WinASM65
                                             int left = 4 - bytesWritten;
                                             int leftSpace = (left - 1) > 0 ? left - 1 : 0;
                                             leftSpace = leftSpace + (left * 2);
-                                            sw.Write("".PadLeft(leftSpace) + " {0}", lineValues[0]);
+                                            sw.Write("".PadLeft(leftSpace) + string.Format(" {0}", lineValues[0]));
                                         }
                                         sw.Write("\n");
                                         break;
+
                                     case LineType.LABEL:
                                         ushort addr = ushort.Parse(lineValues[2]);
-                                        sw.WriteLine("{0:X4}" + "".PadLeft(14) + "{1}", addr, lineValues[0]);
+                                        sw.WriteLine(string.Format("{0:X4}", addr) + "".PadLeft(14) + lineValues[0]);
                                         break;
+
                                     case LineType.RES:
                                     case LineType.CONST:
-                                        {
-                                            int val = int.Parse(lineValues[2]);
-                                            sw.WriteLine("{0:X} =   ".PadLeft(18) + "{1}", val, lineValues[0]);
-                                        }
+                                        int val = int.Parse(lineValues[2]);
+                                        sw.WriteLine(string.Format("{0:X} =   ", val).PadLeft(18) + lineValues[0]);
                                         break;
                                 }
                                 break;
@@ -159,17 +167,15 @@ namespace WinASM65
                     }
                 }
             }
-            File.Delete(listingTmpFilePath);
-        }
-    }
 
-    enum LineType
-    {
-        NONE,
-        ORG,
-        INST,
-        LABEL,
-        RES,
-        CONST
+            try
+            {
+                File.Delete(_tempFilePath);
+            }
+            catch
+            {
+                // Ignore temp file deletion failure
+            }
+        }
     }
 }
