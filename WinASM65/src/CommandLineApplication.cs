@@ -74,6 +74,13 @@ namespace WinASM65
                 return RunArchive(rest);
             }
 
+            if (string.Equals(args[0], "view", StringComparison.OrdinalIgnoreCase))
+            {
+                string[] rest = new string[args.Length - 1];
+                Array.Copy(args, 1, rest, 0, rest.Length);
+                return RunView(rest);
+            }
+
             if (string.Equals(args[0], "geos", StringComparison.OrdinalIgnoreCase))
             {
                 string[] rest = new string[args.Length - 1];
@@ -223,6 +230,49 @@ namespace WinASM65
         {
             return string.IsNullOrWhiteSpace(target.FormatName)
                 || target.FormatName.Trim().Equals("bin", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private int RunView(string[] args)
+        {
+            string input = null;
+            string output = null;
+
+            for (int i = 0; i < args.Length; i++)
+            {
+                switch (args[i])
+                {
+                    case "-f": if (i + 1 < args.Length) input = args[++i]; break;
+                    case "-o": if (i + 1 < args.Length) output = args[++i]; break;
+                    case "-h":
+                    case "-help":
+                        _console.WriteLine("Usage: WinASM65 view -f <module.w65|archive.w65a> [-o <report.html>]");
+                        _console.WriteLine("  Writes an offline HTML view of segments, symbols and relocations.");
+                        return 0;
+                    default:
+                        if (input == null && !args[i].StartsWith("-", StringComparison.Ordinal))
+                            input = args[i];
+                        break;
+                }
+            }
+
+            if (string.IsNullOrEmpty(input))
+            {
+                _console.WriteError("Nothing to view: give a .w65 module or a .w65a archive.");
+                return 1;
+            }
+
+            if (string.IsNullOrEmpty(output))
+                output = Path.ChangeExtension(input, ".html");
+
+            OperationResult written = ModuleViewer.Write(output, input);
+            if (!written.Success)
+            {
+                DisplayDiagnostics(written.Diagnostics);
+                return 1;
+            }
+
+            _console.WriteLine("Wrote " + output);
+            return 0;
         }
 
         /// <summary>
@@ -621,6 +671,12 @@ namespace WinASM65
             _console.WriteLine("  -t <system>   Target system (nes, c64, c128, vic20, apple2, apple2e, atari8, atari800, atari2600, bbc, bbcmicro, electron, oric, x16, lynx). Use 'list' to enumerate all.");
             _console.WriteLine("  -cpu <cpu>    CPU override (6502 or 65c02). Defaults to target system CPU.");
             _console.WriteLine("  -format <fmt> Output format override (bin, nes, ines, prg, xex, a2bin, rom, o65, ihex, srec, w65). 'w65' writes a linkable module instead of an executable. Defaults to target system format.");
+            _console.WriteLine("");
+                _console.WriteLine("Verbs:");
+                _console.WriteLine("  link <module.w65>...   Link modules into a flat burnable image");
+                _console.WriteLine("  archive <module.w65>... Pack modules into a .w65a archive");
+                _console.WriteLine("  geos <module.w65>...   Link modules into a GEOS application on a D64");
+                _console.WriteLine("  view -f <file>         Write an offline HTML view of a module or archive");
         }
     }
 }
