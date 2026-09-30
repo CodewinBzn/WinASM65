@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinASM65.Core;
 using WinASM65.Cpu;
 using WinASM65.Segments;
+using WinASM65.Output;
 using WinASM65.Targets;
 
 namespace WinASM65.Tests
@@ -382,6 +384,73 @@ namespace WinASM65.Tests
                 StringAssert.StartsWith(File.ReadAllText(Path.Combine(temp.Path, "out.ihex")), ":");
                 StringAssert.StartsWith(File.ReadAllText(Path.Combine(temp.Path, "out.srec")), "S");
             }
+        }
+
+        [TestMethod]
+        public void UneEtiquetteDuSourcePrimeSurUnSymboleMaterielPredefini()
+        {
+            // Le catalogue NES definit JOY1 a $4016, et example_bomberman-nes
+            // utilise "JOY1:" comme etiquette de boucle. Refuser l'etiquette parce
+            // qu'un nom de confort existe deja rendait le programme reel
+            // inassemblable. Le source fait autorite sur ses propres etiquettes.
+            AssemblyResult result = AssembleWithPredefined(".org $C000\nJOY1: nop\n        jmp JOY1\n",
+                new Dictionary<string, long> { { "JOY1", 0x4016 } });
+
+            Assert.IsTrue(result.Success, Describe(result));
+            Assert.AreEqual(0xC000, SingleRelocation(result).Value,
+                "JOY1 vaut l'adresse de l'etiquette, pas $4016");
+        }
+
+        [TestMethod]
+        public void UnSymboleMaterielNonRedefiniResteUtilisable()
+        {
+            AssemblyResult result = AssembleWithPredefined(".org $C000\n        lda PPUSTATUS\n",
+                new Dictionary<string, long> { { "PPUSTATUS", 0x2002 } });
+
+            Assert.IsTrue(result.Success, Describe(result));
+            Assert.AreEqual(0x2002, SingleRelocation(result).Value,
+                "le symbole materiel non redefini s'applique");
+        }
+
+        [TestMethod]
+        public void ReduireUnSymboleMaterielPuisLeRedefinirLaisseUneSeuleDefinition()
+        {
+            // Le nom predefini est consomme par la premiere definition du source :
+            // ecrire la meme etiquette deux fois doit rester un doublon, sinon on
+            // aurait achete la levee de cette erreur en la supprimant partout.
+            AssemblyResult result = AssembleWithPredefined(".org $C000\nJOY1: nop\nJOY1: nop\n",
+                new Dictionary<string, long> { { "JOY1", 0x4016 } });
+
+            Assert.IsFalse(result.Success, "un doublon dans le source reste un doublon");
+        }
+
+        private static AssemblyResult AssembleWithPredefined(string source, Dictionary<string, long> predefined)
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string sourcePath = System.IO.Path.Combine(temp.Path, "unit.asm");
+                File.WriteAllText(sourcePath, source);
+                AssemblerOptions options = new AssemblerOptions();
+                options.Cpu = CpuFactory.Create("6502");
+                options.PredefinedSymbols = predefined;
+                return new AssemblerFactory().Create(options)
+                    .Assemble(sourcePath, System.IO.Path.Combine(temp.Path, "unit.o"));
+            }
+        }
+
+        private static RelocationRecord SingleRelocation(AssemblyResult result)
+        {
+            Assert.AreEqual(1, result.Relocations.Count,
+                "une seule relocation attendue, obtenue : " + result.Relocations.Count);
+            return result.Relocations[0];
+        }
+
+        private static string Describe(AssemblyResult result)
+        {
+            string text = string.Empty;
+            for (int i = 0; i < result.Diagnostics.Count; i++)
+                text += result.Diagnostics[i].Message + " | ";
+            return text;
         }
 
         private sealed class RecordingConsole : IConsoleOutput
