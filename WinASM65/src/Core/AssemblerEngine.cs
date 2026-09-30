@@ -1,4 +1,4 @@
-// Abdelghani BOUZIANE / Refactored to Pure OOP
+﻿// Abdelghani BOUZIANE / Refactored to Pure OOP
 // WinASM65 - Assembler Engine (Pure OOP, SOLID, KISS)
 
 using System;
@@ -73,6 +73,11 @@ namespace WinASM65.Core
         private readonly IDiagnosticReporter _diagnostics;
         private readonly IDirectiveDispatcher _directiveDispatcher;
         private readonly IDictionary<string, long> _predefinedSymbols;
+
+        /// <summary>
+        /// The names the target predefined and that no source has taken over yet.
+        /// </summary>
+        private readonly HashSet<string> _predefinedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly ushort? _defaultOrigin;
 
         private readonly Dictionary<string, MacroDefinition> _macros = new Dictionary<string, MacroDefinition>(StringComparer.OrdinalIgnoreCase);
@@ -295,7 +300,28 @@ namespace WinASM65.Core
                 string error;
                 if (!_scopeManager.AddSymbol(pair.Key, pair.Value, true, out error) && !string.IsNullOrEmpty(error))
                     _diagnostics.ReportError(CurrentLocation, error);
+                _predefinedNames.Add(pair.Key);
             }
+        }
+
+        /// <summary>
+        /// Defines a symbol written by the source.
+        /// <para>
+        /// A name the target predefined is not a duplicate definition. Those values
+        /// are a convenience, and a source is entitled to say what a name means in
+        /// its own program: refusing "JOY1: TXA" because the NES catalog already
+        /// defines a controller port at $4016 makes real code unbuildable, and the
+        /// source is the authority on its own labels.
+        /// </para>
+        /// <para>
+        /// The predefined name is consumed here, so writing the same label twice in
+        /// the source is still a duplicate and still reported.
+        /// </para>
+        /// </summary>
+        private bool AddSourceSymbol(string label, long value, out string error)
+        {
+            bool replace = _predefinedNames.Remove(label);
+            return _scopeManager.AddSymbol(label, value, replace, out error);
         }
 
         public void ResolvePendingSymbols()
@@ -497,7 +523,7 @@ namespace WinASM65.Core
         {
             string label = match.Groups["label"].Value;
             string err;
-            if (_scopeManager.AddSymbol(label, _emitter.CurrentAddress, false, out err))
+            if (AddSourceSymbol(label, _emitter.CurrentAddress, out err))
             {
                 _listingService.PrintLine(LineType.LABEL, _emitter.CurrentAddress);
                 _scopeManager.ResolveSymbols(_evaluator, PatchResolvedExpression);
@@ -547,7 +573,7 @@ namespace WinASM65.Core
             {
                 ushort memArea = _scopeManager.CurrentScope.MemArea;
                 string err;
-                if (_scopeManager.AddSymbol(label, memArea, false, out err))
+                if (AddSourceSymbol(label, memArea, out err))
                 {
                     _listingService.PrintLine(LineType.RES, memArea);
                     _scopeManager.CurrentScope.MemArea += res.Value.ToUInt16();
@@ -600,8 +626,14 @@ namespace WinASM65.Core
                 }
                 else
                 {
+                    // The error was dropped here, so a label written on an
+                    // instruction line could be defined twice with no diagnostic
+                    // and the second definition won. The label on its own line has
+                    // always reported it; the two spellings are one concept.
                     string err;
-                    _scopeManager.AddSymbol(label, _emitter.CurrentAddress, false, out err);
+                    if (!AddSourceSymbol(label, _emitter.CurrentAddress, out err)
+                        && !string.IsNullOrEmpty(err))
+                        _diagnostics.ReportError(CurrentLocation, err);
                 }
             }
 
@@ -736,7 +768,7 @@ namespace WinASM65.Core
         /// byte and a relocation there would be a lie.
         ///
         /// The field is the last <paramref name="width"/> bytes just emitted, so the
-        /// segment offset is the buffer offset — not the address made relative to the
+        /// segment offset is the buffer offset â€” not the address made relative to the
         /// current OriginAddress, which a later <c>.org</c> would move.
         /// </summary>
         private void RecordRelocation(ExpressionResult exprRes, byte width, long value, bool resolved = true)
