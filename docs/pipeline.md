@@ -7,6 +7,9 @@ ecrit pour servir de reference lors des taches T1 a T4.
 Toutes les references de lignes sont donnees pour le code actuel et peuvent
 decaler apres evolution.
 
+La section 5 de `docs/targets.md` decrit les regions nommees declarables
+(T6) et leur unique effet sur ce pipeline : la validation croisee des `.org`.
+
 ---
 
 ## 1. Vue d'ensemble
@@ -412,6 +415,7 @@ exacte. Deux des quatre sont corriges par T1+T2.
 | Le type d'expression n'atteint pas l'emetteur | `ExpressionResult` n'exposait que `IsResolved` | **corrige (T1)** : `Role`, `UsedSymbols`, `Expression`, `Location` |
 | L'aplatissement des adresses | `HandleInstruction` : `val = exprRes.Value.AsInteger` puis `EmitWord((ushort)(val & 0xFFFF))` | **corrige (T2)** : chaque site dont la valeur depend d'un symbole est enregistre dans `BinaryEmitter.Relocations` |
 | Aucun segment | `BinaryEmitter` : un `List<byte>`, un `CurrentAddress` | **partiel (T2)** : `SegmentIndex` / `SegmentName` existent, toujours a 0 en mode direct ; le placement multi-regions reste a faire |
+| Placement multi-regions | — | **partiel (T6)** : des regions nommees declarables (`Segments/MemoryMap.cs`) croisent le `.org` contre ce que la cible attend, mais elles ne placent rien : le `.org` reste le seul mecanisme de placement, et le mode direct est inchange |
 | Pas d'export/import | `MultiSegmentOrchestrator` : echanges par `.symb` / `.Unsolved` | ouvert, prevu en T3 |
 
 Le risque associe au premier point est le plus eleve du chantier : une

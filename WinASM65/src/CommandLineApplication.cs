@@ -110,50 +110,67 @@ namespace WinASM65
 
             IDictionary<string, long> symbols = target.DefineHardwareSymbols ? target.HardwareSymbols : null;
 
-            if (!string.IsNullOrEmpty(sourceFile))
+            MemoryMap memoryMap;
+            if (!TryBuildMemoryMap(config, out memoryMap))
+                return 1;
+            if (memoryMap != null && memoryMap.Regions.Count > 0)
             {
-                if (string.IsNullOrEmpty(objectFile)) objectFile = string.Format("{0}.o", sourceFile.Split('.')[0]);
-                AssemblerOptions options = new AssemblerOptions
-                {
-                    EnableListing = enableListing,
-                    Cpu = cpu,
-                    PredefinedSymbols = symbols,
-                    DefaultOrigin = target.LoadAddress
-                };
-                AssemblyResult assembly = _assemblerFactory.Create(options).Assemble(sourceFile, objectFile);
-                if (!assembly.Success) { DisplayDiagnostics(assembly.Diagnostics); return 1; }
-
-                if (IsModuleFormat(target))
-                {
-                    if (assembly.Module == null)
-                    {
-                        DisplayDiagnostics(new List<Diagnostic> { new Diagnostic(
-                            new SourceLocation(sourceFile, 0),
-                            "Format 'w65' needs a module: the source declares no .export and no .import.") });
-                        return 1;
-                    }
-                    OperationResult written = W65Format.Write(objectFile, assembly.Module);
-                    if (!written.Success) { DisplayDiagnostics(written.Diagnostics); return 1; }
-                }
-                else if (!IsRawFormat(target))
-                {
-                    target.OriginAddress = assembly.OriginAddress;
-                    OperationResult published = _executablePublisher.Publish(objectFile, assembly.OutputBytes, target);
-                    if (!published.Success) { DisplayDiagnostics(published.Diagnostics); return 1; }
-                }
+                Dictionary<string, long> merged = new Dictionary<string, long>();
+                if (symbols != null)
+                    foreach (KeyValuePair<string, long> pair in symbols)
+                        merged[pair.Key] = pair.Value;
+                foreach (KeyValuePair<string, long> pair in memoryMap.BuildPredefinedSymbols())
+                    merged[pair.Key] = pair.Value;
+                symbols = merged;
             }
 
-            if (config != null && config.Input != null && config.Input.Count > 0)
+            using (MemoryMapScope.Activate(memoryMap))
             {
-                Func<IAssembler> asmFactory = () => _assemblerFactory.Create(new AssemblerOptions
+                if (!string.IsNullOrEmpty(sourceFile))
                 {
-                    Cpu = cpu,
-                    PredefinedSymbols = symbols,
-                    EnableListing = enableListing,
-                    DefaultOrigin = target.LoadAddress
-                });
-                MultiSegmentResult segments = new MultiSegmentOrchestrator(asmFactory).AssembleSegments(config.Input);
-                if (!segments.Success) { DisplayDiagnostics(segments.Diagnostics); return 1; }
+                    if (string.IsNullOrEmpty(objectFile)) objectFile = string.Format("{0}.o", sourceFile.Split('.')[0]);
+                    AssemblerOptions options = new AssemblerOptions
+                    {
+                        EnableListing = enableListing,
+                        Cpu = cpu,
+                        PredefinedSymbols = symbols,
+                        DefaultOrigin = target.LoadAddress
+                    };
+                    AssemblyResult assembly = _assemblerFactory.Create(options).Assemble(sourceFile, objectFile);
+                    if (!assembly.Success) { DisplayDiagnostics(assembly.Diagnostics); return 1; }
+
+                    if (IsModuleFormat(target))
+                    {
+                        if (assembly.Module == null)
+                        {
+                            DisplayDiagnostics(new List<Diagnostic> { new Diagnostic(
+                                new SourceLocation(sourceFile, 0),
+                                "Format 'w65' needs a module: the source declares no .export and no .import.") });
+                            return 1;
+                        }
+                        OperationResult written = W65Format.Write(objectFile, assembly.Module);
+                        if (!written.Success) { DisplayDiagnostics(written.Diagnostics); return 1; }
+                    }
+                    else if (!IsRawFormat(target))
+                    {
+                        target.OriginAddress = assembly.OriginAddress;
+                        OperationResult published = _executablePublisher.Publish(objectFile, assembly.OutputBytes, target);
+                        if (!published.Success) { DisplayDiagnostics(published.Diagnostics); return 1; }
+                    }
+                }
+
+                if (config != null && config.Input != null && config.Input.Count > 0)
+                {
+                    Func<IAssembler> asmFactory = () => _assemblerFactory.Create(new AssemblerOptions
+                    {
+                        Cpu = cpu,
+                        PredefinedSymbols = symbols,
+                        EnableListing = enableListing,
+                        DefaultOrigin = target.LoadAddress
+                    });
+                    MultiSegmentResult segments = new MultiSegmentOrchestrator(asmFactory).AssembleSegments(config.Input);
+                    if (!segments.Success) { DisplayDiagnostics(segments.Diagnostics); return 1; }
+                }
             }
 
             if (config != null && config.Output != null)
@@ -190,6 +207,27 @@ namespace WinASM65
         {
             return !string.IsNullOrWhiteSpace(target.FormatName)
                 && target.FormatName.Trim().Equals("w65", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Builds the declared memory map. A configuration with no Regions section
+        /// yields a null map, which is the pre-T6 behaviour: nothing to validate
+        /// against, so nothing changes. An incoherent region is a configuration
+        /// error, reported before any source is read.
+        /// </summary>
+        private bool TryBuildMemoryMap(ConfigFile config, out MemoryMap map)
+        {
+            map = null;
+            if (config == null || config.Target == null || config.Target.Regions == null || config.Target.Regions.Length == 0)
+                return true;
+
+            IReadOnlyList<Diagnostic> errors;
+            if (!MemoryMap.TryBuild(config.Target.Regions, out map, out errors))
+            {
+                DisplayDiagnostics(errors);
+                return false;
+            }
+            return true;
         }
 
         private int ReportConfigurationError(string message) { _console.WriteError(message); return 1; }
