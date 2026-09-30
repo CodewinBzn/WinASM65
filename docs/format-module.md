@@ -79,7 +79,18 @@ deplace pas.
 | alignement | 4 | alignement souhaite |
 | type | 1 | `ro` (lecture seule), `rw` (lecture-ecriture), `bss` (reserve) |
 | banque | 1 | index de banque, ou $FF si non applicable |
-| offset dans le fichier | 4 | position de la charge utile |
+| offset dans le fichier | 4 | position de la charge utile, **absolue**, mesuree depuis le debut du fichier |
+| origine | 2 | adresse `.org` contre laquelle l'unite a ete ecrite |
+
+L'offset est absolu, comme l'en-tete et comme toutes les autres positions du
+fichier. La charge utile suit les tables, donc sa base n'est connue qu'une
+fois les tables dimensionnees : l'ecrivain mesure les tables, puis les
+reecrit avec les offsets definitifs. Un offset relatif a la charge utile
+pointerait dans l'en-tete.
+
+L'origine n'est **pas** un placement. C'est l'adresse de repli du linker,
+utilisee quand rien d'autre ne contraint le segment ; la perdre a
+l'ecriture le laissait placer n'importe ou.
 
 Un segment `bss` n'occupe pas de place dans le fichier : il est reserve
 seulement. C'est ce qui permet de decrire une zone de variables sans
