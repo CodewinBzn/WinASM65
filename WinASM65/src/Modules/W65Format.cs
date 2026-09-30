@@ -159,7 +159,7 @@ namespace WinASM65.Modules
                 WriteU32(stream, (uint)record.Offset);
                 stream.WriteByte(record.Width);
                 stream.WriteByte((byte)record.Type);
-                WriteU32(stream, (uint)record.Address);
+                WriteU16(stream, record.Address);
                 WriteString(stream, record.TargetSymbol ?? string.Empty);
                 WriteString(stream, record.SourceFile);
                 WriteU32(stream, (uint)Math.Max(0, record.SourceLine));
@@ -256,7 +256,8 @@ namespace WinASM65.Modules
 
                     result.AddRelocation(new RelocationRecord(
                         (int)segment, string.Empty, (int)offset, address, width,
-                        (RelocationType)type, new List<string> { target },
+                        (RelocationType)type,
+                        string.IsNullOrEmpty(target) ? new List<string>() : new List<string> { target },
                         new SourceLocation(sourceFile, (int)sourceLine), string.Empty));
                 }
 
