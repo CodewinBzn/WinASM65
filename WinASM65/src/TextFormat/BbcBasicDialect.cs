@@ -44,15 +44,7 @@ namespace WinASM65.TextFormat
     {
         public static string Render(IReadOnlyList<BasicLine> lines)
         {
-            StringBuilder text = new StringBuilder();
-            for (int i = 0; i < lines.Count; i++)
-            {
-                text.Append(lines[i].Number);
-                text.Append(' ');
-                text.Append(lines[i].Body ?? string.Empty);
-                text.Append('\n');
-            }
-            return text.ToString();
+            return BasicSource.Render(lines);
         }
     }
 
@@ -241,18 +233,6 @@ Define(dialect, EscapeFunction, functions);
                 return true;
             }
 
-            public override bool TryDecodeReference(byte[] data, int at, out int number)
-            {
-                if (at + 3 > data.Length)
-                {
-                    number = 0;
-                    return false;
-                }
-
-                number = DecodeReference(data[at], data[at + 1], data[at + 2]);
-                return true;
-            }
-
             public override byte[] Frame(IReadOnlyList<int> numbers, IReadOnlyList<byte[]> bodies)
             {
                 return BbcBasicDialect.Frame(numbers, bodies);
@@ -311,7 +291,13 @@ Define(dialect, EscapeFunction, functions);
             body.Add((byte)((hi & 0x3F) | 0x40));
         }
 
-        /// <summary>The inverse of the encoding, which is what the round trip is checked against.</summary>
+        /// <summary>
+        /// The number a reference stands for. The reader does not use this: it
+        /// hands the four bytes back as they are, because a reference may hold
+        /// more than the encoding of one number and the round trip has to hold
+        /// for every file rather than for the ones a machine wrote. This is here
+        /// for a caller that wants the number anyway — a listing, a trace.
+        /// </summary>
         public static int DecodeReference(byte b0, byte b1, byte b2)
         {
             int packed = b0 ^ 0x54;

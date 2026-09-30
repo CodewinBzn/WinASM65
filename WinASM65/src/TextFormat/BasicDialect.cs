@@ -286,16 +286,19 @@ namespace WinASM65.TextFormat
         /// <summary>
         /// Stores a reference to another line. Dialects that write references as
         /// digits return false and the digits are written out as they are.
+        /// <para>
+        /// There is no matching reader here on purpose. A reference does not
+        /// always decode to one number — BBC BASIC's three bytes hold more
+        /// states than there are lines, so a file can carry a reference that the
+        /// encoder would never write — and the reader's contract is that
+        /// re-encoding what it read gives the same file back, for every file and
+        /// not only for the ones a machine wrote. So a reference is handed back
+        /// as the bytes it is, and a dialect that wants the number decodes it
+        /// itself: <c>BbcBasicDialect.DecodeReference</c> is there for that.
+        /// </para>
         /// </summary>
         public virtual bool TryEncodeReference(int number, List<byte> body)
         {
-            return false;
-        }
-
-        /// <summary>Reads back a reference written by <see cref="TryEncodeReference"/>.</summary>
-        public virtual bool TryDecodeReference(byte[] data, int at, out int number)
-        {
-            number = 0;
             return false;
         }
 

@@ -115,6 +115,35 @@ explicitement liste comme risque dans le plan.
 
 Meme encodeur de tokens, conteneurs differents.
 
+Le verbe qui les atteint est `WinASM65 basic` :
+
+```
+WinASM65 basic -f programme.bas -o programme.bin -dialect applesoft
+WinASM65 basic -f programme.bas -o programme.po  -format prodos
+WinASM65 basic -f programme.bas -o programme.dsk -format dos33 -list programme.lst
+```
+
+`-dialect` prend `applesoft`, `waterloo` ou `bbc` — `applesoft` par defaut.
+`-format` prend `bin`, `prodos`, `dos32` ou `dos33` — `bin` par defaut, ce
+qui ecrit le programme tel qu'il se tient en memoire. `-list` relit le fichier
+ecrit et le rend en texte : c'est l'aller-retour que le format verifie, donc
+c'est aussi la seule preuve que le fichier est bon.
+
+Une nuance que la liste montre et que la source ne montre pas : la liste rend
+**les octets du programme, pas le source d'origine**. Une chaine Applesoft y
+revient sous forme de sa longueur et de ses caracteres, une reference BBC sous
+forme de ses trois octets, parce que c'est ainsi que le fichier les porte. Le
+tour est exact dans les deux sens, ce qui est la seule propriete qui compte,
+et il ne produit pas un fichier qu'une personne pourrait reediter.
+
+Le lecteur de source (`TextFormat/BasicSource.cs`) applique trois regles qui
+viennent des machines plutot que du gout : il coupe les lignes sur le seul
+retour a la ligne — `$0B` et `$0C` sont des caracteres legitimes dans un VDU
+et dans une chaine —, il numerote un programme dont aucune ligne n'est
+numerotee, de 10 en 10, et il refuse un programme dont certaines lignes le sont
+et d'autres non. Un numero qui revient en arriere est signale et les lignes
+sont laissees en place : l'ordre du fichier est l'ordre d'execution.
+
 | Conteneur | Systeme | Description |
 |---|---|---|
 | Apple II | DOS 3.2, DOS 3.3, Applesoft | catalogue de fichiers + liste piste secteur, allocation par paires en 3.2 et secteur par secteur en 3.3 |

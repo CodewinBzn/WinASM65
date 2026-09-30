@@ -69,6 +69,43 @@ so you can keep one config file and switch systems from the command line.
 Note that `LoadAddress` and `RunAddress` have no command-line equivalent, so a
 value set in `Target` always applies, even when `-t` selects a different system.
 
+### Other verbs
+
+| Verb | What it does |
+|---|---|
+| `WinASM65 link <module.w65>...` | Links modules into a flat image. |
+| `WinASM65 archive` | Builds a `.w65a` archive out of modules. |
+| `WinASM65 view <module.w65>` | Writes an offline HTML view of segments and relocations. |
+| `WinASM65 geos <module.w65>...` | Links modules into a GEOS application on a D64 image. |
+| `WinASM65 basic -f <program.bas>` | Tokenises a BASIC program, bare or in a container. |
+
+------------------------------
+## BASIC programs
+
+These systems have no executable to produce. What a person writes is a
+program, and what the interpreter reads is a file of tokens, so the verb is not
+"assemble" but "tokenise":
+
+```bash
+WinASM65 basic -f game.bas -o game.bin                      # the program, as it sits in memory
+WinASM65 basic -f game.bas -o game.po  -format prodos       # a ProDOS text file
+WinASM65 basic -f game.bas -o game.dsk -format dos33        # an Apple II DOS 3.3 disk image
+WinASM65 basic -f game.bas -o game.bin -dialect waterloo
+WinASM65 basic -f game.bas -o game.bin -dialect bbc -list game.lst
+```
+
+`-dialect` takes `applesoft`, `waterloo` or `bbc`, and defaults to `applesoft`.
+`-format` takes `bin`, `prodos`, `dos32` or `dos33`, and defaults to `bin`:
+the program itself, which is what sits in memory at the load address. The
+ProDOS and DOS containers hold an Applesoft program, so they are refused for
+the other two dialects rather than producing a file the machine rejects.
+
+`-list` writes the program back as text, read out of the file that was written.
+That is the round trip, and it is the only proof the file is right. Note that
+the listing is the program's bytes rather than the original source: an
+Applesoft string comes back as its length and its characters, a BBC BASIC line
+reference as its three bytes, because that is how the files hold them.
+
 ------------------------------
 ## Output formats
 
@@ -83,6 +120,11 @@ value set in `Target` always applies, even when `-t` selects a different system.
 | `o65`   | o65 object header with one text segment.                          |
 | `ihex`  | Intel HEX, for programmers and EPROM burners.                     |
 | `srec`  | Motorola S-record, for programmers and EPROM burners.             |
+| `bbc`   | BBC Micro binary: code header, then the code.                     |
+| `tube`  | 6502 second processor: the code, for the Tube address space.     |
+| `prodos`| ProDOS load file on a volume, 512-byte blocks.                    |
+| `dos32` | Apple II disk image in DOS 3.2 order, 13 sectors per track.      |
+| `dos33` | Apple II disk image in DOS 3.3 order, 16 sectors per track.      |
 
 ### Load address and `.org`
 
