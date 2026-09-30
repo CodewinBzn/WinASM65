@@ -105,9 +105,9 @@ sur le preset. Un systeme inconnu leve une `ArgumentException` nommant
 l'identifiant et renvoyant vers `-t list` (`:20`).
 
 `TargetConf` (`src/Segments/SegmentModels.cs:46`) expose `System`, `Cpu`,
-`Format`, `LoadAddress`, `RunAddress`, `RomSize`, `DefineHardwareSymbols` et
-`Ines`. Les adresses sont des **chaines**, parsees par `NumericLiteral` pour
-accepter `$0801` comme `2049`.
+`Format`, `LoadAddress`, `RunAddress`, `RomSize`, `DefineHardwareSymbols`,
+`Ines` et `Regions` (section 5). Les adresses sont des **chaines**, parsees par
+`NumericLiteral` pour accepter `$0801` comme `2049`.
 
 ### Symbole materiels
 
@@ -200,30 +200,107 @@ limite.
 
 ---
 
-## 5. Memoire multi-regions (non implemente)
+## 5. Memoire multi-regions (T6)
 
-Le plan prevoit (tache T6) d'etendre la configuration pour decrire des
-**regions nommees** : adresse, taille, banque, type `ro`/`rw`/`bss`, avec
-placement croise `load`/`run` et validation croise des `.org`.
+La configuration peut decrire des **regions nommees** : adresse, taille,
+banque, type `ro`/`rw`/`bss`, et le stockage `load` quand il differe de
+l'execution.
 
-L'etat actuel ne permet **rien** de tout cela :
+```json
+{
+  "Target": {
+    "System": "nes",
+    "Regions": [
+      { "Name": "PRG0",   "Address": "$C000", "Size": "$3000", "Bank": 0, "Type": "ro" },
+      { "Name": "PRG1",   "Address": "$F000", "Size": "$0FFA", "Bank": 1, "Type": "ro" },
+      { "Name": "VECTORS", "Address": "$FFFA", "Size": "$6",    "Type": "ro" },
+      { "Name": "OAM",    "Address": "$0200", "Size": "$0100", "Type": "rw" },
+      { "Name": "VARS",   "Address": "$0300", "Size": "$0180", "Type": "bss" }
+    ]
+  }
+}
+```
 
-- `BinaryEmitter` (`src/Output/BinaryEmitter.cs:28`) tient une seule
-  `List<byte>`, un seul `CurrentAddress`, un seul `OriginAddress`.
-- `TargetConf` n'a aucun champ de region ou de banque.
-- Un `.org` est un repositionnement absolu du curseur, sans notion de
-  contiguite, de taille, ni de verification de depassement.
+| Champ | Obligatoire | Sens |
+|---|---|---|
+| `Name` | non | nom de la region, repris dans les diagnostics et dans les symboles derives |
+| `Address` | **oui** | base de la region, c'est-a-dire l'adresse **d'execution** : c'est elle que le `.org` est valide contre |
+| `Size` | non | taille en octets ; absente, la region va jusqu'a `$FFFF` |
+| `Bank` | non | numero de banque, pour une memoire banquee |
+| `Type` | non | `ro` (defaut), `rw` ou `bss` |
+| `Load` | non | adresse de **stockage**, quand elle differe de l'execution |
 
-Un `.memarea` existe (directive enregistree dans `AssemblerEngine.cs:136`),
-mais il ne sert qu'a la directive `.res` : il tient un curseur de zone
-memoriel, il ne decrit pas une region verifiable.
+`Address` et `Size` sont des **chaines**, comme les autres adresses de la
+configuration : `"$C000"` et `"49152"` sont acceptes.
 
-La consequence : today, une cible multi-banques comme la NES n'est decrite
-que par la **convention** des `.org` dans le source. Rien dans la
-configuration ne dit qu'une banque fait 16 Ko, ni ne refuse un `.org` qui
-debordonne. `example_bomberman-nes` fonctionne parce que `BMAN_BANK1.NAS` et
-`BMAN_BANK2.NAS` portent leurs `.org` et que le JSON de sortie les confirme
-par une taille — la verification est faite par l'oeil, pas par le code.
+### Une region ne place rien
+
+Une region est **declarative** : elle dit ce que la cible attend. Elle ne
+place aucun octet, ne remplace pas le `.org` et ne modifie pas la sortie. Une
+configuration **sans** section `Regions` a une carte vide, qui ne valide rien :
+c'est le comportement d'avant T6, et il est verifie par
+`ConfigurationSansRegions_LaLigneDeCommandeSeComporteCommeAvant`.
+`example_bomberman-nes` produit le meme octet pour un octet avec et sans
+`Regions`.
+
+Ce qui change, c'est qu'un `.org` **ne peut plus atterrir hors de toute carte
+en silence**.
+
+### Validation croisee des `.org`
+
+Un `.org` est verifie contre la fenetre d'execution des regions declarees :
+
+- dans une region `ro` ou `rw` : accepte, sans rien changer d'autre ;
+- dans **aucune** region : erreur, et la region **attendue** est nommee ;
+- dans une region **`bss`** : erreur, puisque cet espace est reserve et
+  n'occupe aucun octet du fichier.
+
+**Quelle region est attendue.** La regle est la seule qui s'énonce sans
+deviner : les regions sont triees par adresse de depart, et la region attendue
+est la derniere dont le debut est inferieur ou egal a l'adresse. Donc une
+adresse inferieure a toutes les regions attend la premiere, et une adresse
+tombee dans un **trou** entre deux regions attend celle que le trou suit.
+
+```
+Line 3 - File BMAN_BANK1.NAS - Type $C000 lands outside every declared region.
+Expected region: PRG1 $F000-$FFF9 (ro). Declared regions: PRG1 $F000-$FFF9 (ro).
+```
+
+Le message nomme aussi **toutes** les regions declarees, parce que la region
+attendue n'est qu'une probabilite : la liste est la partie sure du message.
+
+### Placement croise `load` / `run`
+
+`Address` est l'adresse d'execution, `Load` l'adresse de stockage. La
+difference est ce qui rendra au linker (T4) et au kernal GEOS (T9) la
+possibilite de relocaliser : `MemoryMap.TryFindByLoad` retrouve la region d'un
+adresse de stockage.
+
+### `bss` reserve sans produire d'octet
+
+Une region `bss` declare de l'espace reserve : `TotalBssSize` et
+`ReservedAt` y repondent, et la sortie du fichier est inchangee. Cote source,
+chaque region produit des symboles `NOM_START`, `NOM_LOAD`, `NOM_RUN`, et
+`NOM_END` / `NOM_SIZE` si une taille est declaree, ce qui permet d'ecrire :
+
+```
+.memarea VARS_START
+vars .res VARS_SIZE
+```
+
+sans ecrire l'adresse en dur. Ces symboles s'ajoutent aux symboles materiels
+et n'existent que si des regions sont declarees.
+
+### Ce que T6 ne fait pas
+
+- **Le depassement d'une region.** Seul le `.org` est verifie. Detecter qu'une
+  emission *deborde* la fin d'une region demanderait un point d'observation
+  dans l'emetteur : c'est `Core/AssemblerEngine.cs` et
+  `Output/BinaryEmitter.cs`, les deux fichiers que T1/T2 ont le plus modifies,
+  reserves ici.
+- **Le catalogue.** `SystemCatalog` ne porte pas encore de regions par
+  preset : `TargetResolver` et `ResolvedTarget` sont reserves a T3/T14, donc
+  une region ne se declare que dans le JSON, jamais dans un preset de cible.
 
 ---
 
