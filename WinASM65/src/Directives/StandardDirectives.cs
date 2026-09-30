@@ -9,6 +9,7 @@ using WinASM65.Core;
 using WinASM65.Cpu;
 using WinASM65.Expressions;
 using WinASM65.Output;
+using WinASM65.Segments;
 using WinASM65.Symbols;
 
 namespace WinASM65.Directives
@@ -57,6 +58,13 @@ namespace WinASM65.Directives
             if (res.IsResolved)
             {
                 ushort addr = res.Value.ToUInt16();
+                // Cross-validation only, and only when the build declared regions: an
+                // address outside every declared region is a diagnostic, and a bss
+                // region never holds emitted bytes. A build that declares nothing has
+                // a null map, so the .org lands exactly where it always did.
+                MemoryMap regions = MemoryMapScope.Current;
+                if (regions != null)
+                    regions.ValidateOrigin(addr, context.CurrentLocation, context.Diagnostics);
                 context.Emitter.CurrentAddress = addr;
                 context.Emitter.OriginAddress = addr;
                 context.ListingService.PrintLine(LineType.ORG, addr);
