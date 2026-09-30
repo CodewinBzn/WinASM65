@@ -11,7 +11,14 @@ namespace WinASM65.Targets
 
         public static IEnumerable<string> Names
         {
-            get { return Systems.Keys.OrderBy(n => n); }
+            get
+            {
+                List<string> names = new List<string>();
+                foreach (ResolvedTarget target in Systems.Values)
+                    names.Add(target.SystemId);
+                names.Sort(StringComparer.OrdinalIgnoreCase);
+                return names;
+            }
         }
 
         public static bool TryGet(string systemId, out ResolvedTarget target)
@@ -33,12 +40,29 @@ namespace WinASM65.Targets
             text.AppendLine("Known 6502 systems (CPU + executable format):");
             foreach (string name in Names)
             {
-                ResolvedTarget target = Systems[name];
+                ResolvedTarget target = null;
+                foreach (ResolvedTarget candidate in Systems.Values)
+                {
+                    if (string.Equals(candidate.SystemId, name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        target = candidate;
+                        break;
+                    }
+                }
+                if (target == null)
+                    continue;
                 text.AppendFormat("  {0,-12} cpu={1,-6} format={2}", name, target.CpuName, target.FormatName);
                 if (target.LoadAddress.HasValue)
                     text.AppendFormat(" load=${0:X4}", target.LoadAddress.Value);
                 if (target.RomSize.HasValue)
                     text.AppendFormat(" rom={0}", target.RomSize.Value);
+                if (target.Hardware != null && !target.Hardware.IsEmpty)
+                {
+                    // The machine a build targeted is part of the build's record.
+                    // A PAL and an NTSC build produce the same bytes here, so
+                    // nothing else in the output would say which one it was.
+                    text.Append(" hw=" + target.Hardware.Describe());
+                }
                 text.AppendLine();
             }
             return text.ToString();
@@ -55,15 +79,34 @@ namespace WinASM65.Targets
         {
             Dictionary<string, ResolvedTarget> map = new Dictionary<string, ResolvedTarget>(StringComparer.OrdinalIgnoreCase);
             Add(map, "raw", "6502", "bin", null, null, false, null);
-            Add(map, "nes", "6502", "ines", null, NesSymbols(), true, t => { t.InesPrgBanks = 1; t.InesChrBanks = 1; });
-            Add(map, "famicom", "6502", "ines", null, NesSymbols(), true, t => { t.InesPrgBanks = 1; t.InesChrBanks = 1; });
-            Add(map, "c64", "6502", "prg", 0x0801, C64Symbols(), true, null);
-            Add(map, "c128", "6502", "prg", 0x1C01, C64Symbols(), true, null);
-            Add(map, "vic20", "6502", "prg", 0x1001, Vic20Symbols(), true, null);
-            Add(map, "pet", "6502", "prg", 0x0401, null, true, null);
-            Add(map, "plus4", "6502", "prg", 0x1001, null, true, null);
-            Add(map, "c16", "6502", "prg", 0x1001, null, true, null);
+
+            // The NES entries differ only by the video standard, which is exactly
+            // what a named target should be: two words that stand for a
+            // configuration, not two systems to maintain.
+            AddNes(map, "nes", HardwareOptions.StandardNtsc);
+            AddNes(map, "famicom", HardwareOptions.StandardNtsc);
+            AddNes(map, "nes-pal", HardwareOptions.StandardPal);
+            AddNes(map, "nes-ntsc", HardwareOptions.StandardNtsc);
+
+            AddCommodore(map, "c64", 0x0801, HardwareOptions.ModelC64, null, null, HardwareOptions.Sid6581);
+            AddCommodore(map, "c64c", 0x0801, HardwareOptions.ModelC64C, null, null, HardwareOptions.Sid8580);
+            AddCommodore(map, "c64-pal", 0x0801, HardwareOptions.ModelC64, HardwareOptions.StandardPal, null, HardwareOptions.Sid6581);
+            AddCommodore(map, "c64-ntsc", 0x0801, HardwareOptions.ModelC64, HardwareOptions.StandardNtsc, null, HardwareOptions.Sid6581);
+            AddCommodore(map, "c128", 0x1C01, HardwareOptions.ModelC128, null, "vic", HardwareOptions.Sid6581);
+            AddCommodore(map, "c128-vdc", 0x1C01, HardwareOptions.ModelC128, null, "vdc", HardwareOptions.Sid8580);
+            AddCommodore(map, "c128d", 0x1C01, HardwareOptions.ModelC128D, null, "vdc", HardwareOptions.Sid8580);
+            AddCommodore(map, "vic20", 0x1001, HardwareOptions.ModelVvic20, null, null, null);
+            AddCommodore(map, "vic20-pal", 0x1001, HardwareOptions.ModelVvic20, HardwareOptions.StandardPal, null, null);
+            AddCommodore(map, "vic20-ntsc", 0x1001, HardwareOptions.ModelVvic20, HardwareOptions.StandardNtsc, null, null);
+            AddCommodore(map, "plus4", 0x1001, HardwareOptions.ModelPlus4, null, "ted", "ted");
+            AddCommodore(map, "c16", 0x1001, HardwareOptions.ModelC16, null, "ted", "ted");
+            AddCommodore(map, "pet2001", 0x0401, HardwareOptions.ModelPet2001, null, null, null);
+            AddCommodore(map, "pet", 0x0401, HardwareOptions.ModelPet2001, null, null, null);
+            AddCommodore(map, "pet2001n", 0x0401, HardwareOptions.ModelPet2001N, null, null, null);
+            AddCommodore(map, "cbm2-80", null, HardwareOptions.ModelCbm2, null, "crtc", HardwareOptions.Sid6581);
+            AddCommodore(map, "cbm2-40", null, HardwareOptions.ModelCbm2, null, "vic", HardwareOptions.Sid6581);
             Add(map, "x16", "65c02", "prg", 0x0801, null, true, null);
+
             Add(map, "apple2", "6502", "a2bin", 0x0800, Apple2Symbols(), true, null);
             Add(map, "apple2e", "65c02", "a2bin", 0x0800, Apple2Symbols(), true, null);
             Add(map, "atari8", "6502", "xex", 0x0600, Atari8Symbols(), true, null);
@@ -87,6 +130,55 @@ namespace WinASM65.Targets
             return map;
         }
 
+        private static void AddNes(Dictionary<string, ResolvedTarget> map, string id, string standard)
+        {
+            // No sound chip named: the NES has none to name. Its audio registers
+            // belong to the PPU and are already in the table.
+            HardwareOptions options = new HardwareOptions
+            {
+                Model = HardwareOptions.ModelNes,
+                VideoStandard = standard
+            };
+            Add(map, id, "6502", "ines", null, HardwareProfile.Build(options), true, t =>
+            {
+                t.InesPrgBanks = 1;
+                t.InesChrBanks = 1;
+                t.Hardware = options.Clone();
+            });
+        }
+
+        /// <summary>
+        /// The symbol table of a machine, built from its options. The catalog
+        /// holds no table of its own for these: a second table for the same
+        /// machine is a second place to forget the same correction.
+        /// </summary>
+        private static Dictionary<string, long> Hardware(string model, string standard,
+            string video, string sound)
+        {
+            HardwareOptions options = new HardwareOptions
+            {
+                Model = model,
+                VideoStandard = standard,
+                VideoChip = video,
+                SoundChip = sound
+            };
+            return HardwareProfile.Build(options);
+        }
+
+        private static void AddCommodore(Dictionary<string, ResolvedTarget> map, string id, ushort? load,
+            string model, string standard, string video, string sound)
+        {
+            HardwareOptions options = new HardwareOptions
+            {
+                Model = model,
+                VideoStandard = standard,
+                VideoChip = video,
+                SoundChip = sound
+            };
+            Dictionary<string, long> symbols = HardwareProfile.Build(options);
+            Add(map, id, "6502", "prg", load, symbols, true, t => t.Hardware = options.Clone());
+        }
+
         private static void Add(Dictionary<string, ResolvedTarget> map, string id, string cpu, string format,
             ushort? load, Dictionary<string, long> symbols, bool defineSymbols, Action<ResolvedTarget> extra)
         {
@@ -101,36 +193,14 @@ namespace WinASM65.Targets
             };
             if (extra != null)
                 extra(target);
-            map[id] = target;
+            // Stored under the normalized id, not the one written here. Lookups
+            // normalize too, so a key kept with its dash would be unreachable:
+            // 'c64-pal' and 'c64pal' are the same target and only one can be found.
+            map[Normalize(id)] = target;
         }
 
-        private static Dictionary<string, long> NesSymbols()
-        {
-            return new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase)
-            {
-                { "PPUCTRL", 0x2000 }, { "PPUMASK", 0x2001 }, { "PPUSTATUS", 0x2002 },
-                { "OAMADDR", 0x2003 }, { "OAMDATA", 0x2004 }, { "PPUSCROLL", 0x2005 },
-                { "PPUADDR", 0x2006 }, { "PPUDATA", 0x2007 }, { "OAMDMA", 0x4014 },
-                { "SQ1_VOL", 0x4000 }, { "DMC_FREQ", 0x4010 }, { "SND_CHN", 0x4015 },
-                { "JOY1", 0x4016 }, { "JOY2", 0x4017 }
-            };
-        }
 
-        private static Dictionary<string, long> C64Symbols()
-        {
-            return new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase)
-            {
-                { "VIC", 0xD000 }, { "SID", 0xD400 }, { "CIA1", 0xDC00 }, { "CIA2", 0xDD00 }
-            };
-        }
 
-        private static Dictionary<string, long> Vic20Symbols()
-        {
-            return new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase)
-            {
-                { "VIC", 0x9000 }, { "VIA1", 0x9110 }, { "VIA2", 0x9120 }
-            };
-        }
 
         private static Dictionary<string, long> Apple2Symbols()
         {

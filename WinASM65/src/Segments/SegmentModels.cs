@@ -109,6 +109,12 @@ namespace WinASM65.Segments
         public string Author { get; set; }
 
         /// <summary>
+        /// Machine options: model, video standard, video and sound chip. Absent
+        /// for a target whose machine does not vary.
+        /// </summary>
+        public HardwareConf Hardware { get; set; }
+
+        /// <summary>
         /// Named memory regions. Empty when the section is absent, which is the case
         /// for every configuration written before regions existed: a configuration
         /// without regions behaves exactly as it did, because no declared region
@@ -119,6 +125,48 @@ namespace WinASM65.Segments
         public TargetConf()
         {
             Regions = new RegionConf[0];
+        }
+    }
+
+    /// <summary>
+    /// The machine a target is built for, as options rather than as a system
+    /// name, so that a PAL VIC-II and a CBM-II in 80 columns are two
+    /// configurations of a catalogue and not two entries to maintain.
+    /// </summary>
+    public class HardwareConf
+    {
+        /// <summary>Machine model: c64, c64c, c128, c128d, vic20, plus4, c16, pet2001, pet2001n, cbm2.</summary>
+        public string Model { get; set; }
+
+        /// <summary>"pal" or "ntsc".</summary>
+        public string VideoStandard { get; set; }
+
+        /// <summary>Video chip: vic, vdc, ted, crtc.</summary>
+        public string VideoChip { get; set; }
+
+        /// <summary>Sound chip: 6581, 8580, ted, vic.</summary>
+        public string SoundChip { get; set; }
+
+        public HardwareConf Clone()
+        {
+            return new HardwareConf
+            {
+                Model = Model,
+                VideoStandard = VideoStandard,
+                VideoChip = VideoChip,
+                SoundChip = SoundChip
+            };
+        }
+
+        public WinASM65.Targets.HardwareOptions ToOptions()
+        {
+            return new WinASM65.Targets.HardwareOptions
+            {
+                Model = Model,
+                VideoStandard = VideoStandard,
+                VideoChip = VideoChip,
+                SoundChip = SoundChip
+            };
         }
     }
 

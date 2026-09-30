@@ -37,6 +37,7 @@ namespace WinASM65.Targets
                 if (config.DefineHardwareSymbols.HasValue)
                     target.DefineHardwareSymbols = config.DefineHardwareSymbols.Value;
                 ApplyInes(target, config.Ines);
+                ApplyHardware(target, config.Hardware);
                 if (!string.IsNullOrWhiteSpace(config.BbcFileType))
                     target.BbcFileType = config.BbcFileType.Trim().ToLowerInvariant();
                 if (!string.IsNullOrWhiteSpace(config.Title))
@@ -52,6 +53,34 @@ namespace WinASM65.Targets
                 target.FormatName = cliFormat;
 
             return target;
+        }
+
+        private static void ApplyHardware(ResolvedTarget target, HardwareConf hardware)
+        {
+            if (hardware == null)
+                return;
+
+            HardwareOptions options = target.Hardware == null
+                ? new HardwareOptions()
+                : target.Hardware.Clone();
+
+            if (!string.IsNullOrWhiteSpace(hardware.Model))
+                options.Model = hardware.Model.Trim().ToLowerInvariant();
+            if (!string.IsNullOrWhiteSpace(hardware.VideoStandard))
+                options.VideoStandard = hardware.VideoStandard.Trim().ToLowerInvariant();
+            if (!string.IsNullOrWhiteSpace(hardware.VideoChip))
+                options.VideoChip = hardware.VideoChip.Trim().ToLowerInvariant();
+            if (!string.IsNullOrWhiteSpace(hardware.SoundChip))
+                options.SoundChip = hardware.SoundChip.Trim().ToLowerInvariant();
+
+            target.Hardware = options;
+
+            // A combination the machine cannot have is refused here rather than
+            // at the first access: a symbol table built on a chip that is not
+            // fitted produces a program that reads RAM and calls it a register.
+            string refused = HardwareRules.Reject(options);
+            if (refused != null)
+                throw new ArgumentException(refused, "config");
         }
 
         private static void ApplyInes(ResolvedTarget target, InesConf ines)

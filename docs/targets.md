@@ -51,12 +51,16 @@ supprimes. `apple-2e` et `apple2e` designent donc la meme cible.
 | `raw` | 6502 | `bin` | — | non |
 | `nes` | 6502 | `ines` | — | PPU, OAM, canaux audio, joystick |
 | `famicom` | 6502 | `ines` | — | idem `nes` |
-| `c64` | 6502 | `prg` | `$0801` | VIC, SID, CIA1, CIA2 |
-| `c128` | 6502 | `prg` | `$1C01` | idem `c64` |
+| `c64` | 6502 | `prg` | `$0801` | VIC, SID, CIA1, CIA2, ecran, memoire de couleurs |
+| `c64c` | 6502 | `prg` | `$0801` | idem `c64` (meme carte E/S, SID 8580) |
+| `c128` | 6502 | `prg` | `$1C01` | idem `c64` + MMU, VDC |
 | `vic20` | 6502 | `prg` | `$1001` | VIC, VIA1, VIA2 |
-| `pet` | 6502 | `prg` | `$0401` | — |
-| `plus4` | 6502 | `prg` | `$1001` | — |
-| `c16` | 6502 | `prg` | `$1001` | — |
+| `plus4` | 6502 | `prg` | `$1001` | TED, ACIA, port utilisateur (aucun VIC) |
+| `c16` | 6502 | `prg` | `$1001` | idem `plus4` |
+| `pet2001` | 6502 | `prg` | `$0401` | PIA1, PIA2, VIA |
+| `pet2001n` | 6502 | `prg` | `$0401` | idem `pet2001` |
+| `cbm2-80` | 6502 | `prg` | — | CRTC, ACIA, CIA, TPI |
+| `cbm2-40` | 6502 | `prg` | — | VIC-II a la place du CRTC |
 | `x16` | 65c02 | `prg` | `$0801` | — |
 | `apple2` | 6502 | `a2bin` | `$0800` | KBD, TXTCLR |
 | `apple2e` | 65c02 | `a2bin` | `$0800` | KBD, TXTCLR |
@@ -147,7 +151,7 @@ acceptes, pas une exception.
 | `o65` | `O65Format` | en-tete plat de 12 octets, puis charge |
 | `ihex` | `IntelHexFormat` | enregistrements Intel HEX |
 | `srec` | `MotorolaSrecFormat` | enregistrements Motorola S-record |
-| `bbc` | `BbcFormat` | fichier BBC avec en-tete : executable, binaire ou texte |
+| `bbc` | `BbcFormat` | fichier BBC avec un code header, ou un `$FF` de texte |
 | `tube` | `TubeFormat` | la charge seule, ce qu'attend OSLOAD |
 
 ### `bbc` en particulier (T13)
@@ -380,7 +384,92 @@ et n'existent que si des regions sont declarees.
 
 ---
 
-## 6. Un symbole non defini, en mode fichier unique (T13)
+## 6. Les variantes materielles comme options (T14)
+
+Ce qui varie d'une machine a l'autre n'est pas toujours la meme chose. Le
+plan en faisait un seul cas ; il y en a trois, et les traiter de la meme facon
+produirait soit des cibles en double, soit des tables qui mentent.
+
+| Cas | Ce qui change | Exemple |
+|---|---|---|
+| **revision de puce** | aucune adresse ; la revision elle seule | 6581 contre 8580 |
+| **norme de television** | le rythme, et parfois un bit dans un registre | NTSC 262 lignes, PAL 312 sur le NES |
+| **puce de video** | les adresses, entierement | le Plus/4 n'a pas de VIC-II du tout |
+
+### Ce que le plan affirmait, et qui est faux
+
+- **« Le 8580 du C64C change les espaces memoire visibles. »** Non. Le C64C a
+  bien un VIC-II a `$D000` et bien sa memoire de couleurs a `$D800` : elle est
+  soit une 2114 discret, soit integree au Super-PLA. Ce qui change est la
+  revision de la puce de son, et elle ne deplace aucune adresse. Le C64C est donc
+  un C64 dont le nom change, pas une carte qui bouge.
+- **« L'adresse de la table de sprites du NES est `$0200` en NTSC et `$0300`
+  en PAL. »** Non. L'OAM du PPU est interne, il n'a pas d'adresse du tout ;
+  `$0200` et `$0300` sont deux pages tampons que des logiciels choisissent
+  librement. Le catalogue donne les deux nombres qui sont reels et mesurables,
+  `FRAME_LINES` et `VISIBLE_LINES`.
+- **« Le PET a un 6847. »** Non. Aucun appareil Commodore n'a de 6847. Le 2001
+  et le 2001-N n'ont meme pas de controleur video : leur temporisation est en
+  logique discrete. Et ils n'ont pas d'ACIA non plus — le 6551 du PET est
+  l'addition du SuperPET, a `$EFF0`.
+- **« Le C128D a un PEKKA a `$D800`. »** Introuvable dans les sources
+  consultees, qui placent le 8563 a `$D600` sur la carte 310379, commune au
+  C128 et au C128D. Le C128D est donc expose sans symbole de PEKKA plutot
+  qu'avec une adresse inventee.
+
+### Le modele
+
+`HardwareOptions` porte quatre options : `Model`, `VideoStandard`,
+`VideoChip`, `SoundChip`. Elles se choisissent par configuration :
+
+```json
+{ "Target": { "System": "c128",
+               "Hardware": { "Model": "c128", "VideoChip": "vdc", "SoundChip": "8580" } } }
+```
+
+`HardwareProfile.Build` transforme ces options en table de symboles : **une
+table par famille**, puis les differences appliquees. Le catalogue ne detient
+plus aucune table de C64, de VIC-20 ou de NES : une seconde table pour la meme
+machine serait un second endroit ou oublier la meme correction.
+
+### Les cibles nommees ne font que preselectionner
+
+```
+c64, c64c, c64-pal, c64-ntsc
+c128, c128-vdc, c128d
+vic20, vic20-pal, vic20-ntsc
+plus4, c16
+pet2001, pet2001n
+cbm2-40, cbm2-80
+nes, nes-pal, nes-ntsc
+```
+
+Une cible nommee ne differes d'une autre que par ce qu'elle preselectionne :
+meme format, meme adresse de chargement, memes registres. C'est verifie.
+
+`-t list` affiche `hw=...` pour chaque variante. C'est la seule trace de la
+machine visee dans la sortie : un build PAL et un build NTSC produisent les
+memes octets, donc rien d'autre ne dirait lequel a ete fait.
+
+### Les combinaisons impossibles sont refusees
+
+Un CRTC sur un PET 2001, un VDC sur un C64, un SID sur un Plus/4 : chacun de
+ces cas produirait une table dont les adresses repondent par de la memoire
+vive. `HardwareRules.Reject` refuse la combinaison en nommant la raison, et
+`TargetResolver` leve.
+
+### L'adresse de chargement d'une machine bankee
+
+Un PRG commence par deux octets : l'adresse ou la machine pose le code. Le
+repli historique est `$0801`, celui du C64. Le garder pour une machine qui
+banque sa memoire — le CBM-II, dont la cible ne declare aucune adresse —
+produirait une image que rien ne signale comme fausse. Le format refuse donc
+d'ecrire un PRG pour une cible qui a des options materielles et aucune adresse,
+et demande une adresse ou un `.org`.
+
+---
+
+## 7. Un symbole non defini, en mode fichier unique (T13)
 
 Le moteur de traitement des symboles laisse en place toute expression qu'il
 n'a pas reussie a resoudre, et l'espace qu'il reserve est **un zero**. Dans un
@@ -408,7 +497,7 @@ symbole envoie le lecteur chercher dans tout le fichier.
 
 ---
 
-## 7. Le mode direct reste la contrat
+## 8. Le mode direct reste la contrat
 
 Toute evolution doit preserver :
 
