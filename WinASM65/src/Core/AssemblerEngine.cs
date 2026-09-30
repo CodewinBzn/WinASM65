@@ -10,6 +10,7 @@ using Newtonsoft.Json;
 using WinASM65.Cpu;
 using WinASM65.Directives;
 using WinASM65.Expressions;
+using WinASM65.Modules;
 using WinASM65.Output;
 using WinASM65.Symbols;
 
@@ -32,14 +33,23 @@ namespace WinASM65.Core
         public IReadOnlyList<RelocationRecord> Relocations { get; private set; }
 
         public AssemblyResult(bool success, byte[] outputBytes, IReadOnlyList<Diagnostic> diagnostics, ushort originAddress = 0,
-            IReadOnlyList<RelocationRecord> relocations = null)
+            IReadOnlyList<RelocationRecord> relocations = null, ModuleImage module = null)
         {
             Success = success;
             OutputBytes = outputBytes ?? new byte[0];
             Diagnostics = diagnostics ?? new List<Diagnostic>();
             OriginAddress = originAddress;
             Relocations = relocations ?? new List<RelocationRecord>();
+            Module = module;
         }
+
+        /// <summary>
+        /// The module this unit publishes, or null when the source declared no
+        /// exports and no imports. A unit with no .export and no .import is an
+        /// ordinary direct-burn assembly, and reporting a module for it would be
+        /// misleading.
+        /// </summary>
+        public ModuleImage Module { get; private set; }
     }
 
     public interface IAssembler
@@ -158,6 +168,8 @@ namespace WinASM65.Core
             dispatcher.Register(new RepDirectiveHandler());
             dispatcher.Register(new EndRepDirectiveHandler());
             dispatcher.Register(new EndDirectiveHandler());
+            dispatcher.Register(new ExportDirectiveHandler());
+            dispatcher.Register(new ImportDirectiveHandler());
             return dispatcher;
         }
 
@@ -198,7 +210,55 @@ namespace WinASM65.Core
             ExportSymbolFiles(sourceFile);
 
             return new AssemblyResult(!_diagnostics.HasErrors, _emitter.ToArray(), _diagnostics.Diagnostics,
-                _emitter.OriginAddress, _emitter.Relocations);
+                _emitter.OriginAddress, _emitter.Relocations, BuildModule(sourceFile));
+        }
+
+        /// <summary>
+        /// Builds the module this unit publishes, or null when it declared no
+        /// exports and no imports. Exports are resolved to a segment and an offset
+        /// here, never to an absolute address: the address is the linker's to
+        /// decide, and baking one in would defeat the whole point of a module.
+        /// </summary>
+        private ModuleImage BuildModule(string sourceFile)
+        {
+            ModuleDirectiveState state = ModuleDirectiveState.Peek(this);
+            if (state == null || state.IsEmpty)
+                return null;
+
+            ModuleImage image = new ModuleImage();
+            image.ModuleName = string.IsNullOrEmpty(sourceFile)
+                ? string.Empty
+                : Path.GetFileNameWithoutExtension(sourceFile);
+
+            ModuleSegment segment = new ModuleSegment(
+                string.IsNullOrEmpty(image.ModuleName) ? "code" : image.ModuleName,
+                _emitter.ToArray(), SegmentKind.Ro, 1, 0)
+            {
+                OriginAddress = _emitter.OriginAddress
+            };
+            int segmentIndex = image.AddSegment(segment);
+
+            for (int i = 0; i < state.Exports.Count; i++)
+            {
+                Value address;
+                if (!_scopeManager.TryResolveSymbol(state.Exports[i], out address))
+                    continue; // already diagnosed by the directive
+                // Offsets are segment-relative. A module is unplaced, so the
+                // address the symbol currently holds only tells us where it sits
+                // inside this unit's own buffer.
+                int offset = (int)((address.AsInteger - segment.OriginAddress) & 0xFFFF);
+                image.AddExport(new ModuleExport(state.Exports[i], segmentIndex, (uint)offset));
+            }
+
+            for (int i = 0; i < state.Imports.Count; i++)
+            {
+                image.AddImport(new ModuleImport(state.Imports[i].Symbol, state.Imports[i].ModuleName));
+            }
+
+            for (int i = 0; i < _emitter.Relocations.Count; i++)
+                image.AddRelocation(_emitter.Relocations[i]);
+
+            return image;
         }
 
         private void ApplyDefaultOrigin()
