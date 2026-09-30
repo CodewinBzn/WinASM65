@@ -199,6 +199,27 @@ namespace WinASM65.TextFormat
         }
 
         /// <summary>
+        /// Whether a line opens with the reference flag already set. A dialect
+        /// that crunches its leading line number in reference form leaves the
+        /// flag standing, so a number that opens the line is a reference too.
+        /// </summary>
+        public virtual bool ArmsReferenceAtLineStart
+        {
+            get { return false; }
+        }
+
+        /// <summary>
+        /// Whether a keyword leaves the reference flag as it found it. A value
+        /// keyword — a function, an operator, a pseudo-variable — is part of the
+        /// expression that was already being parsed, so it does not decide
+        /// whether the next number is a target; a statement keyword does.
+        /// </summary>
+        public virtual bool KeepsReferenceArmed(string keyword)
+        {
+            return false;
+        }
+
+        /// <summary>
         /// Stores a reference to another line. Dialects that write references as
         /// digits return false and the digits are written out as they are.
         /// </summary>

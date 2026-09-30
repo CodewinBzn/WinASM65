@@ -245,6 +245,26 @@ namespace WinASM65.Tests
         }
 
         [TestMethod]
+        public void LeDrapeauDeReferenceDebordeDeLaLigneSurLeSuivant()
+        {
+            // The ROM crunches its leading line number with the reference flag
+            // already set, and encoding a number does not clear it. So a line
+            // that opens with a value keyword stores its number as a reference,
+            // and a second number behind a GOTO is one as well.
+            byte[] body = Body(10, "TO 1");
+            CollectionAssert.AreEqual(new byte[] { 0xB8, 0x8D, 0x54, 0x41, 0x40 }, body,
+                "TO 1 : le 1 devient une reference");
+
+            body = Body(10, "PRINT 200");
+            CollectionAssert.AreEqual(new byte[] { 0xF1, (byte)'2', (byte)'0', (byte)'0' }, body,
+                "PRINT leve le drapeau, donc 200 reste une valeur");
+
+            body = Body(10, "GOTO 100 200");
+            Assert.AreEqual(0x8D, body[1], "la premiere cible est une reference");
+            Assert.AreEqual(0x8D, body[5], "et ecrire une reference n'a pas leve le drapeau");
+        }
+
+        [TestMethod]
         public void UnProgrammeEnTexteEstCeQuOnLit()
         {
             // The machine tokenises a text file when it loads it, so the text form

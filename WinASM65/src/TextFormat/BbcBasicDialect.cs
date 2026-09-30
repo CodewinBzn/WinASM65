@@ -80,6 +80,24 @@ namespace WinASM65.TextFormat
         /// <summary>The keywords after which a number is a reference to another line.</summary>
         private static readonly string[] References = { "GOTO", "GOSUB", "THEN", "ELSE", "RESTORE", "ON" };
 
+        /// <summary>
+        /// The keywords that are part of an expression rather than a statement.
+        /// They do not decide whether the next number is a target, so they leave
+        /// the flag as they found it: that is what makes the flag the ROM leaves
+        /// set at the start of a line still set after one of these.
+        /// </summary>
+        private static readonly string[] Values =
+        {
+            "AND", "DIV", "EOR", "MOD", "OR", "NOT", "FALSE", "TRUE", "PI",
+            "ABS", "ACS", "ADVAL", "ASN", "ATN", "COS", "DEG", "EVAL", "EXP",
+            "INT", "LN", "LOG", "RAD", "RND", "SGN", "SIN", "SQR", "TAN",
+            "ASC", "CHR$", "GET$", "INKEY", "INKEY$", "INSTR(", "LEFT$(",
+            "LEN", "MID$(", "RIGHT$(", "STR$", "STRING$(", "VAL",
+            "BGET", "POINT(", "POS", "EOF", "EXT", "USR", "FN", "VPOS",
+            "PTR", "PAGE", "TIME", "LOMEM", "HIMEM", "ERROR", "LINE", "OFF",
+            "STEP", "TO", "SPC", "TAB("
+        };
+
         public static BasicDialect Create()
         {
             Dialect dialect = new Dialect();
@@ -156,6 +174,17 @@ Define(dialect, EscapeFunction, functions);
                 StringsCarryLength = false;
             }
 
+            /// <summary>
+            /// The ROM crunches the leading line number with the reference flag
+            /// already set, and writing a number never clears it, so the arm
+            /// carries over into the line. That is why a line that opens with a
+            /// value keyword stores its number as a reference.
+            /// </summary>
+            public override bool ArmsReferenceAtLineStart
+            {
+                get { return true; }
+            }
+
             public override int MaxRecordLength
             {
                 get { return MaxLineLength; }
@@ -183,7 +212,19 @@ Define(dialect, EscapeFunction, functions);
 
             public override bool IsLineReferenceKeyword(string keyword)
             {
-                foreach (string candidate in References)
+                return Named(References, keyword);
+            }
+
+            public override bool KeepsReferenceArmed(string keyword)
+            {
+                return Named(Values, keyword);
+            }
+
+            private static bool Named(string[] names, string keyword)
+            {
+                if (keyword == null)
+                    return false;
+                foreach (string candidate in names)
                 {
                     if (string.Equals(candidate, keyword, StringComparison.Ordinal))
                         return true;

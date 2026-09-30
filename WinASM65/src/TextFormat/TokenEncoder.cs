@@ -131,9 +131,12 @@ namespace WinASM65.TextFormat
             bool statementStart = true;
             bool inGotoParen = false;
 
-            // What the last keyword was, because a dialect may treat the number
-            // after it as a reference to another line rather than as a value.
-            string lastKeyword = null;
+            // Whether the next decimal literal is a reference to another line rather
+            // than a value. A dialect whose ROM crunches its leading line number with
+            // the flag already set carries that flag into the line, and writing
+            // a number does not clear it, so a reference can be followed by
+            // another one.
+            bool armed = _dialect.ArmsReferenceAtLineStart;
 
             while (at < text.Length)
             {
@@ -165,6 +168,7 @@ namespace WinASM65.TextFormat
                 {
                     at = Escape(text, at, body, line, index);
                     statementStart = false;
+                    armed = false;
                     continue;
                 }
 
@@ -195,7 +199,13 @@ namespace WinASM65.TextFormat
                         at += matched;
                         if (keyword == "REM" || keyword == "DATA")
                             literal = true;
-                        lastKeyword = keyword;
+
+                        // A reference keyword arms the flag, a value keyword
+                        // leaves it as it found it, and a statement clears it.
+                        if (_dialect.IsLineReferenceKeyword(keyword))
+                            armed = true;
+                        else if (!_dialect.KeepsReferenceArmed(keyword))
+                            armed = false;
                         statementStart = false;
                         continue;
                     }
@@ -204,7 +214,7 @@ namespace WinASM65.TextFormat
                     while (at < text.Length && IsNamePart(text[at]))
                         at++;
                     Append(text, start, at, body);
-                    lastKeyword = null;
+                    armed = false;
                     statementStart = false;
                     continue;
                 }
@@ -212,14 +222,15 @@ namespace WinASM65.TextFormat
                 if (char.IsDigit(c) || (c == '.' && at + 1 < text.Length && char.IsDigit(text[at + 1])))
                 {
                     int end = Number(text, at);
-                    if (_dialect.IsLineReferenceKeyword(lastKeyword))
+                    if (armed)
                     {
                         int target;
                         if (TryValue(text, at, end, out target)
                             && _dialect.TryEncodeReference(target, body))
                         {
+                            // Writing a reference does not clear the flag, so a
+                            // second number behind it is a reference as well.
                             at = end;
-                            lastKeyword = null;
                             statementStart = false;
                             continue;
                         }
@@ -227,7 +238,7 @@ namespace WinASM65.TextFormat
 
                     Append(text, at, end, body);
                     at = end;
-                    lastKeyword = null;
+                    armed = false;
                     statementStart = false;
                     continue;
                 }
@@ -277,7 +288,7 @@ namespace WinASM65.TextFormat
                     statementStart = true;
                 else
                     statementStart = false;
-                lastKeyword = null;
+                armed = false;
                 at++;
             }
 
