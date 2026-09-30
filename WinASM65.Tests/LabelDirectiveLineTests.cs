@@ -77,6 +77,59 @@ namespace WinASM65.Tests
                 "le correctif ne doit rien changer aux lignes d'instruction");
         }
 
+        [TestMethod]
+        public void EtiquetteAvecInstruction_EmetLECode()
+        {
+            // LabelDeclareRegex n'etait pas ancre : sur "Start: sei" il consommait
+            // "Start:" et laissait "sei" sans plus rien a matcher. La ligne entiere
+            // etait alors perdue en silence, l'etiquette restant definie a la bonne
+            // adresse : l'assemblage reussissait et produisait un octet de moins.
+            byte[] output = Assemble("        .org $C000\nStart:  sei\n        rts\n");
+            CollectionAssert.AreEqual(new byte[] { 0x78, 0x60 }, output,
+                "sei doit etre emis, pas seulement l etiquette qu'il porte");
+        }
+
+        [TestMethod]
+        public void EtiquetteAvecInstruction_EtiquetteViseeALaBonneAdresse()
+        {
+            byte[] output = Assemble("        .org $C000\nStart:  sei\nAgain:  rts\n        lda Again\n");
+            CollectionAssert.AreEqual(new byte[] { 0x78, 0x60, 0xAD, 0x01, 0xC0 }, output,
+                "Again vaut $C001, l adresse reelle ou rts est ecrit");
+        }
+
+        [TestMethod]
+        public void EtiquetteAvecInstructionEtOperande_EmetLECode()
+        {
+            byte[] output = Assemble("        .org $C000\nValue:  lda #$01\n        rts\n");
+            CollectionAssert.AreEqual(new byte[] { 0xA9, 0x01, 0x60 }, output,
+                "l operande ne doit pas etre perdu avec l'instruction");
+        }
+
+        [TestMethod]
+        public void EtiquetteAvecInstructionSansEspace_EstEmise()
+        {
+            byte[] output = Assemble("        .org $C000\nTight:  nop\n        rts\n");
+            CollectionAssert.AreEqual(new byte[] { 0xEA, 0x60 }, output);
+        }
+
+        [TestMethod]
+        public void InstructionAvecEtiquetteSansDeuxPointContinueDEtreEmise()
+        {
+            byte[] output = Assemble("        .org $C000\nPlain  nop\n        rts\n");
+            CollectionAssert.AreEqual(new byte[] { 0xEA, 0x60 }, output,
+                "l forme sans deux-point existait deja et doit rester inchangee");
+        }
+
+        [TestMethod]
+        public void DeuxEtiquettesAvecInstruction_SontChacuneDefinies()
+        {
+            byte[] output = Assemble("        .org $C000\nA:      nop\nB:      rts\n        lda A\n        lda B\n");
+            CollectionAssert.AreEqual(
+                new byte[] { 0xEA, 0x60, 0xAD, 0x00, 0xC0, 0xAD, 0x01, 0xC0 },
+                output,
+                "A vaut $C000 et B vaut $C001");
+        }
+
         private static byte[] Assemble(string source)
         {
             string directory = Path.Combine(Path.GetTempPath(), "WinASM65Label_" + Guid.NewGuid().ToString("N"));
