@@ -77,30 +77,45 @@ namespace WinASM65.Modules
 
         public static byte[] Serialize(ModuleImage image)
         {
-            // Lay the segment payloads out first so the tables can carry their
-            // file offsets, then emit everything in the fixed order.
-            MemoryStream data = new MemoryStream();
+            // The segment payloads go last, so the tables can carry where each one
+            // landed. Those offsets are absolute, measured from the start of the
+            // file, because that is how the reader addresses them: a payload
+            // relative offset silently points into the header instead.
+            //
+            // The tables are therefore written twice. The first pass carries zero
+            // offsets and only establishes the table length, since the length does
+            // not depend on the offset values; the second pass carries the real
+            // ones. Laying the payload out first, as this did before, cannot work:
+            // the payload base is only known once the tables are sized.
             List<ModuleSegment> segments = new List<ModuleSegment>(image.Segments);
-            for (int i = 0; i < segments.Count; i++)
+
+            MemoryStream measure = new MemoryStream();
+            WriteSegmentTable(measure, segments);
+            WriteExportTable(measure, image.Exports);
+            WriteImportTable(measure, image.Imports);
+            WriteRelocationTable(measure, image.Relocations);
+            uint tablesLength = (uint)measure.Length;
+            uint payloadBase = (uint)(HeaderSize + tablesLength);
+
+            MemoryStream payload = new MemoryStream();
+            foreach (ModuleSegment segment in segments)
             {
-                ModuleSegment segment = segments[i];
                 if (segment.Kind == SegmentKind.Bss || segment.Data.Length == 0)
                 {
                     segment.FileOffset = 0;
                     continue;
                 }
-                segment.FileOffset = (uint)data.Position;
-                data.Write(segment.Data, 0, segment.Data.Length);
+                segment.FileOffset = payloadBase + (uint)payload.Position;
+                payload.Write(segment.Data, 0, segment.Data.Length);
             }
-            byte[] payload = data.ToArray();
 
             MemoryStream body = new MemoryStream();
             WriteSegmentTable(body, segments);
             WriteExportTable(body, image.Exports);
             WriteImportTable(body, image.Imports);
             WriteRelocationTable(body, image.Relocations);
-            body.Write(payload, 0, payload.Length);
             byte[] tables = body.ToArray();
+            byte[] bytes = payload.ToArray();
 
             MemoryStream file = new MemoryStream();
             file.Write(Magic, 0, 3);
@@ -110,6 +125,7 @@ namespace WinASM65.Modules
             WriteU32(file, (uint)tables.Length);
             WriteU32(file, (uint)(HeaderSize + tables.Length));
             file.Write(tables, 0, tables.Length);
+            file.Write(bytes, 0, bytes.Length);
             return file.ToArray();
         }
 
@@ -125,6 +141,11 @@ namespace WinASM65.Modules
                 stream.WriteByte((byte)segment.Kind);
                 stream.WriteByte(segment.Kind == SegmentKind.Bss ? BssBank[0] : segment.Bank);
                 WriteU32(stream, segment.FileOffset);
+                // The origin the unit was written against. It is not a placement:
+                // it is the address the linker falls back to when nothing else
+                // constrains the segment. Without it the linker has no idea where
+                // a segment meant to live and silently places it at a default.
+                WriteU16(stream, segment.OriginAddress);
             }
         }
 
@@ -216,11 +237,19 @@ namespace WinASM65.Modules
                     SegmentKind kind = (SegmentKind)data[cursor++];
                     byte bank = data[cursor++];
                     uint fileOffset = ReadU32(data, ref cursor);
+                    ushort origin = ReadU16(data, ref cursor);
 
                     byte[] content = new byte[size];
                     if (kind != SegmentKind.Bss && size > 0)
                         Array.Copy(data, fileOffset, content, 0, (int)size);
-                    segments.Add(new ModuleSegment(name, content, kind, alignment, bank));
+                    ModuleSegment segment = new ModuleSegment(name, content, kind, alignment, bank);
+                    segment.OriginAddress = origin;
+                    // The data has been copied out already, so this offset no longer
+                    // addresses anything live. It is kept because it says where the
+                    // bytes came from, which is what a diagnostic about a corrupt
+                    // module needs to point at.
+                    segment.FileOffset = fileOffset;
+                    segments.Add(segment);
                 }
                 for (int i = 0; i < segments.Count; i++)
                     result.AddSegment(segments[i]);
