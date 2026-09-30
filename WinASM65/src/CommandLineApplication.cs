@@ -295,6 +295,7 @@ namespace WinASM65
             string author = string.Empty;
             string description = string.Empty;
             int shift = 0;
+            int start = -1;
 
             for (int i = 0; i < args.Length; i++)
             {
@@ -307,11 +308,13 @@ namespace WinASM65
                     case "-author": if (i + 1 < args.Length) author = args[++i]; break;
                     case "-description": if (i + 1 < args.Length) description = args[++i]; break;
                     case "-shift": if (i + 1 < args.Length) int.TryParse(args[++i], out shift); break;
+                    case "-start": if (i + 1 < args.Length) int.TryParse(args[++i], out start); break;
                     case "-h":
                     case "-help":
-                        _console.WriteLine("Usage: WinASM65 geos <module.w65>... -o <disk.d64> [-name <n>] [-disk <n>] [-id <nn>]");
+                        _console.WriteLine("Usage: WinASM65 geos <module.w65>... -o <disk.d64> [-name <n>] [-disk <n>] [-id <nn>] [-start <addr>]");
                         _console.WriteLine("  Links the modules into one GEOS application and writes a D64 image.");
-                        _console.WriteLine("  The placed segments become the records of the application.");
+                        _console.WriteLine("  The placed segments become the records of the application, and the");
+                        _console.WriteLine("  relocation table of the absolute references is appended to them.");
                         return 0;
                     default:
                         if (!args[i].StartsWith("-", StringComparison.Ordinal))
@@ -376,8 +379,6 @@ namespace WinASM65
             // disk twice gets the same bytes.
             application.Timestamp = DateTime.Today;
             application.LoadAddress = image.OriginAddress;
-            application.StartAddress = image.OriginAddress;
-            application.EndAddress = (ushort)(image.OriginAddress + image.Data.Length);
 
             // Placed order, which is origin order, so record 0 is the one GEOS
             // loads first and it is the start of the program.
@@ -392,6 +393,18 @@ namespace WinASM65
                     record[b] = at >= 0 && at < image.Data.Length ? image.Data[at] : (byte)0x00;
                 }
             }
+
+            // The relocation table goes after the code, in its own record, and the
+            // information sector says where it is. The application is started at
+            // -start, or at the first byte of the code when that was not said.
+            ushort entry = start >= 0 ? (ushort)start : image.OriginAddress;
+            GeosRelocationTable table = GeosRelocationTable.Build(image, entry);
+            application.StartAddress = entry;
+            application.EndAddress = (ushort)(image.OriginAddress + image.Data.Length);
+            application.BaseAddress = table.BaseAddress;
+            application.TableAddress = (ushort)(image.OriginAddress + image.Data.Length);
+            application.TableEntryCount = (ushort)table.Entries.Count;
+            application.Records.Add(new GeosRecord(table.Data));
 
             D64Builder disk = new D64Builder();
             disk.DiskName = diskName;
@@ -408,9 +421,12 @@ namespace WinASM65
             _console.WriteLine(string.Format("Linked {0} segment(s) into a GEOS application -> {1}",
                 image.Segments.Count, output));
             _console.WriteLine("  " + appName + " load $" + image.OriginAddress.ToString("X4")
-                + " start $" + image.OriginAddress.ToString("X4")
+                + " start $" + entry.ToString("X4")
                 + " end $" + application.EndAddress.ToString("X4")
-                + ", " + image.Segments.Count + " record(s)");
+                + ", " + (image.Segments.Count + 1) + " record(s)");
+            _console.WriteLine("  relocation table at $" + application.TableAddress.ToString("X4")
+                + ", " + table.Entries.Count + " reference(s) for base $"
+                + table.BaseAddress.ToString("X4"));
             return 0;
         }
 

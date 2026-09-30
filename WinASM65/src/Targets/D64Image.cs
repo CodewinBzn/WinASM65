@@ -116,6 +116,19 @@ namespace WinASM65.Targets
         public ushort LoadAddress { get; set; }
         public ushort EndAddress { get; set; }
         public ushort StartAddress { get; set; }
+
+        /// <summary>
+        /// The address the image was assembled for, in the free area of the
+        /// information sector. Zero means the area is unused, so an application
+        /// written before this existed still reads as having nothing to say.
+        /// </summary>
+        public ushort BaseAddress { get; set; }
+
+        /// <summary>Where the relocation table is loaded, or zero if there is none.</summary>
+        public ushort TableAddress { get; set; }
+
+        /// <summary>How many entries the table holds.</summary>
+        public ushort TableEntryCount { get; set; }
         public byte[] Icon { get; set; }
         public string ClassText { get; set; }
         public string Author { get; set; }
@@ -129,6 +142,12 @@ namespace WinASM65.Targets
             FileType = GeosFileType.Application;
             C64FileType = 0x02;
             Vlir = true;
+            LoadAddress = 0;
+            EndAddress = 0;
+            StartAddress = 0;
+            BaseAddress = 0;
+            TableAddress = 0;
+            TableEntryCount = 0;
             Icon = new byte[0];
             ClassText = string.Empty;
             Author = string.Empty;
@@ -610,6 +629,19 @@ namespace WinASM65.Targets
             WriteWord(block, 0x47, application.LoadAddress);
             WriteWord(block, 0x49, application.EndAddress);
             WriteWord(block, 0x4B, application.StartAddress);
+
+            // $89-$9F belongs to the application. The relocation table's
+            // whereabouts goes there, behind a magic, because a kernal that
+            // knows nothing about the table must be able to ignore the area and
+            // load the file all the same.
+            if (application.TableAddress != 0 || application.TableEntryCount != 0)
+            {
+                for (int i = 0; i < 4; i++)
+                    block[0x89 + i] = GeosRelocationTable.Magic[i];
+                WriteWord(block, 0x8D, application.BaseAddress);
+                WriteWord(block, 0x8F, application.TableAddress);
+                WriteWord(block, 0x91, application.TableEntryCount);
+            }
 
             WriteTerminatedText(block, 0x4D, 0x60, application.ClassText);
             WriteTerminatedText(block, 0x61, 0x74, application.Author);
