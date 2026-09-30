@@ -10,6 +10,7 @@ using WinASM65.Linking;
 using WinASM65.Output;
 using WinASM65.Segments;
 using WinASM65.Targets;
+using WinASM65.TextFormat;
 
 namespace WinASM65
 {
@@ -86,6 +87,16 @@ namespace WinASM65
                 string[] rest = new string[args.Length - 1];
                 Array.Copy(args, 1, rest, 0, rest.Length);
                 return RunGeos(rest);
+            }
+
+            // A BASIC program is not assembled, it is tokenised, so it does not
+            // go down the assembly path either: the dialect and the container
+            // are what it takes, and the assembly options are of no use to it.
+            if (string.Equals(args[0], "basic", StringComparison.OrdinalIgnoreCase))
+            {
+                string[] rest = new string[args.Length - 1];
+                Array.Copy(args, 1, rest, 0, rest.Length);
+                return RunBasic(rest);
             }
 
             string sourceFile = null;
@@ -428,6 +439,184 @@ namespace WinASM65
                 + ", " + table.Entries.Count + " reference(s) for base $"
                 + table.BaseAddress.ToString("X4"));
             return 0;
+        }
+
+        /// <summary>
+        /// Tokenises a BASIC program and writes it, bare or in a container.
+        /// <para>
+        /// These systems have no executable to produce: what a person writes is
+        /// a program, and what the interpreter reads is a file of tokens. So
+        /// the verb is not "assemble", it is "tokenise", and the two things it
+        /// needs are a dialect and a container. Both have a default — Applesoft,
+        /// and the program as it sits in memory — and both say so in their
+        /// help, because a default nobody is told about is a guess.
+        /// </para>
+        /// </summary>
+        private int RunBasic(string[] args)
+        {
+            string input = null;
+            string output = null;
+            string listing = null;
+            string dialectName = "applesoft";
+            string format = "bin";
+
+            for (int i = 0; i < args.Length; i++)
+            {
+                switch (args[i])
+                {
+                    case "-f": if (i + 1 < args.Length) input = args[++i]; break;
+                    case "-o": if (i + 1 < args.Length) output = args[++i]; break;
+                    case "-dialect": if (i + 1 < args.Length) dialectName = args[++i]; break;
+                    case "-format": if (i + 1 < args.Length) format = args[++i]; break;
+                    case "-list": if (i + 1 < args.Length) listing = args[++i]; break;
+                    case "-h":
+                    case "-help":
+                        _console.WriteLine("Usage: WinASM65 basic -f <program.bas> -o <file> -dialect <name> [-format <container>] [-list <file>]");
+                        _console.WriteLine("  Reads a BASIC program as text and writes the file an interpreter reads.");
+                        _console.WriteLine("  Dialect: " + BasicDialects.NameList() + " (applesoft by default).");
+                        _console.WriteLine("  Container: bin (the program itself, as it sits in memory, which is the default), prodos, dos32, dos33.");
+                        _console.WriteLine("  -list writes the same program back as text, read out of the file that");
+                        _console.WriteLine("  was written, which is the round trip the format is checked by.");
+                        _console.WriteLine("  The listing is the program's own bytes, not the source: an Applesoft");
+                        _console.WriteLine("  string comes back as its length and its characters, because that is");
+                        _console.WriteLine("  what the file holds.");
+                        return 0;
+                    default:
+                        if (input == null && !args[i].StartsWith("-", StringComparison.Ordinal))
+                            input = args[i];
+                        break;
+                }
+            }
+
+            if (string.IsNullOrEmpty(input))
+            {
+                _console.WriteError("Nothing to tokenise: give a BASIC source file.");
+                return 1;
+            }
+
+            BasicDialect dialect = BasicDialects.ByName(dialectName);
+            if (dialect == null)
+            {
+                _console.WriteError("No BASIC called '" + dialectName + "'. Use "
+                    + BasicDialects.NameList() + ".");
+                return 1;
+            }
+
+            if (string.IsNullOrEmpty(output))
+                output = Path.ChangeExtension(input, ".bas.bin");
+
+            string text;
+            try
+            {
+                text = File.ReadAllText(input);
+            }
+            catch (IOException ex)
+            {
+                _console.WriteError("Cannot read " + input + ": " + ex.Message);
+                return 1;
+            }
+
+            List<Diagnostic> diagnostics = new List<Diagnostic>();
+            IReadOnlyList<BasicLine> lines = BasicSource.Read(text, diagnostics);
+            byte[] program = new TokenEncoder(dialect, diagnostics).Encode(lines);
+
+            byte[] file;
+            if (!TryWrap(dialect, program, format, out file))
+            {
+                _console.WriteError("The container '" + format + "' holds an Applesoft program, and"
+                    + " this one is " + dialect.Name + ".");
+                return 1;
+            }
+
+            if (diagnostics.Count > 0)
+            {
+                DisplayDiagnostics(diagnostics);
+                return 1;
+            }
+
+            try
+            {
+                File.WriteAllBytes(output, file);
+            }
+            catch (IOException ex)
+            {
+                _console.WriteError("Cannot write " + output + ": " + ex.Message);
+                return 1;
+            }
+
+            _console.WriteLine("Tokenised " + lines.Count + " line(s) of " + dialect.Name
+                + " -> " + output + " (" + file.Length + " bytes)");
+
+            if (!string.IsNullOrEmpty(listing))
+            {
+                // The listing is read out of the program, not out of the
+                // container: a container is sectors and a catalog, and handing
+                // that to the reader would find no line at all — and find it
+                // quietly, because two zero bytes are an empty program.
+                List<BasicLine> back = new TokenDecoder(dialect, diagnostics).Decode(program);
+                if (diagnostics.Count > 0)
+                {
+                    DisplayDiagnostics(diagnostics);
+                    return 1;
+                }
+
+                File.WriteAllText(listing, BasicSource.Render(back));
+                _console.WriteLine("Read the file back -> " + listing);
+            }
+
+            return 0;
+        }
+
+        /// <summary>
+        /// Puts a tokenised program in the container asked for, or returns the
+        /// program itself when the container is the memory image. A container
+        /// for one dialect and not for another is a false here rather than a
+        /// guess: a ProDOS file and a DOS file both say which BASIC they hold,
+        /// and a program of another BASIC in one of them is a file the machine
+        /// will reject.
+        /// </summary>
+        private static bool TryWrap(BasicDialect dialect, byte[] program, string format, out byte[] file)
+        {
+            file = program;
+            if (string.IsNullOrWhiteSpace(format))
+                return true;
+            if (dialect.Name != "Applesoft")
+                return string.Equals(format, "bin", StringComparison.OrdinalIgnoreCase);
+
+            if (string.Equals(format, "bin", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (string.Equals(format, "prodos", StringComparison.OrdinalIgnoreCase))
+            {
+                ProDosVolumeOptions options = new ProDosVolumeOptions();
+                options.FileType = ProDosVolume.FileTypeText;
+
+                ProDosSegment segment = new ProDosSegment
+                {
+                    Number = 1,
+                    LoadAddress = dialect.ProgramBase,
+                    Name = "PROGRAM",
+                    Data = program
+                };
+                List<ProDosSegment> segments = new List<ProDosSegment> { segment };
+                byte[] loadFile = ProDosLoadFile.Build(segments,
+                    ProDosLoadFile.EntryPointOf(segments, 0));
+                file = ProDosVolume.Build(loadFile, options);
+                return true;
+            }
+
+            AppleDosVersion version;
+            if (string.Equals(format, "dos32", StringComparison.OrdinalIgnoreCase))
+                version = AppleDosVersion.Dos32;
+            else if (string.Equals(format, "dos33", StringComparison.OrdinalIgnoreCase))
+                version = AppleDosVersion.Dos33;
+            else
+                return false;
+
+            AppleDosVolumeOptions dos = new AppleDosVolumeOptions(version);
+            dos.FileType = AppleDosProgram.Applesoft;
+            file = AppleDosVolume.Build(AppleDosProgram.ApplesoftFile(program), dos);
+            return true;
         }
 
         /// <summary>
