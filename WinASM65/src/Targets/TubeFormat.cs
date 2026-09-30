@@ -4,33 +4,29 @@ using WinASM65.Core;
 namespace WinASM65.Targets
 {
     /// <summary>
-    /// A Tube file: what OSLOAD expects, which is the code and nothing else.
+    /// Code for a second processor, the way a loader wants it: the payload and
+    /// nothing else.
     /// <para>
-    /// The main machine's files carry a header because the machine has to find
-    /// the length and the address. A second processor is given a file of a
-    /// known length by a service that already knows where to put it, so the
-    /// header would be read as instructions.
+    /// A loader that copies a block knows the length because it was told, and
+    /// knows the address because it decided. A header would be read as
+    /// instructions, and an address inside the file would be an address the file
+    /// does not get to choose.
     /// </para>
     /// <para>
-    /// The load address is not in the file. It is the machine's rule, not the
-    /// program's, which is why it is a property of the target rather than a
-    /// field the writer has to guess.
+    /// This is why the second processor is a target and not a format: what makes
+    /// it different is not how the file is written but where the bytes go and
+    /// who puts them there.
     /// </para>
     /// </summary>
     public class TubeFormat : IExecutableFormat
     {
         /// <summary>
-        /// The address the OSLOAD service uses on a 6502 second processor. Code
-        /// for that processor is usually written for $0200, which is where the
-        /// RAM is, while the service loads at $2000. Both are real, and which
-        /// one a program wants is a property of the program, not of this
-        /// writer, so the address is configurable and the default is the one
-        /// the service uses.
+        /// A 6502 second processor has 64 KB of RAM across its whole address
+        /// space, so nothing in the file can be too large. The size check that
+        /// would matter is not "does it fit" but "does it overwrite the system",
+        /// which is a question about the program, not the file.
         /// </summary>
-        public const ushort DefaultLoadAddress = 0x2000;
-
-        /// <summary>RAM of a 6502 second processor, $0200 to $7FFF.</summary>
-        public const int SecondProcessorRamSize = 0x7E00;
+        public const int AddressSpaceSize = 0x10000;
 
         public string Name { get { return "tube"; } }
 
@@ -38,12 +34,12 @@ namespace WinASM65.Targets
         {
             payload = payload ?? new byte[0];
 
-            if (payload.Length > SecondProcessorRamSize)
+            if (payload.Length > AddressSpaceSize)
             {
                 List<Diagnostic> diagnostics = new List<Diagnostic>();
                 diagnostics.Add(new Diagnostic(new SourceLocation(path, 0),
-                    "A second processor holds " + SecondProcessorRamSize + " bytes of RAM ($0200-$7FFF); "
-                    + "this file is " + payload.Length + " bytes. OSLOAD has no way to split it."));
+                    "A second processor addresses 64 KB, so a " + payload.Length
+                    + " byte block cannot be placed at all. The loader has to split it."));
                 return new OperationResult(false, diagnostics);
             }
 

@@ -96,10 +96,17 @@ namespace WinASM65.Segments
         public InesConf Ines { get; set; }
 
         /// <summary>
-        /// Kind of BBC file to produce: <c>exec</c>, <c>binary</c> or <c>text</c>.
-        /// Null leaves the target's own choice, which is <c>exec</c> for the BBC.
+        /// Kind of BBC file to produce: <c>code</c> (with a code header),
+        /// <c>text</c>, or <c>flat</c>. Null leaves the target's own choice,
+        /// which is <c>code</c> for the BBC.
         /// </summary>
         public string BbcFileType { get; set; }
+
+        /// <summary>Title carried by the BBC code header.</summary>
+        public string Title { get; set; }
+
+        /// <summary>Author carried by the BBC code header.</summary>
+        public string Author { get; set; }
 
         /// <summary>
         /// Named memory regions. Empty when the section is absent, which is the case

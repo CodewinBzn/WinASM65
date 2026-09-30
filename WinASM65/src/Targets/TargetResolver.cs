@@ -39,6 +39,10 @@ namespace WinASM65.Targets
                 ApplyInes(target, config.Ines);
                 if (!string.IsNullOrWhiteSpace(config.BbcFileType))
                     target.BbcFileType = config.BbcFileType.Trim().ToLowerInvariant();
+                if (!string.IsNullOrWhiteSpace(config.Title))
+                    target.Title = config.Title;
+                if (!string.IsNullOrWhiteSpace(config.Author))
+                    target.Author = config.Author;
             }
 
             if (!string.IsNullOrWhiteSpace(cliCpu))

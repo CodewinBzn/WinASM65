@@ -19,11 +19,25 @@ namespace WinASM65.Targets
         public bool InesBattery { get; set; }
 
         /// <summary>
-        /// Which kind of BBC file to write: <c>exec</c> (the default), <c>binary</c>
-        /// or <c>text</c>. Empty for every other target, which is what makes the
-        /// field a no-op elsewhere instead of a BBC assumption leaking out.
+        /// Which kind of BBC file to write: <c>code</c> (the default, a file
+        /// carrying a code header), <c>text</c>, or <c>flat</c>. Empty for every
+        /// other target, which is what makes the field a no-op elsewhere instead
+        /// of a BBC assumption leaking out.
         /// </summary>
         public string BbcFileType { get; set; }
+
+        /// <summary>
+        /// CPU id the BBC code header announces, so a client running the file on
+        /// the wrong processor can say so. Two means 6502; one means the turbo
+        /// variant.
+        /// </summary>
+        public byte BbcCpuType { get; set; }
+
+        /// <summary>Title string the BBC code header carries. Null means a default.</summary>
+        public string Title { get; set; }
+
+        /// <summary>Author string the BBC code header carries. Null means a default.</summary>
+        public string Author { get; set; }
         public Dictionary<string, long> HardwareSymbols { get; set; }
 
         public ResolvedTarget()
@@ -34,6 +48,7 @@ namespace WinASM65.Targets
             InesPrgBanks = 1;
             InesMirroring = "vertical";
             HardwareSymbols = new Dictionary<string, long>();
+            BbcCpuType = BbcFormat.Cpu6502;
         }
 
         public ResolvedTarget Clone()
@@ -54,6 +69,9 @@ namespace WinASM65.Targets
                 InesMirroring = InesMirroring,
                 InesBattery = InesBattery,
                 BbcFileType = BbcFileType,
+                BbcCpuType = BbcCpuType,
+                Title = Title,
+                Author = Author,
                 HardwareSymbols = HardwareSymbols == null
                     ? new Dictionary<string, long>()
                     : new Dictionary<string, long>(HardwareSymbols)
