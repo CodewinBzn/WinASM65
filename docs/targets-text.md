@@ -5,10 +5,10 @@ Ce document decrit la troisieme famille de cibles : les systemes qui
 donne la classification, et `docs/format-module.md`, qui decrit le format
 d'objet.
 
-**Aucun de ce qui est decrit ici n'est implemente.** L'encodeur de tokens est
-la tache T10, le stub runtime la tache T11, les autres BASIC la tache T15.
-Ce document fixe le cahier des charges et les contraintes, avant que le
-travail ne commence.
+**L'encodeur de tokens et les conteneurs sont en place ; le stub runtime ne
+l'est pas.** L'encodeur est la tache T10, les conteneurs et les autres BASIC
+la tache T15, le stub runtime la tache T11. Ce qui suit fixe ce que chaque
+systeme oblige a faire, et ce qui reste a valider sur une machine.
 
 ---
 
@@ -117,16 +117,55 @@ Meme encodeur de tokens, conteneurs differents.
 
 | Conteneur | Systeme | Description |
 |---|---|---|
-| Apple II | DOS 3.2, DOS 3.3, Applesoft | catalogue de fichiers + secteur de donnees, allocation de secteurs ordonnee |
+| Apple II | DOS 3.2, DOS 3.3, Applesoft | catalogue de fichiers + liste piste secteur, allocation par paires en 3.2 et secteur par secteur en 3.3 |
 | ProDOS | ProDOS | blocs de 512 octets, **entrelacement par paires de secteurs** (ordre `0, 8, 1, 9, 2, 10, …`), points d'entree, segments |
+| BASIC V2 | Waterloo Structured BASIC | chaine d'enregistrements lies a `$0801`, plus douze mots derriere `$FF $FF` |
 | Texte brut | BBC BASIC | un fichier texte, sans secteurs — le plus simple |
 
 ### DOS 3.2 contre DOS 3.3
 
 La difference tient surtout au **catalogue de fichiers** et a l'**ordre
 d'allocation des secteurs**, pas a l'encodeur. Le meme encodeur de tokens
-sert aux deux ; ce sont les conteneurs qui different. C'est couvert par T10
-sans travail supplementaire.
+serve aux deux ; ce sont les conteneurs qui different.
+
+Implemente dans `src/Targets/AppleDosImage.cs`, d'apres le Disk II Read/Write
+Track-Sector, le *DOS Internals* de All About DOS et les notes de format de
+CiderPress2 :
+
+- **Volume** : 35 pistes. DOS 3.3 a 16 secteurs de 256 octets par piste
+  (143 360 octets), DOS 3.2 n'en a que 13 (116 480 octets). La table des
+  secteurs est le secteur 0 de la piste 17.
+- **Table des secteurs** : `$00` vaut 4 sur un volume 3.3 et 2 sur un volume
+  3.2, `$03` dit la version du DOS qui a formate le disque, `$34` et `$35`
+  disent la geometrie, et la carte des secteurs libres commence a `$38`, quatre
+  octets par piste, un bit par secteur — **un bit a 1 veut dire libre**.
+- **Catalogue** : une chaine de secteurs sur la piste 17, sept entrees de
+  35 octets par secteur. Une entree nomme le fichier (30 caracteres en ASCII
+  haut, complete par des espaces), son type, le nombre de secteurs qu'il
+  prend, et le premier secteur de sa **liste piste secteur**. Le catalogue de
+  DOS 3.2 fait trois secteurs, donc 21 fichiers ; celui de DOS 3.3 prend toute
+  la piste.
+- **Liste piste secteur** : une chaine de secteurs qui contient jusqu'a 122
+  paires. C'est elle qui transforme un fichier en secteurs, et elle commence a
+  `$0C` du secteur.
+- **Allocation** : la difference la plus reelle entre les deux. DOS 3.2 alloue
+  **par paires de secteurs**, parce qu'un lecteur de l'epoque ne pouvait
+  sauter un secteur qu'en ecrivant celui d'apres : un fichier d'un nombre impair
+  de sectors prend une paire qu'il n'utilise pas, le compte du catalogue est
+  donc pair, et le premier secteur de chaque paire est pair. DOS 3.3 alloue un
+  secteur libre a la fois.
+- **Entrelacement** : DOS l'applique en parlant au lecteur, et le volume ne le
+  dit nulle part. L'image est donc ecrite **en ordre de secteurs DOS**, ce qui
+  la rend comparable octet pour octet avec ce que DOS lit sur un emulateur qui
+  n'applique rien ; une image physique a besoin de la table, qui est un option
+  du conteneur et pas une propriete du format. C'est la meme decision que
+  celle du conteneur ProDOS, et pour la meme raison.
+
+Les deux versions sont accessibles par `-format dos32` et `-format dos33`. Un
+fichier de programme y est de type A, precede de sa longueur en deux octets ;
+un fichier binaire de type B, precede de son adresse de chargement. Ce sont
+les deux formes de fichier que DOS rend a l'interpreteur : DOS donne un bloc,
+pas un programme.
 
 ### ProDOS
 
@@ -206,30 +245,76 @@ structurelle (aller-retour octet pour octet, table confrontee a sa source).
 
 ## 5. Les quatre BASIC 6502
 
-| BASIC | Perimetre | Conteneur |
-|---|---|---|
-| **Applesoft** | le plus repandu ; tache T10 | Apple II (DOS 3.2/3.3) |
-| **Waterloo Structured BASIC** | Apple II, C64, PET ; le plus widespread apres Applesoft, et le plus proche d'un BASIC « de Production » | variable selon la machine |
-| **GECOS** | cible distincte, decouverte avec GEOS | a definir |
-| **BBC BASIC** | tokens differents, conteneur texte | texte brut |
+| BASIC | Perimetre | Conteneur | Etat |
+|---|---|---|---|
+| **Applesoft** | le plus repandu ; tache T10 | Apple II (DOS 3.2/3.3) | fait |
+| **Waterloo Structured BASIC** | C64, VIC-20, PET ; le plus widespread apres Applesoft | BASIC V2 de Commodore | fait pour les machines Commodore |
+| **GECOS** | cible distincte, decouverte avec GEOS | — | **hors perimetre**, voir plus bas |
+| **BBC BASIC** | tokens differents, conteneur texte | texte brut | fait |
 
-Etat d'avancement (T15) : BBC BASIC V est fait. Restent Waterloo Structured
-BASIC, GECOS, et les deux conteneurs Apple II DOS 3.2 / 3.3.
-
-L'encodeur est devenu generique : un `BasicDialect` porte la table de tokens, la
-facon dont une chaine s'ecrit, la facon dont une reference de ligne s'ecrit, et
-la mise en page des enregistrements (`Frame`, `TryReadRecord`). Applesoft et BBC
-BASIC partagent le meme encodeur, ce que prouve le fait que le refactoring n'a
-change aucun octet de la sortie Applesoft.
+L'encodeur est generique : un `BasicDialect` porte la table de tokens, la facon
+dont une chaine s'ecrit, la facon dont une reference de ligne s'ecrit, et la
+mise en page des enregistrements (`Frame`, `TryReadRecord`). Applesoft, BBC BASIC
+et Waterloo partagent le meme encodeur, ce que prouve le fait que l'ajout des
+suivants n'a change aucun octet de la sortie Applesoft.
 
 Le plan borne explicitement ce perimetre : **les quatre BASIC principaux**.
 Les dialectes mineurs ou experimentaux n'en font pas partie, et une nouvelle
 cible est un ajout explicite, pas une consequence.
 
-Waterloo Structured BASIC merite une mention : il est « de Production », ce
-qui signifie qu'il a des fonctions, des types et une structure de donnees
-qu'Applesoft n'a pas. Son encodeur n'est donc pas une simple variation de
-celui d'Applesoft.
+### Waterloo Structured BASIC
+
+Waterloo Structured BASIC n'est pas un BASIC : c'est un **cartouch** qui se
+pose sur le BASIC que la machine a deja. Sa seule trace dans un programme
+sauvegarde est la dozenaine de mots qu'il ajoute, ecrits apres le marqueur
+`$FF $FF`. Un programme Waterloo est donc un programme du BASIC de l'hote avec
+quelques mots dans un espace que l'hote laisse libre.
+
+Sur les machines Commodore — PET, 8032, VIC-20, C64 — l'hote est **Commodore
+BASIC V2**, dont le programme est deja la chaine d'enregistrements lies que ce
+depot ecrit pour tous les BASIC herites de Microsoft. Le dialecte
+(`src/TextFormat/WaterlooDialect.cs`) est donc la table de l'hote, de `$80` a
+`$CB`, plus les douze mots du cartouch, de `$F3` a `$FE` : `IF` structure,
+`CALL`, `LOOP`, `ENDLOOP`, `UNTIL`, `WHILE`, `ELSEIF`, `ELSE`, `ENDIF`, `PROC`,
+`ENDPROC`, `QUIT`. `RENUMBER`, `DELETE` et `AUTO` ne sont pas tokenises : ils
+n'existent qu'en mode direct.
+
+Trois limites sont inscrites dans le code plutot que passees sous silence,
+parce qu'une table de tokens ne peut pas les exprimer :
+
+- Le cartouch **re-tokenise un mot selon sa position**. Un `IF` qui ouvre une
+  ligne est celui du cartouch, `$F3`, et non le `$8B` de l'hote ; le choix
+  depend de la position du mot, pas du mot. L'IF de l'hote est donc hors table :
+  un mot ne peut avoir qu'un octet, et c'est celui d'un programme structure
+  qui compte. Un fichier qui porte encore `$8B` est relu comme `\x8B`, ce que
+  l'encodeur reecrit a l'identique — l'aller-retour reste exact.
+- La version **Apple II** de Waterloo existe, mais aucune source consultee ne
+  decrit sa mise en page de fichier ni sa table de tokens. Elle n'est donc pas
+  implementee : inventer une table pour elle serait fabriquer un format.
+- Rien ici n'a ete execute sur un Commodore. La validation est structurelle :
+  la table est confrontee a sa source, la chaine de lignes est relue octet par
+  octet, et l'aller-retour est exact.
+
+### GECOS : pourquoi il n'y a rien a ecrire
+
+GECOS est le systeme de General Electric pour ses machines — PDP-10 et
+600/6000 — et non une cible 6502. Le plan le mentionne « decouvert avec GEOS »,
+C'est-a-dire avec la confusion avec GEOS, le systeme d'exploitation de
+Commodore qui n'a rien a voir avec lui. C'est meme la seule entree de la liste
+des « BASIC 6502 » qui ne soit pas un BASIC 6502.
+
+GECOS a bien un sous-systeme BASIC — un compilateur et un executeur algebrique,
+documente dans le manuel de programmation GECOS III — mais un programme y est
+un fichier de lignes numerotees accumulees dans le fichier `SY**` de
+l'utilisateur, en texte, sans table de tokens. Il n'y a donc **aucun format de
+programme tokenise** a ecrire, et l'encodeur de tokens de ce depot n'a rien a
+y faire.
+
+C'est une sortie de perimetre explicite et documentee, pas un oubli : la ligne
+reste dans la liste des quatre BASIC du plan, avec la raison pour laquelle elle
+est vide. La transformer en cible demanderait un autre systeme de fichiers que
+celui de ce depot — GECOS est un systeme de lots ou l'on ecrit des
+fichiers, pas une image de disque que l'on fabrique.
 
 ---
 

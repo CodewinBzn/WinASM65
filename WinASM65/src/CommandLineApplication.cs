@@ -687,7 +687,7 @@ namespace WinASM65
             _console.WriteLine("Usage: WinASM65 [-f source] [-o object] [-t system] [-cpu cpu] [-format fmt] [-l] [-c config] [-h|-help]");
             _console.WriteLine("  -t <system>   Target system. Use 'list' to enumerate all, which includes bbc, tube (the BBC second processor), and the hardware variants.");
             _console.WriteLine("  -cpu <cpu>    CPU override (6502 or 65c02). Defaults to target system CPU.");
-            _console.WriteLine("  -format <fmt> Output format override (bin, nes, ines, prg, xex, a2bin, rom, o65, ihex, srec, bbc, tube, prodos, w65). 'prodos' wraps the payload in a ProDOS load file on a volume, and 'w65' writes a linkable module instead of an executable. Defaults to target system format.");
+            _console.WriteLine("  -format <fmt> Output format override (bin, nes, ines, prg, xex, a2bin, rom, o65, ihex, srec, bbc, tube, prodos, dos32, dos33, w65). 'prodos' wraps the payload in a ProDOS load file on a volume, 'dos32' and 'dos33' write an Apple II disk image in DOS order, and 'w65' writes a linkable module instead of an executable. Defaults to target system format.");
             _console.WriteLine("");
                 _console.WriteLine("Verbs:");
                 _console.WriteLine("  link <module.w65>...   Link modules into a flat burnable image");
