@@ -463,6 +463,9 @@ namespace WinASM65.Tests
         [TestMethod]
         public void UndefinedSymbol_LeavesTheSiteUnresolved()
         {
+            // Permissive by default, on purpose: this engine also runs as one
+            // phase of a multi-file build, where the name may come from a file
+            // read later. AssembleStrict below is the standalone case.
             AssemblyResult result = Assemble(".org $8000\n  JSR NOWHERE\n");
             Assert.IsTrue(result.Success, Describe(result), "the assembler does not fail on an unresolved cross-file JSR");
 
@@ -470,6 +473,48 @@ namespace WinASM65.Tests
             Assert.AreEqual(RelocationType.Abs16, record.Type);
             Assert.IsFalse(record.IsResolved, "nothing patched it");
             Assert.AreEqual("NOWHERE", record.TargetSymbol);
+        }
+
+        /// <summary>
+        /// Assembled on its own, a name nobody defines has nowhere to come from.
+        /// The placeholder left in the buffer is a zero, so the file builds and
+        /// the machine is wrong: this is the case the plan calls a deferred
+        /// resolution error, and the only way to see it is here.
+        /// </summary>
+        [TestMethod]
+        public void UneAssemblageSeulRefuseUnSymboleQuePersonneNeDefinit()
+        {
+            AssemblyResult result = AssembleStrict(".org $8000\n  JSR NOWHERE\n");
+
+            Assert.IsFalse(result.Success, "un nom indefini ne peut pas disparaitre en silence");
+            StringAssert.Contains(Describe(result), "NOWHERE", "le nom est cite");
+        }
+
+        /// <summary>
+        /// The line matters as much as the name. An error that only says which
+        /// symbol is wrong sends the reader looking through the whole file.
+        /// </summary>
+        [TestMethod]
+        public void LeSymboleIndefiniEstSignaleALaLigneQuiLEcrit()
+        {
+            AssemblyResult result = AssembleStrict(".org $8000\n  NOP\n  NOP\n  JSR NOWHERE\n");
+
+            Assert.IsFalse(result.Success);
+            StringAssert.Contains(Describe(result), "Line 4", "la ligne du source est reprise");
+        }
+
+        /// <summary>
+        /// A name another module provides is undefined on purpose here: the
+        /// linker resolves it. Refusing it would make a module impossible to
+        /// assemble on its own, which is the point of a module.
+        /// </summary>
+        [TestMethod]
+        public void UnSymboleDeclareParImportNEstPasRefuse()
+        {
+            AssemblyResult result = AssembleStrict(
+                ".org $8000\n  .import DrawTile gfx\n  JSR DrawTile\n");
+
+            Assert.IsTrue(result.Success, Describe(result));
         }
 
         /// <summary>
@@ -647,13 +692,26 @@ namespace WinASM65.Tests
         private static AssemblyResult Assemble(string content, string fileName = null,
             IDictionary<string, long> predefined = null)
         {
+            return AssembleWith(content, fileName, predefined, false);
+        }
+
+        private static AssemblyResult AssembleStrict(string content, string fileName = null,
+            IDictionary<string, long> predefined = null)
+        {
+            return AssembleWith(content, fileName, predefined, true);
+        }
+
+        private static AssemblyResult AssembleWith(string content, string fileName,
+            IDictionary<string, long> predefined, bool strict)
+        {
             string dir = Path.Combine(Path.GetTempPath(), "WinASM65Reloc_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(dir);
             try
             {
                 string source = Path.Combine(dir, fileName ?? "reloc.asm");
                 File.WriteAllText(source, content);
-                return new AssemblerEngine(predefinedSymbols: predefined).Assemble(source, Path.Combine(dir, "reloc.o"));
+                return new AssemblerEngine(predefinedSymbols: predefined, reportUndefinedSymbols: strict)
+                    .Assemble(source, Path.Combine(dir, "reloc.o"));
             }
             finally
             {

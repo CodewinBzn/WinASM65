@@ -25,6 +25,8 @@ namespace WinASM65.Targets
             Register(new O65Format());
             Register(new IntelHexFormat());
             Register(new MotorolaSrecFormat());
+            Register(new BbcFormat());
+            Register(new TubeFormat());
         }
 
         public void Register(IExecutableFormat format)
@@ -43,7 +45,7 @@ namespace WinASM65.Targets
             {
                 List<Diagnostic> diagnostics = new List<Diagnostic>();
                 diagnostics.Add(new Diagnostic(new SourceLocation(string.Empty, 0),
-                    "Unknown output format '" + name + "'. Use bin, ines, prg, xex, a2bin, rom, o65, ihex, or srec."));
+                    "Unknown output format '" + name + "'. Use bin, ines, prg, xex, a2bin, rom, o65, ihex, srec, bbc, or tube."));
                 return new OperationResult(false, diagnostics);
             }
             return format.Write(path, payload, target);

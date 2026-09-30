@@ -17,6 +17,13 @@ namespace WinASM65.Targets
         public int InesMapper { get; set; }
         public string InesMirroring { get; set; }
         public bool InesBattery { get; set; }
+
+        /// <summary>
+        /// Which kind of BBC file to write: <c>exec</c> (the default), <c>binary</c>
+        /// or <c>text</c>. Empty for every other target, which is what makes the
+        /// field a no-op elsewhere instead of a BBC assumption leaking out.
+        /// </summary>
+        public string BbcFileType { get; set; }
         public Dictionary<string, long> HardwareSymbols { get; set; }
 
         public ResolvedTarget()
@@ -46,6 +53,7 @@ namespace WinASM65.Targets
                 InesMapper = InesMapper,
                 InesMirroring = InesMirroring,
                 InesBattery = InesBattery,
+                BbcFileType = BbcFileType,
                 HardwareSymbols = HardwareSymbols == null
                     ? new Dictionary<string, long>()
                     : new Dictionary<string, long>(HardwareSymbols)
