@@ -6,6 +6,8 @@ using Newtonsoft.Json;
 using WinASM65.Core;
 using WinASM65.Cpu;
 using WinASM65.Modules;
+using WinASM65.Linking;
+using WinASM65.Output;
 using WinASM65.Segments;
 using WinASM65.Targets;
 
@@ -52,6 +54,15 @@ namespace WinASM65
             {
                 DisplayHelp();
                 return 0;
+            }
+
+            // The linker is a separate verb: it consumes .w65 modules and produces a
+            // burnable image, so it must not fall through to the assemble path.
+            if (string.Equals(args[0], "link", StringComparison.OrdinalIgnoreCase))
+            {
+                string[] rest = new string[args.Length - 1];
+                Array.Copy(args, 1, rest, 0, rest.Length);
+                return RunLink(rest);
             }
 
             string sourceFile = null;
@@ -196,6 +207,100 @@ namespace WinASM65
         {
             return string.IsNullOrWhiteSpace(target.FormatName)
                 || target.FormatName.Trim().Equals("bin", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Runs the linker verb. Every input is a .w65 module; the output is the flat
+        /// image in the format named by -format, or raw.
+        /// </summary>
+        private int RunLink(string[] args)
+        {
+            List<string> inputs = new List<string>();
+            string output = "out.bin";
+            string format = "bin";
+            string cpu = null;
+            int shift = 0;
+
+            for (int i = 0; i < args.Length; i++)
+            {
+                switch (args[i])
+                {
+                    case "-o": if (i + 1 < args.Length) output = args[++i]; break;
+                    case "-format": if (i + 1 < args.Length) format = args[++i]; break;
+                    case "-cpu": if (i + 1 < args.Length) cpu = args[++i]; break;
+                    case "-shift": if (i + 1 < args.Length) int.TryParse(args[++i], out shift); break;
+                    case "-h":
+                    case "-help":
+                        _console.WriteLine("Usage: WinASM65 link <module.w65>... -o <image> [-format <fmt>] [-shift <n>]");
+                        _console.WriteLine("  Resolves imports against exports, places segments, applies");
+                        _console.WriteLine("  relocations and writes a burnable image.");
+                        return 0;
+                    default:
+                        if (!args[i].StartsWith("-", StringComparison.Ordinal))
+                            inputs.Add(args[i]);
+                        break;
+                }
+            }
+
+            if (inputs.Count == 0)
+            {
+                _console.WriteError("Nothing to link: give at least one .w65 module.");
+                return 1;
+            }
+
+            List<ModuleImage> modules = new List<ModuleImage>();
+            List<Diagnostic> diagnostics = new List<Diagnostic>();
+            foreach (string input in inputs)
+            {
+                ModuleImage module;
+                string moduleName;
+                OperationResult read = W65Format.TryRead(input, out module, out moduleName);
+                if (!read.Success)
+                {
+                    DisplayDiagnostics(read.Diagnostics);
+                    return 1;
+                }
+                if (string.IsNullOrEmpty(module.ModuleName))
+                    module.ModuleName = moduleName;
+                modules.Add(module);
+            }
+
+            LinkerOptions options = new LinkerOptions();
+            options.AddressShift = shift;
+
+            LinkedImage image;
+            OperationResult linked = new Linker().Link(modules, options, out image);
+            if (!linked.Success)
+            {
+                DisplayDiagnostics(linked.Diagnostics);
+                return 1;
+            }
+
+            ResolvedTarget target;
+            ICpuInstructionSet linkedCpu;
+            try
+            {
+                target = TargetResolver.Resolve(null, null, cpu, format);
+                linkedCpu = CpuFactory.Create(target.CpuName);
+            }
+            catch (ArgumentException ex)
+            {
+                return ReportConfigurationError(ex.Message);
+            }
+
+            target.LoadAddress = image.OriginAddress;
+            OperationResult published = _executablePublisher.Publish(output, image.Data, target);
+            if (!published.Success)
+            {
+                DisplayDiagnostics(published.Diagnostics);
+                return 1;
+            }
+
+            _console.WriteLine("Linked " + modules.Count + " module(s) at $" +
+                image.OriginAddress.ToString("X4") + ", " + image.Data.Length + " octets -> " + output);
+            foreach (PlacedSegment segment in image.Segments)
+                _console.WriteLine("  " + segment);
+            return 0;
         }
 
         /// <summary>
