@@ -20,6 +20,57 @@ namespace WinASM65.Tests
     public class ModuleFormatTests
     {
         [TestMethod]
+        public void AllerRetour_LesOctetsDuSegmentReviennentIntacts()
+        {
+            // Les tests precedents ne regardaient que les champs des tables. Or les
+            // offsets de fichier des segments sont ecrits relatifs au payload et lus
+            // comme absolus : la donnee revenait decalee, et rien ne s'en apercevait
+            // parce que le premier octet lu etait le 'W' du magic.
+            ModuleImage read = RoundTrip(BuildImage());
+
+            ModuleSegment code = null;
+            foreach (ModuleSegment segment in read.Segments)
+                if (segment.Kind == SegmentKind.Ro) code = segment;
+
+            Assert.IsNotNull(code);
+            CollectionAssert.AreEqual(
+                new byte[] { 0xA9, 0x01, 0x60, 0xEA, 0xAA, 0xBB },
+                code.Data,
+                "les octets du segment doivent revenir a l'identique, a l'offset announce");
+            Assert.IsTrue(code.FileOffset > 0, "un segment porteur de donnees a un offset reel");
+        }
+
+        [TestMethod]
+        public void AllerRetour_LesOctetsDeDeuxSegmentsRestentDistincts()
+        {
+            // Deux segments non contigus : un decalage d'un octet par segment
+            // deborderait l'un sur l'autre au lieu de rester invisible.
+            ModuleImage image = new ModuleImage();
+            image.AddSegment(new ModuleSegment("FIRST", new byte[] { 0x11, 0x12, 0x13 },
+                SegmentKind.Ro, 1, 0));
+            image.AddSegment(new ModuleSegment("SECOND", new byte[] { 0x21, 0x22, 0x23 },
+                SegmentKind.Ro, 1, 0));
+            ModuleSegment vars = new ModuleSegment("VARS", new byte[4], SegmentKind.Bss, 1, 0xFF);
+            image.AddSegment(vars);
+
+            ModuleImage read = RoundTrip(image);
+
+            CollectionAssert.AreEqual(new byte[] { 0x11, 0x12, 0x13 }, read.Segments[0].Data, "FIRST");
+            CollectionAssert.AreEqual(new byte[] { 0x21, 0x22, 0x23 }, read.Segments[1].Data, "SECOND");
+        }
+
+        [TestMethod]
+        public void AllerRetour_LOrigineDuSegmentEstConservee()
+        {
+            // Le linker se sert de l'origine comme adresse de repli. Perdue a
+            // l'ecriture, elle faisait retomber chaque segment sur une adresse
+            // par defaut et le code partait n'importe ou.
+            ModuleImage read = RoundTrip(BuildImage());
+
+            Assert.AreEqual(0xC000, read.Segments[0].OriginAddress, "CODE garde son origine");
+        }
+
+        [TestMethod]
         public void AllerRetour_HeaderEstStable()
         {
             ModuleImage image = BuildImage();
@@ -139,8 +190,10 @@ namespace WinASM65.Tests
         private static ModuleImage BuildImage()
         {
             ModuleImage image = new ModuleImage();
-            image.AddSegment(new ModuleSegment("CODE", new byte[] { 0xA9, 0x01, 0x60, 0xEA, 0xAA, 0xBB },
-                SegmentKind.Ro, 1, 0));
+            ModuleSegment code = new ModuleSegment("CODE", new byte[] { 0xA9, 0x01, 0x60, 0xEA, 0xAA, 0xBB },
+                SegmentKind.Ro, 1, 0);
+            code.OriginAddress = 0xC000;
+            image.AddSegment(code);
             image.AddSegment(new ModuleSegment("VARS", new byte[16], SegmentKind.Bss, 1, 0xFF));
             image.AddExport(new ModuleExport("DrawTile", 0, 4));
             image.AddImport(new ModuleImport("Helper", "External"));
