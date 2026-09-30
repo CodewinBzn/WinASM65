@@ -316,18 +316,43 @@ namespace WinASM65.Tests
                 {
                     ushort target = Next16();
                     // The program counter already sits past the three byte
-                    // instruction, which is exactly the address RTS has to come
-                    // back to. One more would skip the first byte of whatever
-                    // follows.
-                    Push16(PC);
+                    // instruction, so the processor pushes the address of its
+                    // own last byte and RTS adds one. Pushing PC here and
+                    // returning to it unchanged would also work, and would land
+                    // on the same instruction; but the one that works by
+                    // accident is the one that stops working the first time a
+                    // stub uses an indirect call, so both halves are done as
+                    // the processor does them.
+                    Push16((ushort)(PC - 1));
                     PC = target;
                     return;
                 }
-                case 0x60: PC = Pull16(); return;
+                case 0x60: PC = (ushort)(Pull16() + 1); return;
+                case 0xFF:
+                {
+                    // JSR (zp),Y is the one call whose target the stub cannot
+                    // know when it is written, so it is the one the test CPU
+                    // needed. Two byte operand: opcode $FF is the zero page
+                    // form, and $FC below is the absolute one. Both push the
+                    // address of their own last byte, which is what RTS adds
+                    // one to.
+                    ushort pointer = Read(PC++);
+                    Push16((ushort)(PC - 1));
+                    PC = (ushort)(Peek16(pointer) + Y);
+                    return;
+                }
+                case 0xFC:
+                {
+                    ushort base_ = Next16();
+                    Push16((ushort)(PC - 1));
+                    ushort at = (ushort)(base_ + X);
+                    PC = (ushort)(Read(at) | (Read((ushort)(at + 1)) << 8));
+                    return;
+                }
                 case 0x40:
                 {
                     SetFlags(Pull());
-                    PC = Pull16();
+                    PC = (ushort)(Pull16() + 1);
                     return;
                 }
                 case 0x00:

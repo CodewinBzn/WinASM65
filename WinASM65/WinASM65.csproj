@@ -20,4 +20,11 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The stub is 6502 source, and it is the repository's own assembler that
+         turns it into the bytes a machine runs. Embedding it keeps the two from
+         drifting apart: a change to the source is a change to the stub. -->
+    <EmbeddedResource Include="src\TextFormat\runtime-stub.asm" LogicalName="WinASM65.TextFormat.runtime-stub.asm" />
+  </ItemGroup>
+
 </Project>

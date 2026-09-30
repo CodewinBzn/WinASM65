@@ -5,10 +5,10 @@ Ce document decrit la troisieme famille de cibles : les systemes qui
 donne la classification, et `docs/format-module.md`, qui decrit le format
 d'objet.
 
-**L'encodeur de tokens et les conteneurs sont en place ; le stub runtime ne
-l'est pas.** L'encodeur est la tache T10, les conteneurs et les autres BASIC
-la tache T15, le stub runtime la tache T11. Ce qui suit fixe ce que chaque
-systeme oblige a faire, et ce qui reste a valider sur une machine.
+**L'encodeur de tokens, les conteneurs et le stub runtime sont en place.**
+L'encodeur est la tache T10, les conteneurs et les autres BASIC la tache T15,
+le stub runtime la tache T11. Ce qui suit fixe ce que chaque systeme oblige a
+faire, et ce qui reste a valider sur une machine.
 
 ---
 
@@ -102,12 +102,45 @@ donnees executables.
 ### Le stub est du code cible
 
 Point de validation important, et different de tout le reste du chantier :
-**le stub ne se valide pas par un test golden.** Il s'execute sur une
-machine 6502 reelle ou dans un emulateur. Un test qui comparerait des octets
-prouverait que le stub n'a pas change, pas qu'il fonctionne.
+**le stub ne se valide pas par un test golden.** Un test qui comparerait des
+octets prouverait que le stub n'a pas change, pas qu'il fonctionne.
 
-La consequence est un cout de mise au point plus eleve, et c'est
-explicitement liste comme risque dans le plan.
+Il ne se valide donc **pas** sur une machine reelle non plus, faute d'en avoir
+une sous la main. Ce que le depot fait a la place est meilleur qu'un golden :
+`WinASM65.Tests/TestCpu6502.cs` est un 6502 NMOS, et `RuntimeStubTests` **le
+fait tourner**. Le stub est assemble par l'assembleur du depot, le bloc qu'il
+deplace est une image **reellement liee** — pas un tableau d'octets sorti de
+rien —, et les assertions portent sur ce que la machine a fait : le bloc ecrit,
+la reference decalee, la routine appelee, le retour rendu a l'appelant.
+
+C'est ce qui a paye. Un stub peut assembler, avoir la bonne longueur et la
+bonne table, et etre faux de trois facons qui ne se voient qu'a l'execution :
+
+- `LDA STUB_HEADER` lit **le contenu** de l'en-tete, pas son adresse. Le
+  pointeur de flux partait donc de l'octet bas de la destination et non de
+  l'en-tete, et le bloc se decompressait en garbage ;
+- `JSR Get` se termine par `INC Ptr`, qui **pose les drapeaux sur le
+  pointeur**. Un `BNE` teste apres le retour teste donc le pointeur et non
+  l'octet lu ; la comparaison doit etre son propre `CMP` ;
+- un decompte sur seize octets qui saute le `DEC` de l'octet bas quand il est
+  nul **ne fait pas d'emprunt** : le bloc s'arrete a la 256e octet sans
+  qu'aucune erreur ne soit visible.
+
+Aucun de ces trois n'aurait ete vu par une comparaison d'octets, et le second
+serait tombe sur n'importe quelle vraie machine.
+
+Il reste ce que `TestCpu6502` ne fait pas : ni clavier, ni interruptions, ni
+lecteur de disque. Le stub ne s'en sert pas, mais une cible ne se declare pas
+validee sur cette seule base.
+
+### Ce que le refus d'une reference d'un octet signifie
+
+Un site d'un octet ne peut pas etre deplace : un octet n'a pas la place d'une
+adresse qui a change. Le lien produit bien un tel site — c'est ce que donne une
+source qui declare une largeur d'octet sur une reference de mot — et
+`RuntimeBlock` refuse alors le bloc entier plutot que de le transporter avec
+une adresse restee en place. Un appel qui partirait de la mauvaise adresse
+serait exact : c'est ce qui le rend dangereux.
 
 ---
 
