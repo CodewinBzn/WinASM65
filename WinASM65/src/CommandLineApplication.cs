@@ -74,6 +74,13 @@ namespace WinASM65
                 return RunArchive(rest);
             }
 
+            if (string.Equals(args[0], "geos", StringComparison.OrdinalIgnoreCase))
+            {
+                string[] rest = new string[args.Length - 1];
+                Array.Copy(args, 1, rest, 0, rest.Length);
+                return RunGeos(rest);
+            }
+
             string sourceFile = null;
             string objectFile = null;
             ConfigFile config = null;
@@ -216,6 +223,144 @@ namespace WinASM65
         {
             return string.IsNullOrWhiteSpace(target.FormatName)
                 || target.FormatName.Trim().Equals("bin", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Links .w65 modules and writes the result as a GEOS application on a D64.
+        /// <para>
+        /// One application, whose records are the linked segments in placement
+        /// order. The first record is the one GEOS loads when the application is
+        /// opened, so it has to be the segment holding the start address; the
+        /// linker places by origin, so that is the segment whose origin is lowest.
+        /// </para>
+        /// </summary>
+        private int RunGeos(string[] args)
+        {
+            List<string> inputs = new List<string>();
+            string output = "out.d64";
+            string diskName = "GEOS DISK";
+            string diskId = "01";
+            string appName = "APPLICATION";
+            string author = string.Empty;
+            string description = string.Empty;
+            int shift = 0;
+
+            for (int i = 0; i < args.Length; i++)
+            {
+                switch (args[i])
+                {
+                    case "-o": if (i + 1 < args.Length) output = args[++i]; break;
+                    case "-disk": if (i + 1 < args.Length) diskName = args[++i]; break;
+                    case "-id": if (i + 1 < args.Length) diskId = args[++i]; break;
+                    case "-name": if (i + 1 < args.Length) appName = args[++i]; break;
+                    case "-author": if (i + 1 < args.Length) author = args[++i]; break;
+                    case "-description": if (i + 1 < args.Length) description = args[++i]; break;
+                    case "-shift": if (i + 1 < args.Length) int.TryParse(args[++i], out shift); break;
+                    case "-h":
+                    case "-help":
+                        _console.WriteLine("Usage: WinASM65 geos <module.w65>... -o <disk.d64> [-name <n>] [-disk <n>] [-id <nn>]");
+                        _console.WriteLine("  Links the modules into one GEOS application and writes a D64 image.");
+                        _console.WriteLine("  The placed segments become the records of the application.");
+                        return 0;
+                    default:
+                        if (!args[i].StartsWith("-", StringComparison.Ordinal))
+                            inputs.Add(args[i]);
+                        break;
+                }
+            }
+
+            if (inputs.Count == 0)
+            {
+                _console.WriteError("Nothing to build: give at least one .w65 module.");
+                return 1;
+            }
+
+            List<ModuleImage> modules = new List<ModuleImage>();
+            foreach (string input in inputs)
+            {
+                if (IsArchive(input))
+                {
+                    ArchiveResolution resolution;
+                    OperationResult resolved = ArchiveFormat.Resolve(input, out resolution);
+                    if (!resolved.Success)
+                    {
+                        DisplayDiagnostics(resolved.Diagnostics);
+                        return 1;
+                    }
+                    for (int a = 0; a < resolution.Archives.Count; a++)
+                        for (int m = 0; m < resolution.Archives[a].Members.Count; m++)
+                            modules.Add(resolution.Archives[a].Members[m].Module);
+                    continue;
+                }
+
+                ModuleImage module;
+                string moduleName;
+                OperationResult read = W65Format.TryRead(input, out module, out moduleName);
+                if (!read.Success)
+                {
+                    DisplayDiagnostics(read.Diagnostics);
+                    return 1;
+                }
+                if (string.IsNullOrEmpty(module.ModuleName))
+                    module.ModuleName = moduleName;
+                modules.Add(module);
+            }
+
+            LinkerOptions options = new LinkerOptions();
+            options.AddressShift = shift;
+            LinkedImage image;
+            OperationResult linked = new Linker().Link(modules, options, out image);
+            if (!linked.Success)
+            {
+                DisplayDiagnostics(linked.Diagnostics);
+                return 1;
+            }
+
+            GeosApplication application = new GeosApplication();
+            application.Name = appName;
+            application.Author = author;
+            application.Description = description;
+            // Stamped when the disk is written, which is what GEOS shows in the
+            // file list. The library keeps 1900-01-01 so that a test building a
+            // disk twice gets the same bytes.
+            application.Timestamp = DateTime.Today;
+            application.LoadAddress = image.OriginAddress;
+            application.StartAddress = image.OriginAddress;
+            application.EndAddress = (ushort)(image.OriginAddress + image.Data.Length);
+
+            // Placed order, which is origin order, so record 0 is the one GEOS
+            // loads first and it is the start of the program.
+            for (int i = 0; i < image.Segments.Count; i++)
+            {
+                PlacedSegment segment = image.Segments[i];
+                application.Records.Add(new GeosRecord(new byte[segment.Size]));
+                byte[] record = application.Records[application.Records.Count - 1].Data;
+                for (int b = 0; b < segment.Size; b++)
+                {
+                    int at = segment.Address + b - image.OriginAddress;
+                    record[b] = at >= 0 && at < image.Data.Length ? image.Data[at] : (byte)0x00;
+                }
+            }
+
+            D64Builder disk = new D64Builder();
+            disk.DiskName = diskName;
+            disk.DiskId = diskId;
+            disk.Applications.Add(application);
+
+            OperationResult written = disk.Write(output);
+            if (!written.Success)
+            {
+                DisplayDiagnostics(written.Diagnostics);
+                return 1;
+            }
+
+            _console.WriteLine(string.Format("Linked {0} segment(s) into a GEOS application -> {1}",
+                image.Segments.Count, output));
+            _console.WriteLine("  " + appName + " load $" + image.OriginAddress.ToString("X4")
+                + " start $" + image.OriginAddress.ToString("X4")
+                + " end $" + application.EndAddress.ToString("X4")
+                + ", " + image.Segments.Count + " record(s)");
+            return 0;
         }
 
         /// <summary>
