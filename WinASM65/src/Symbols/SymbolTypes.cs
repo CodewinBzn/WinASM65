@@ -1,6 +1,7 @@
 // Abdelghani BOUZIANE / Refactored to Pure OOP
 // WinASM65 - Symbol and Scope Types
 
+using System;
 using System.Collections.Generic;
 using WinASM65.Cpu;
 
@@ -55,8 +56,15 @@ namespace WinASM65.Symbols
 
         public LexicalScopeData()
         {
-            SymbolTable = new Dictionary<string, long>();
-            UnsolvedSymbols = new Dictionary<string, UnresolvedSymbol>();
+            // Case-insensitive, as on any 6502 assembler: "lda PPU_CTRL" has to
+            // find PPU_CTRL. This used to be left to the operand being upper-cased
+            // on its way in, which worked for the common case and then lost the
+            // spelling the source actually used, so a symbol the source defined in
+            // lower case stopped matching and an imported one stopped matching the
+            // export table. Comparing the names as written, here, fixes both
+            // without touching what reaches the relocation records.
+            SymbolTable = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            UnsolvedSymbols = new Dictionary<string, UnresolvedSymbol>(StringComparer.OrdinalIgnoreCase);
             MemArea = 0;
         }
     }

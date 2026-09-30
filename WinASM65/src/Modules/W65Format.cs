@@ -208,6 +208,23 @@ namespace WinASM65.Modules
                 return new OperationResult(false, diagnostics);
             }
 
+            OperationResult result = TryRead(data, path, out image, out moduleName);
+            diagnostics.AddRange(result.Diagnostics);
+            return new OperationResult(result.Success, diagnostics);
+        }
+
+        /// <summary>
+        /// Reads a .w65 held in memory. <paramref name="source"/> is only used to
+        /// label diagnostics and to name the module, so an archive member can be
+        /// parsed without being a file of its own.
+        /// </summary>
+        public static OperationResult TryRead(byte[] data, string source, out ModuleImage image, out string moduleName)
+        {
+            image = null;
+            moduleName = string.Empty;
+            List<Diagnostic> diagnostics = new List<Diagnostic>();
+            string path = source;
+
             if (!HasMagic(data))
             {
                 diagnostics.Add(new Diagnostic(new SourceLocation(path, 0),
@@ -241,7 +258,23 @@ namespace WinASM65.Modules
 
                     byte[] content = new byte[size];
                     if (kind != SegmentKind.Bss && size > 0)
-                        Array.Copy(data, fileOffset, content, 0, (int)size);
+                    {
+                        // Checked here rather than left to Array.Copy: a file whose
+                        // offset points past the end used to throw ArgumentException,
+                        // which is neither of the two exceptions caught below, so a
+                        // corrupt module took the whole process down instead of
+                        // producing a diagnostic.
+                        if (fileOffset > (uint)data.Length
+                            || (ulong)fileOffset + size > (ulong)data.Length)
+                        {
+                            diagnostics.Add(new Diagnostic(new SourceLocation(path, 0),
+                                "'" + path + "' is a corrupt .w65 module: segment '" + name
+                                + "' data runs past the end of the file."));
+                            image = null;
+                            return new OperationResult(false, diagnostics);
+                        }
+                        Array.Copy(data, (int)fileOffset, content, 0, (int)size);
+                    }
                     ModuleSegment segment = new ModuleSegment(name, content, kind, alignment, bank);
                     segment.OriginAddress = origin;
                     // The data has been copied out already, so this offset no longer
@@ -291,7 +324,9 @@ namespace WinASM65.Modules
                 }
 
                 image = result;
-                moduleName = Path.GetFileNameWithoutExtension(path);
+                moduleName = string.IsNullOrEmpty(source)
+                    ? string.Empty
+                    : Path.GetFileNameWithoutExtension(source);
                 return new OperationResult(true, diagnostics);
             }
             catch (ArgumentOutOfRangeException)
