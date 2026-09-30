@@ -40,6 +40,13 @@ namespace WinASM65.Targets
         public string Author { get; set; }
         public Dictionary<string, long> HardwareSymbols { get; set; }
 
+        /// <summary>
+        /// What the machine is made of, for the targets where that varies. Null
+        /// for a target whose machine does not vary, which is what keeps the
+        /// options from leaking into targets they have nothing to say about.
+        /// </summary>
+        public HardwareOptions Hardware { get; set; }
+
         public ResolvedTarget()
         {
             SystemId = "raw";
@@ -74,7 +81,8 @@ namespace WinASM65.Targets
                 Author = Author,
                 HardwareSymbols = HardwareSymbols == null
                     ? new Dictionary<string, long>()
-                    : new Dictionary<string, long>(HardwareSymbols)
+                    : new Dictionary<string, long>(HardwareSymbols),
+                Hardware = Hardware == null ? null : Hardware.Clone()
             };
         }
     }
