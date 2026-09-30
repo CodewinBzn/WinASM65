@@ -87,9 +87,13 @@ namespace WinASM65.Core
         // Regex patterns for line matching
         private static readonly Regex StartLocalScopeRegex = new Regex(@"^\s*\{\s*", RegexOptions.Compiled);
         private static readonly Regex EndLocalScopeRegex = new Regex(@"^\s*\}\s*", RegexOptions.Compiled);
-        private static readonly Regex LabelDeclareRegex = new Regex(@"\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*):\s*", RegexOptions.Compiled);
+        // Anchored to a bare label: this must not fire on "Label: nop", which is an
+        // instruction carrying a label. Unanchored, it swallowed the colon and left
+        // the instruction with nothing to match, so the line was silently dropped
+        // and only the label survived.
+        private static readonly Regex LabelDeclareRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*):\s*$", RegexOptions.Compiled);
         private static readonly Regex DirectiveRegex = new Regex(@"\s*(?<directive>\.[a-zA-Z]+)(\s+(?<value>(.)+))?", RegexOptions.Compiled);
-        private static readonly Regex InstructionRegex = new Regex(@"^(\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s+)?(?<opcode>[a-zA-Z]{3})((\s+(?<operands>(.)+))|$)", RegexOptions.Compiled);
+        private static readonly Regex InstructionRegex = new Regex(@"^(\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s*:?\s+)?(?<opcode>[a-zA-Z]{3})((\s+(?<operands>(.)+))|$)", RegexOptions.Compiled);
         private static readonly Regex ConstantRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s*=\s*(?<value>(.)+)$", RegexOptions.Compiled);
         private static readonly Regex MemReserveRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s+\.(RES|res)\s+(?<value>(.)+)$", RegexOptions.Compiled);
         private static readonly Regex MacroCallRegex = new Regex(@"^(\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*))(\s+(?<value>(.)+))?", RegexOptions.Compiled);
