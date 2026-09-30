@@ -451,6 +451,45 @@ namespace WinASM65.Tests
 
         // -------------------------------------------------------------- helpers
 
+        public void LaZoneLibreDuBlocInfoResteVideSansTable()
+        {
+            // An application written before the table existed has to read as
+            // having nothing to say about relocation, or a kernal looking for the
+            // magic would find stale bytes.
+            D64Builder builder = Builder();
+            builder.Applications.Add(Application("PLAIN"));
+            byte[] image = Build(builder);
+            byte[] entry = Entry(image, 0);
+            byte[] info = Sector(image, entry[0x15], entry[0x16]);
+
+            for (int at = 0x89; at <= 0x92; at++)
+                Assert.AreEqual(0x00, info[at], "$" + at.ToString("X2") + " doit rester vide");
+        }
+
+        public void LeBlocInfoPointeLaTableDeRelocation()
+        {
+            D64Builder builder = Builder();
+            GeosApplication application = Application("RELOC");
+            application.BaseAddress = 0x4000;
+            application.TableAddress = 0x4020;
+            application.TableEntryCount = 3;
+            builder.Applications.Add(application);
+            byte[] image = Build(builder);
+            byte[] entry = Entry(image, 0);
+            byte[] info = Sector(image, entry[0x15], entry[0x16]);
+
+            Assert.AreEqual(0x52, info[0x89], "magic R");
+            Assert.AreEqual(0x36, info[0x8A], "magic 6");
+            Assert.AreEqual(0x35, info[0x8B], "magic 5");
+            Assert.AreEqual(0x41, info[0x8C], "magic A");
+            Assert.AreEqual(0x00, info[0x8D], "adresse de base, poids faible");
+            Assert.AreEqual(0x40, info[0x8E], "adresse de base, poids fort");
+            Assert.AreEqual(0x20, info[0x8F], "adresse de la table, poids faible");
+            Assert.AreEqual(0x40, info[0x90], "adresse de la table, poids fort");
+            Assert.AreEqual(0x03, info[0x91], "nombre d'entrees, poids faible");
+            Assert.AreEqual(0x00, info[0x92], "nombre d'entrees, poids fort");
+        }
+
         private static byte[] Build(D64Builder builder)
         {
             List<Diagnostic> diagnostics = new List<Diagnostic>();

@@ -17,6 +17,50 @@ namespace WinASM65.Tests
         private const ushort Halt = 0x9000;
 
         [TestMethod]
+        public void UneAdditionImmediatePrendUnSeulOctetDOperand()
+        {
+            // The immediate form is opcode plus one byte. An interpreter that read
+            // two would swallow the STA below and land on its operand, which is
+            // not an opcode at all: the run stops dead rather than drifting, and
+            // the store that was supposed to happen never does.
+            TestCpu6502 cpu = new TestCpu6502();
+            byte[] program =
+            {
+                0xA9, 0x50,       // LDA #$50
+                0x18,             // CLC
+                0x69, 0x50,       // ADC #$50
+                0x85, 0x10,       // STA $10
+                0xA9, 0x7E,       // LDA #$7E
+                0x4C, 0x00, 0x90
+            };
+            cpu.LoadProgram(0x8000, program, Halt);
+            cpu.Run(Halt);
+
+            Assert.AreEqual(0xA0, cpu[0x0010], "l'addition a bien eu lieu");
+            Assert.AreEqual(0x7E, cpu.A, "l'execution a derape sur l'operand");
+        }
+
+        [TestMethod]
+        public void UneSoustractionImmediatePrendUnSeulOctetDOperand()
+        {
+            TestCpu6502 cpu = new TestCpu6502();
+            byte[] program =
+            {
+                0xA9, 0x50,       // LDA #$50
+                0x38,             // SEC
+                0xE9, 0x30,       // SBC #$30
+                0x85, 0x10,       // STA $10
+                0xA9, 0x7E,       // LDA #$7E
+                0x4C, 0x00, 0x90
+            };
+            cpu.LoadProgram(0x8000, program, Halt);
+            cpu.Run(Halt);
+
+            Assert.AreEqual(0x20, cpu[0x0010]);
+            Assert.AreEqual(0x7E, cpu.A, "l'execution a derape sur l'operand");
+        }
+
+        [TestMethod]
         public void UneAdditionSetLaRetenueEtLeDebordementSeParment()
         {
             // The two flags answer different questions and both matter: the

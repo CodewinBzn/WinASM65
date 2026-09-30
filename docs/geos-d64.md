@@ -97,18 +97,72 @@ lien vers le suivant. Le dernier secteur d'une chaîne porte $00 puis le
 nombre d'octets utilisés : c'est ce qui dit au lecteur où le fichier s'arrête,
 et sans cela il lirait 254 octets de trop.
 
+## Table de relocation
+
+Le kernal GEOS ne corrige rien au chargement. `LOAD` ($C208) prend l'adresse de
+chargement dans le bloc INFO ; `LOAD2` ($C211) accepte à la place l'adresse que
+l'appelant fournit en $886C-$886D. Dans les deux cas les octets arrivent tels
+quels. Une application qui n'est pas chargée à l'adresse pour laquelle elle a
+été assemblée doit donc se corriger elle-même, et le travail de WinASM65
+consiste à lui fournir la liste des endroits à corriger.
+
+C'est ce que produit `WinASM65 geos`, dans un record VLIR placé après le code :
+
+```
+$00-$03  "R65A", pour que la zone ne se confonde pas avec du remplissage
+$04-$05  l'adresse pour laquelle l'image a ete assemblee
+$06-$07  le nombre d'entrees
+$08-$09  le point d'entree du programme
+$0A-     entrees : adresse basse, adresse haute, largeur
+```
+
+Le bloc INFO pointe sur cette table dans sa zone libre, $89-$9F, qui appartient
+a l'application :
+
+```
+$89-$8C  "R65A"
+$8D-$8E  adresse de base
+$8F-$90  adresse de la table
+$91-$92  nombre d'entrees
+```
+
+Le magic est ce qui rend l'extension inoffensive : un kernal qui ignore cette
+zone charge le fichier exactement comme avant.
+
+Seules les references absolues de deux octets figurent dans la table. Une
+branche relative est deja correcte ou que le code bouge ou non, la page zero est
+la page zero a toute adresse de chargement, et une valeur immediate n'est pas
+une adresse.
+
+**Pas de stub auto-positionne.** Un 6502 ne peut pas lire son propre compteur de
+programme sans un `JSR` dont la cible est une adresse d'execution, et une
+constante d'assemblage n'en est pas une : le `JSR` pousserait la bonne adresse
+mais sauterait ailleurs. Un stub ecrit ainsi fonctionnerait a une seule adresse
+de chargement et corromprait la memoire a toutes les autres. La table est donc
+consommee par l'application, par un chargeur, ou par WinASM65 lui-meme.
+
+Le test central n'est pas la structure de la table mais son effet : une image
+chargee ailleurs puis corrigee par la table doit etre identique, octet pour
+octet, a l'image que le linker produit en liant a cette adresse. C'est la
+propriete qui compte, et une table qui laisserait un site de cote la
+manquerait.
+
 ## Ce que ces tests ne prouvent pas
 
-Les tests vérifient la structure du disque champ par champ. Ils ne vérifient
-pas que GEOS affiche l'icône, ni que le kernal charge l'application : cela
-demande C64 ou VICE. Un disque bien formé ne suffit pas à dire qu'il démarre.
+Les tests vérifient la structure du disque champ par champ, et l'équivalence
+entre la table appliquée et un lien à l'adresse de chargement. Ils ne vérifient
+pas que GEOS affiche l'icône, ni que le kernal charge l'application, ni que
+l'application se corrige elle-même au démarrage : cela demande C64 ou VICE. Un
+disque bien formé et une table juste ne suffisent pas à dire qu'elle démarre.
 
 ## Ligne de commande
 
 ```
 WinASM65 geos module.w65... -o disk.d64 [-name N] [-disk N] [-id NN]
-                            [-author A] [-description D] [-shift n]
+                            [-author A] [-description D] [-shift n] [-start n]
 ```
 
 Les segments liés deviennent les records de l'application, dans l'ordre de
-placement, donc le record 0 est celui que GEOS charge en premier.
+placement, donc le record 0 est celui que GEOS charge en premier. Le dernier
+record est la table de relocation. `-start` donne le point d'entrée du
+programme, qui est sinon le début du premier segment.

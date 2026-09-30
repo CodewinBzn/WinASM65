@@ -27,6 +27,25 @@ namespace WinASM65.Linking
     }
 
     /// <summary>
+    /// An absolute reference the linker has already resolved. The value in the
+    /// image is correct for the address the image was linked at; a target that
+    /// moves the image has to add its own load bias to every one of these, so the
+    /// sites are kept rather than discarded with the relocation records.
+    /// </summary>
+    public sealed class LinkedReference
+    {
+        public ushort Address { get; internal set; }
+
+        /// <summary>1 for a single byte reference, 2 for a word.</summary>
+        public int Width { get; internal set; }
+
+        public override string ToString()
+        {
+            return "$" + Address.ToString("X4") + " (" + Width + ")";
+        }
+    }
+
+    /// <summary>
     /// The flat, burnable image. This is mode A produced from modules; it does not
     /// replace the direct-burn path, it consumes what that path produces.
     /// </summary>
@@ -37,11 +56,19 @@ namespace WinASM65.Linking
         public IReadOnlyList<PlacedSegment> Segments { get; internal set; }
         public IReadOnlyDictionary<string, ushort> Symbols { get; internal set; }
 
+        /// <summary>
+        /// Where the absolute references ended up, in link order. Relative
+        /// branches are absent: they are already correct at any address, since
+        /// moving the code moves both ends.
+        /// </summary>
+        public IReadOnlyList<LinkedReference> References { get; internal set; }
+
         public LinkedImage()
         {
             Data = new byte[0];
             Segments = new List<PlacedSegment>();
             Symbols = new Dictionary<string, ushort>(StringComparer.Ordinal);
+            References = new List<LinkedReference>();
         }
     }
 
@@ -116,7 +143,8 @@ namespace WinASM65.Linking
             byte[] data = new byte[end - origin];
             if (!CopySegments(modules, placed, data, origin, diagnostics))
                 return new OperationResult(false, diagnostics);
-            if (!ApplyRelocations(modules, placed, symbols, data, origin, diagnostics))
+            List<LinkedReference> references = new List<LinkedReference>();
+            if (!ApplyRelocations(modules, placed, symbols, data, origin, references, diagnostics))
                 return new OperationResult(false, diagnostics);
 
             LinkedImage result = new LinkedImage();
@@ -124,6 +152,7 @@ namespace WinASM65.Linking
             result.Data = data;
             result.Segments = placed;
             result.Symbols = symbols;
+            result.References = references;
             image = result;
             return new OperationResult(true, diagnostics);
         }
@@ -342,7 +371,8 @@ namespace WinASM65.Linking
         // ------------------------------------------------------------ relocation
 
         private bool ApplyRelocations(IReadOnlyList<ModuleImage> modules, List<PlacedSegment> placed,
-            Dictionary<string, ushort> symbols, byte[] data, ushort origin, List<Diagnostic> diagnostics)
+            Dictionary<string, ushort> symbols, byte[] data, ushort origin,
+            List<LinkedReference> references, List<Diagnostic> diagnostics)
         {
             for (int m = 0; m < modules.Count; m++)
             {
@@ -388,9 +418,38 @@ namespace WinASM65.Linking
 
                     if (!Write(data, (int)(site - origin), origin, value, record, owner, diagnostics))
                         return false;
+
+                    // A site two records name has to be biased once, not twice:
+                    // the stub adds the bias to what it finds in memory, and
+                    // finding it twice is a corrupted address rather than a
+                    // doubled one.
+                    //
+                    // Only the word types qualify. Zp8 names zero page, which is
+                    // zero page wherever the program is loaded, and Imm8 and
+                    // Data8 carry a value rather than an address; biasing any of
+                    // them would corrupt something that is already right.
+                    if (record.Type == RelocationType.Abs16 || record.Type == RelocationType.Data16)
+                    {
+                        if (!Holds(references, (ushort)site, record.Width))
+                            references.Add(new LinkedReference
+                            {
+                                Address = (ushort)site,
+                                Width = record.Width == 1 ? 1 : 2
+                            });
+                    }
                 }
             }
             return true;
+        }
+
+        private static bool Holds(List<LinkedReference> references, ushort address, int width)
+        {
+            for (int i = 0; i < references.Count; i++)
+            {
+                if (references[i].Address == address && references[i].Width == width)
+                    return true;
+            }
+            return false;
         }
 
         private bool Write(byte[] data, int offset, ushort origin, ushort value, RelocationRecord record,
