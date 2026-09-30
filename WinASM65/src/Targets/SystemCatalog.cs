@@ -71,12 +71,16 @@ namespace WinASM65.Targets
             Add(map, "atari2600", "6502", "rom", null, Atari2600Symbols(), true, t => t.RomSize = 4096);
             Add(map, "vcs", "6502", "rom", null, Atari2600Symbols(), true, t => t.RomSize = 4096);
             Add(map, "bbc", "6502", "bbc", 0xE00, BbcSymbols(), true,
-                t => t.BbcFileType = "exec");
+                t => t.BbcFileType = "code");
             Add(map, "bbcmicro", "6502", "bbc", 0xE00, BbcSymbols(), true,
-                t => t.BbcFileType = "exec");
-            Add(map, "tube", "6502", "tube", TubeFormat.DefaultLoadAddress, TubeSymbols(), true, null);
-            Add(map, "bbc2p", "6502", "tube", TubeFormat.DefaultLoadAddress, TubeSymbols(), true, null);
-            Add(map, "tube6502", "6502", "tube", TubeFormat.DefaultLoadAddress, TubeSymbols(), true, null);
+                t => t.BbcFileType = "code");
+            Add(map, "tube", "6502", "tube", null, TubeSymbols(), true, null);
+            Add(map, "bbc2p", "6502", "tube", null, TubeSymbols(), true, null);
+            // The processor in the second processor is a 6502B according to the
+            // user guide and a 65C02 according to the service manual and the
+            // chips on surviving boards. Both exist, so both are offered and
+            // neither is called the truth.
+            Add(map, "tube65c02", "65c02", "tube", null, TubeSymbols(), true, null);
             Add(map, "electron", "6502", "bin", 0xE00, null, true, null);
             Add(map, "oric", "6502", "bin", 0x0500, null, true, null);
             Add(map, "lynx", "65c02", "bin", null, null, false, null);
@@ -153,50 +157,76 @@ namespace WinASM65.Targets
             };
         }
 
+        /// <summary>
+        /// The main machine's map, from the MOS 1.20 memory map. Two things here
+        /// are not what their names suggest, which is why they are named after
+        /// the map rather than after the device: the 6522 register order is the
+        /// BBC's own, and the "1 MHz counter" is the system VIA's timers.
+        /// </summary>
         private static Dictionary<string, long> BbcSymbols()
         {
-            // The OS calls are in the top page of ROM, so they are fixed for every
-            // BBC. The VIC and the two VIAs are the machine a program talks to;
-            // their layout is what a driver needs to name.
             return new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase)
             {
-                // OS entry points
+                // OS entry points, $FFA7 to $FFD7
                 { "OSWRCH", 0xFFEE }, { "OSWORD", 0xFFF1 }, { "OSBYTE", 0xFFF4 },
-                { "OSCLI", 0xFFF7 }, { "OSNEWLINE", 0xFFE7 }, { "OSASCI", 0xFFE3 },
-                { "PUTC", 0xFFE4 }, { "GETS", 0xFFE0 }, { "OSRDM", 0xFFB3 },
-                { "OSWRM", 0xFFCF },
+                { "OSCLI", 0xFFF7 }, { "OSNEWL", 0xFFE7 }, { "OSASCI", 0xFFE3 },
+                { "OSRDCH", 0xFFE0 }, { "OSRDRM", 0xFFB9 }, { "OSBPUT", 0xFFD4 },
+                { "OSBGET", 0xFFD7 }, { "OSGBPB", 0xFFD1 }, { "OSFIND", 0xFFCE },
+                { "NVRDCH", 0xFFC8 }, { "NVWRCH", 0xFFCB }, { "OSARGS", 0xFFDA },
+                { "OSFILE", 0xFFDD }, { "OSRDLINE", 0xFFA7 },
 
-                // Video ULA
-                { "CRTC", 0xFE00 }, { "ACORN", 0xFE10 }, { "VIDULA", 0xFE20 },
-                { "ULAINT", 0xFE22 }, { "ULAENABLE", 0xFE23 }, { "ROMSEL", 0xFE24 },
+                // CRTC and the video ULA. There is one video ULA control register
+                // and one palette register, not a set of interrupt registers as
+                // on machines with a programmable raster chip.
+                { "CRTC", 0xFE00 }, { "ACIA", 0xFE08 }, { "ACIADATA", 0xFE09 },
+                { "SERIALULA", 0xFE10 }, { "VIDULA", 0xFE20 }, { "PALETTE", 0xFE21 },
+                { "ROMSEL", 0xFE30 },
 
-                // System VIA. The register order is not the 6522's own: DDRC and
-                // DDRB sit before the interrupt registers, which is why the
-                // standard names would point at the wrong registers here.
-                { "SYSEOR_ORA", 0xFCB0 }, { "SYSEOR_ORB", 0xFCB1 }, { "SYSEOR_FR", 0xFCB2 },
-                { "SYSEOR_DDRC", 0xFCB3 }, { "SYSEOR_DDRB", 0xFCB4 }, { "SYSEOR_IFR", 0xFCB5 },
-                { "SYSEOR_IER", 0xFCB6 }, { "SYSEOR_IRA", 0xFCB7 }, { "SYSEOR_IRB", 0xFCB8 },
-                { "USROR_ORA", 0xFCA0 }, { "USROR_ORB", 0xFCA1 }, { "USROR_FR", 0xFCA2 },
-                { "USROR_DDRC", 0xFCA3 }, { "USROR_DDRB", 0xFCA4 }, { "USROR_IFR", 0xFCA5 },
-                { "USROR_IER", 0xFCA6 }, { "USROR_IRA", 0xFCA7 }, { "USROR_IRB", 0xFCA8 },
+                // System VIA. Timer 1 is the OS 100 Hz clock and belongs to the
+                // OS; a program that writes it stops the machine.
+                { "SYSEOR_ORB", 0xFE40 }, { "SYSEOR_ORA", 0xFE41 },
+                { "SYSEOR_DDRB", 0xFE42 }, { "SYSEOR_DDRA", 0xFE43 },
+                { "SYSEOR_T1L", 0xFE44 }, { "SYSEOR_T1H", 0xFE45 },
+                { "SYSEOR_T1LL", 0xFE46 }, { "SYSEOR_T1LH", 0xFE47 },
+                { "SYSEOR_T2L", 0xFE48 }, { "SYSEOR_T2H", 0xFE49 },
+                { "SYSEOR_SR", 0xFE4A }, { "SYSEOR_ACR", 0xFE4B },
+                { "SYSEOR_PCR", 0xFE4C }, { "SYSEOR_IFR", 0xFE4D },
+                { "SYSEOR_IER", 0xFE4E }, { "SYSEOR_PORT", 0xFE4F },
 
-                // Keyboard, analogue converter, timing
-                { "ADCON", 0xFE70 }, { "ADCTL", 0xFE60 }, { "FRAMETIME", 0xFF20 }
+                // User VIA: the printer on A, the user port on B.
+                { "USROR_ORB", 0xFE60 }, { "USROR_ORA", 0xFE61 },
+                { "USROR_DDRB", 0xFE62 }, { "USROR_DDRA", 0xFE63 },
+                { "USROR_T1L", 0xFE64 }, { "USROR_T1H", 0xFE65 },
+                { "USROR_T1LL", 0xFE66 }, { "USROR_T1LH", 0xFE67 },
+                { "USROR_T2L", 0xFE68 }, { "USROR_T2H", 0xFE69 },
+                { "USROR_SR", 0xFE6A }, { "USROR_ACR", 0xFE6B },
+                { "USROR_PCR", 0xFE6C }, { "USROR_IFR", 0xFE6D },
+                { "USROR_IER", 0xFE6E }, { "USROR_PORT", 0xFE6F },
+
+                // Analogue converter, and the tube as the main processor sees it
+                { "ADSTART", 0xFEC0 }, { "ADHIGH", 0xFEC1 }, { "ADLOW", 0xFEC2 },
+                { "TUBESTATUS", 0xFEE0 }, { "TUBEDATA3", 0xFEE5 },
+
+                // The 1 MHz bus, reachable by the main processor only
+                { "FRED", 0xFC00 }, { "JIM", 0xFD00 }
             };
         }
 
         /// <summary>
-        /// A 6502 second processor sees no I/O at all: the tube registers belong
-        /// to the main processor, so naming them here would point a second
-        /// processor program at hardware it cannot read. What it has instead is
-        /// a map, and that is what these four names are for.
+        /// A 6502 second processor is 64 KB of RAM with no ROM of its own in the
+        /// way and, more to the point, no I/O: the main processor does all of
+        /// that over the tube. So there is nothing here to name except the parts
+        /// of the map that are spoken for, which is exactly what a program needs
+        /// in order not to overwrite the system it is running on.
         /// </summary>
         private static Dictionary<string, long> TubeSymbols()
         {
             return new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase)
             {
-                { "TUBERAM", 0x0200 }, { "TUBERAMEND", 0x7FFF },
-                { "TUBEROM", 0x8000 }, { "TUBEROMEND", 0xFFFF }
+                { "PAGE", 0x0800 }, { "HIMEM", 0x8000 },
+                { "LANGUAGE", 0x8000 }, { "SPA_OS", 0xF800 },
+                { "ZP_FREE_END", 0x00EE }, { "OS_PAGE2", 0x0200 },
+                { "OS_ERRORS", 0x0300 }
             };
         }
     }

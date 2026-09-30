@@ -66,9 +66,9 @@ supprimes. `apple-2e` et `apple2e` designent donc la meme cible.
 | `vcs` | 6502 | `rom` | — | idem `atari2600` |
 | `bbc` | 6502 | `bbc` | `$0E00` | OSWRCH, OSWORD, CRTC, ULA, les deux VIA |
 | `bbcmicro` | 6502 | `bbc` | `$0E00` | idem `bbc` |
-| `tube` | 6502 | `tube` | `$2000` | bornes de sa carte memoire |
-| `bbc2p` | 6502 | `tube` | `$2000` | idem `tube` |
-| `tube6502` | 6502 | `tube` | `$2000` | idem `tube` |
+| `tube` | 6502 | `tube` | — | HIMEM, le systeme du second processeur |
+| `bbc2p` | 6502 | `tube` | — | idem `tube` |
+| `tube65c02` | 65c02 | `tube` | — | idem `tube` |
 | `electron` | 6502 | `bin` | `$0E00` | — |
 | `oric` | 6502 | `bin` | `$0500` | — |
 | `lynx` | 65c02 | `bin` | — | non |
@@ -152,53 +152,74 @@ acceptes, pas une exception.
 
 ### `bbc` en particulier (T13)
 
-La BBC deduit la nature d'un fichier d'un seul octet, puis de la longueur
-que cet octet encode. Les trois formes :
+**Ce que le plan demandait n'existait pas.** Le plan prevoyait un « fichier a
+en-tete binaire (`&FF` + longueur 16 bits) ou a octet de type + 2 octets
+d'adresse d'execution ». Aucun octet de type de ce genre n'existe sur la BBC,
+et le marqueur `&4F &4F` que la premiere version de `BbcFormat` ecrivait
+n'apparait nulle part dans le systeme d'exploitation. Un fichier produit ainsi
+est un fichier que la machine refuse de charger, silencieusement.
 
-| Type | Octet 0 | Longueur | Donnees | Adresse |
-|---|---|---|---|---|
-| texte | `$FF` | aucune | a partir de l'octet 1 | aucune |
-| binaire | `$00`-`$7F` | `T * 256 + octet 1` | a partir de l'octet **6** | `$4F $4F` puis 2 octets, a l'octet 4 |
-| executable | `$80`-`$FE` | `(T AND $3F) * 256 + octet 1` | a partir de l'octet **2** | `$4F $4F` puis 2 octets, au debut des donnees |
+Le seul format auto-decrivant que la BBC accepte est le **code header**, et il
+existe precisement pour le cas ou le systeme de fichiers ne peut pas porter les
+adresses :
 
-Deux consequences qu'il faut avoir a l'esprit :
+```
++0   4C lo hi          branchement inconditionnel vers le code
++3   EA EA EA          remplissage : un client ne fait confiance qu'a trois octets
++6   60 | cpu          type : bit 6 « contient du code », bit 5 « adresse presente », nibble bas = processeur
++7   octet             decalage du marqueur de copyright
++8   titre \0
+     00
+     "(C) auteur" \0
+     adresse de chargement, 32 bits
+     <le code>
+```
 
-- **Le bit 6 ne porte pas de longueur.** Un executable s'arrete donc a 16 Ko
-  la ou un binaire va a 32. Depasser la limite donne un diagnostic, jamais une
-  troncature : un fichier tronque reste un fichier valide pour la machine, et
-  l'erreur n'apparaitrait qu'a l'execution.
-- **La longueur annoncee est celle du fichier**, en-tete et adresse compris.
-  Ecrire `octet 1 = longueur de la charge` produit un fichier dont les
-  $4F $4F d'adresse sont pris pour des instructions.
+Trois consequences, toutes testees :
 
-`$4F $4F` est le marqueur « les deux octets qui suivent sont une adresse ». Il
-sert d'en-tete dans le binaire et de prefixe dans l'executable. Inserer une
-adresse maladroitement est un piege : un source qui ecrit lui-meme `$4F $4F` en tete
-resserait decale de quatre octets. `BbcFormat` reconnait ce cas et garde
-l'adresse du source au lieu d'en inserer une seconde.
+- **Pas de longueur.** Le type ne l'encode pas et n'a pas a l'encoder : un
+  client qui veut la longueur la demande au systeme de fichiers. Le bit 5 ne
+  dit pas « combien d'octets » mais « y a-t-il une adresse ».
+- **L'octet 7 est le seul moyen de distinguer le fichier du code nu.** Le
+  client cherche un octet nul suivi de `"(C)"`. Un marqueur deplace rend le
+  fichier invisible sans aucun message.
+- **L'adresse fait 32 bits** meme sur un 6502 16 bits : les octets hauts
+  distinguent la memoire du second processeur de celle du processeur
+  principal. C'est le seul endroit ou cela s'ecrit.
 
-Le genre se choisit par configuration, `BbcFileType` : `exec` (defaut),
-`binary`, `text`. Un genre inconnu retombe sur `exec` plutot que d'echouer :
-c'est le seul qui reste plausible pour du code.
+Un code qui commence deja par un branchement est reconnu et n'est pas decale :
+ecrire un deuxieme point d'entree decalerait le code de la taille de l'en-tete
+tout en produisant un fichier parfaitement valide, ou le client entrerait au
+milieu du code.
+
+Le genre se choisit par configuration, `BbcFileType` : `code` (defaut),
+`text` (un `$FF` suivi du texte, rien d'autre), `flat` (aucun en-tete).
 
 ### `tube` en particulier (T13)
 
-OSLOAD ne lit aucun en-tete. Un octet de plus serait execute comme une
-instruction, donc `TubeFormat` ecrit la charge et rien d'autre. C'est aussi
-pourquoi l'adresse de chargement n'est pas une donnee du fichier mais une
-regle de la machine, portee par la cible.
+Meme correction : il n'existe pas de service `OSLOAD` sur la BBC. Le seul
+`OSLOAD` du monde Acorn est celui de l'Atom, et il charge un fichier **avec**
+en-tete vers une adresse fournie par l'appelant.
 
-La cible `tube` ne declare que **les bornes de sa carte memoire**
-(`TUBERAM`...`TUBEROMEND`), et deliberement pas les registres du tube : ce
-sont des registres du processeur principal, et un programme du second
-processeur qui les nommerait irait lire du materiel qu'il ne voit pas. C'est
-la difference qui en fait deux cibles et non une seule avec deux adresses.
+Ce que le second processeur attend reellement, c'est un bloc dont la longueur
+et l'adresse sont connues par ailleurs : un loader qui recoit un bloc les a
+deja. `TubeFormat` ecrit donc la charge et rien d'autre, ce qui est aussi ce
+qui distingue cette cible : ce n'est pas une autre maniere d'ecrire un fichier,
+c'est une autre maniere de le placer.
 
-**Une adresse reste ouverte.** Les sources du second processeur 6502 sont
-assemblees pour `$0200`, la ou est la RAM, alors qu'OSLOAD charge a `$2000`.
-Les deux valeurs sont reelles et la documentation diverge. La cible prend
-`$2000`, celle du service, et `LoadAddress` la change : le choix appartient au
-programme, pas a l'ecrivain.
+La cible `tube` ne declare que **ce qui est deja pris** dans l'espace
+d'adressage, parce que c'est ce qu'un programme doit savoir pour ne pas ecraser
+le systeme qui le fait tourner : `HIMEM` a `$8000`, le systeme du second
+processeur a `$F800`, la page 2 des indirections du systeme a `$0200`. Aucun
+E/S n'est nomme : les registres du tube sont ceux du processeur principal, et
+un programme du second processeur qui les nommerait irait lire du materiel
+absent de son espace d'adressage.
+
+**Le processeur est expose dans les deux variantes.** Le guide de l'utilisateur
+dit 6502B, le manuel de service dit 65C02, et les cartes survivantes portent
+des 65C02. Les deux sources sont serieuses et disent des choses differentes :
+le catalogue propose donc `tube` et `tube65c02` plutot que d'en designer un
+comme vrai.
 
 ### Priorite de l'adresse
 

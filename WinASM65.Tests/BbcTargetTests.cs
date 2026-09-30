@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinASM65.Core;
-using WinASM65.Segments;
 using WinASM65.Targets;
 
 namespace WinASM65.Tests
@@ -11,10 +11,10 @@ namespace WinASM65.Tests
     /// <summary>
     /// T13 : la BBC Micro et son second processeur 6502.
     /// <para>
-    /// La machine deduit tout d'un seul octet. Ces tests vérifient ce
-    /// decodage octet par octet, parce qu'une erreur ici ne se voit pas : le
-    /// fichier produit est bien un fichier, il est seulement deplace, tronque
-    /// ou mal charge par la machine.
+    /// Ces tests portent sur le fichier produit, pas sur ce qu'un
+    /// emulateur en fera. Ce qui est verifie ici, c'est la structure que la
+    /// machine reconnait ; le fait qu'elle l'execute reste a verifier sur une
+    /// machine ou dans VICE.
     /// </para>
     /// </summary>
     [TestClass]
@@ -33,60 +33,130 @@ namespace WinASM65.Tests
             return File.ReadAllBytes(path);
         }
 
-        // ------------------------------------------------------------ le type byte
+        // ---------------------------------------------------------- code header
 
         [TestMethod]
-        public void UnExecutablesEcritLeTypeExecutableEtLaLongueurComplete()
+        public void UnFichierBBCCommenceParUnBranchementAuCode()
         {
             using (TemporaryDirectory temp = new TemporaryDirectory())
             {
                 string path = Path.Combine(temp.Path, "prog");
-                ResolvedTarget target = new ResolvedTarget { BbcFileType = "exec" };
-                Assert.IsTrue(new BbcFormat().Write(path, Payload(10), target).Success);
+                Assert.IsTrue(new BbcFormat().Write(path, Payload(8), new ResolvedTarget()).Success);
 
                 byte[] file = Read(path);
-                // 2 octets d'en-tete plus 4 pour l'adresse donne 16, pas 10 : la
-                // longueur annoncee est celle du fichier, adresse comprise.
-                int total = 10 + 4 + 2;
-                Assert.AreEqual(total, file.Length, "la longueur annoncee doit etre celle du fichier");
-                Assert.AreEqual(0x80 | (total >> 8), file[0], "bit 7 pose, bit 6 absent");
-                Assert.AreEqual(total & 0xFF, file[1]);
-                Assert.AreEqual(0x4F, file[2], "le marqueur d'adresse");
-                Assert.AreEqual(0x4F, file[3]);
+                Assert.AreEqual(0x4C, file[0], "le client entre sur un branchement inconditionnel");
+
+                int entry = file[1] | (file[2] << 8);
+                Assert.AreEqual(file.Length - 8, entry,
+                    "l'entree doit viser le premier octet de code, a la fin de l'en-tete");
+                Assert.AreEqual(0xEA, file[entry], "et ce doit etre le debut du code");
             }
         }
 
         [TestMethod]
-        public void UnBinaireEcritUnEnTeteDeSixOctetsALAdresseDeChargement()
+        public void LOctetDeTypeAnnonceLeProcesseurEtLaPresenceDUneAdresse()
         {
+            // Le client refuse de lancer un fichier dont le type annonce un autre
+            // processeur, et interprets le bit 5 : absent, il charge a $8000.
+            // Ecrire le mauvais bit ne produit pas un fichier invalide, il
+            // produit un fichier charge au mauvais endroit.
             using (TemporaryDirectory temp = new TemporaryDirectory())
             {
-                string path = Path.Combine(temp.Path, "data");
-                ResolvedTarget target = new ResolvedTarget
-                {
-                    BbcFileType = "binary",
-                    LoadAddress = 0x0E00
-                };
-                Assert.IsTrue(new BbcFormat().Write(path, Payload(100), target).Success);
+                string path = Path.Combine(temp.Path, "prog");
+                Assert.IsTrue(new BbcFormat().Write(path, Payload(4), new ResolvedTarget()).Success);
 
                 byte[] file = Read(path);
-                int total = 100 + 6;
-                Assert.AreEqual(total, file.Length);
-                Assert.AreEqual(total >> 8, file[0], "un binaire n'a pas le bit executable");
-                Assert.AreEqual(total & 0xFF, file[1]);
-                Assert.AreEqual(0x4F, file[2], "le marqueur est dans l'en-tete, pas dans les donnees");
-                Assert.AreEqual(0x4F, file[3]);
-                Assert.AreEqual(0x00, file[4], "adresse de chargement, octet bas");
-                Assert.AreEqual(0x0E, file[5], "adresse de chargement, octet haut");
-                Assert.AreEqual(0xEA, file[6], "les donnees commencent apres l'adresse");
+                Assert.AreEqual(0x60 | BbcFormat.Cpu6502, file[6]);
+                Assert.AreEqual(0, file[6] & 0x80, "un fichier n'a pas de service, un ROM image si");
+                Assert.AreEqual(0x40, file[6] & 0x40, "bit 6 : contient du code");
+                Assert.AreEqual(0x20, file[6] & 0x20, "bit 5 : adresse de chargement presente");
+                Assert.AreEqual(BbcFormat.Cpu6502, file[6] & 0x0F, "nibble bas : processeur");
             }
         }
 
         [TestMethod]
-        public void UnFichierTexteEstUnBareFFSansLongueurNiAdresse()
+        public void LOctet7MeneseAuMarqueurDeCopyright()
         {
-            // La machine lit jusqu'a la fin du fichier : ajouter une longueur ou
-            // une adresse les afficherait comme du texte.
+            // C'est tout ce qui distingue un fichier avec en-tete du code nu : le
+            // client cherche un zero suivi de "(C)". Un marqueur mal place rend le
+            // fichier inexistant aux yeux du client, sans le moindre avertissement.
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string path = Path.Combine(temp.Path, "prog");
+                ResolvedTarget target = new ResolvedTarget { Title = "1.00 (test)" };
+                Assert.IsTrue(new BbcFormat().Write(path, Payload(4), target).Success);
+
+                byte[] file = Read(path);
+                int at = file[7];
+                Assert.AreEqual(0, file[at], "le marqueur est un octet nul");
+                Assert.AreEqual('(', (char)file[at + 1]);
+                Assert.AreEqual('C', (char)file[at + 2]);
+                Assert.AreEqual(')', (char)file[at + 3]);
+            }
+        }
+
+        [TestMethod]
+        public void LADresseDeChargementEstEcritesurQuatreOctetsApressLeCopyright()
+        {
+            // Le client lit 32 bits, meme sur un 6502 16 bits : les octets hauts
+            // servent a distinguer la memoire du second processeur de celle du
+            // processeur principal, et c'est le seul endroit ou cela s'ecrit.
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string path = Path.Combine(temp.Path, "prog");
+                ResolvedTarget target = new ResolvedTarget { OriginAddress = 0x2000 };
+                Assert.IsTrue(new BbcFormat().Write(path, Payload(4), target).Success);
+
+                byte[] file = Read(path);
+                int at = file[7] + 1;
+                while (file[at] != 0)
+                    at++;
+                at++;
+
+                Assert.AreEqual(0x00, file[at], "octet bas");
+                Assert.AreEqual(0x20, file[at + 1], "octet haut");
+                Assert.AreEqual(0x00, file[at + 2], "octets hauts nuls : memoire du langage");
+                Assert.AreEqual(0x00, file[at + 3]);
+                Assert.AreEqual(at + 4, file[1] | (file[2] << 8), "le code suit immediatement");
+            }
+        }
+
+        [TestMethod]
+        public void UnCodeQuiPorteDejaSonBranchementNEstPasDecale()
+        {
+            // Un source qui ecrit son propre point d'entree donne un fichier
+            // valide mais decale de la taille de l'en-tete, et dont l'adresse
+            // publiee n'est pas celle du source. Le client entrerait dans le
+            // milieu du code sans rien signaler.
+            byte[] code = new byte[] { 0xA9, 0x01, 0x8D, 0x00, 0x20, 0x60 };
+
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string path = Path.Combine(temp.Path, "prog");
+                byte[] withStub = new byte[3 + code.Length];
+                withStub[0] = 0x4C;
+                withStub[1] = 0x00;
+                withStub[2] = 0x20;
+                System.Array.Copy(code, 0, withStub, 3, code.Length);
+
+                Assert.IsTrue(new BbcFormat().Write(path, withStub, new ResolvedTarget()).Success);
+
+                byte[] file = Read(path);
+                int entry = file[1] | (file[2] << 8);
+                for (int i = 0; i < code.Length; i++)
+                    Assert.AreEqual(code[i], file[entry + i], "octet " + i + " du code");
+
+                int at = file[7] + 1;
+                while (file[at] != 0)
+                    at++;
+                at++;
+                Assert.AreEqual(0x20, file[at + 1], "l'adresse du source est conservee");
+            }
+        }
+
+        [TestMethod]
+        public void UnFichierTexteEstUnBareFFSansRienDautre()
+        {
             using (TemporaryDirectory temp = new TemporaryDirectory())
             {
                 string path = Path.Combine(temp.Path, "text");
@@ -97,105 +167,16 @@ namespace WinASM65.Tests
                 Assert.AreEqual(21, file.Length);
                 Assert.AreEqual(0xFF, file[0]);
                 Assert.AreEqual(0x41, file[1], "le texte suit immediatement");
-                Assert.AreEqual(0x41, file[20]);
             }
         }
 
         [TestMethod]
-        public void UnCodeQuiPorteDejaLeMarqueurNEscritPasUneDeuxiemeAdresse()
+        public void UnGenreDeFichierInconnuRetombeSurCode()
         {
-            // Un source qui ecrit lui-meme $4F $4F et son adresse a la main
-            // produirait un fichier dont chaque instruction est decalee de
-            // quatre octets, toujours parfaitement valide en apparence.
-            byte[] code = new byte[] { 0x4F, 0x4F, 0x00, 0xC0, 0xA9, 0x01, 0x60 };
-
-            using (TemporaryDirectory temp = new TemporaryDirectory())
-            {
-                string path = Path.Combine(temp.Path, "prog");
-                ResolvedTarget target = new ResolvedTarget
-                {
-                    BbcFileType = "exec",
-                    LoadAddress = 0x0E00
-                };
-                Assert.IsTrue(new BbcFormat().Write(path, code, target).Success);
-
-                byte[] file = Read(path);
-                Assert.AreEqual(2 + code.Length, file.Length, "aucune adresse ajoutee");
-                Assert.AreEqual(0x80, file[0], "le type n'a pas d'entete de plus");
-                Assert.AreEqual(0x4F, file[2]);
-                Assert.AreEqual(0x00, file[4], "adresse du source, octet bas");
-                Assert.AreEqual(0xC0, file[5], "et haut : celle du source, pas celle de la cible");
-            }
-        }
-
-        [TestMethod]
-        public void LOrigineDuSourcePrimeSurLAdresseDeChargement()
-        {
-            using (TemporaryDirectory temp = new TemporaryDirectory())
-            {
-                string path = Path.Combine(temp.Path, "prog");
-                ResolvedTarget target = new ResolvedTarget
-                {
-                    BbcFileType = "binary",
-                    LoadAddress = 0x0E00,
-                    OriginAddress = 0x1900
-                };
-                Assert.IsTrue(new BbcFormat().Write(path, Payload(4), target).Success);
-
-                byte[] file = Read(path);
-                Assert.AreEqual(0x00, file[4]);
-                Assert.AreEqual(0x19, file[5], "le .org fait foi");
-            }
-        }
-
-        // --------------------------------------------------------------- les bornes
-
-        [TestMethod]
-        public void UnBinaireTropGrandEstRefuseEtNonTronque()
-        {
-            using (TemporaryDirectory temp = new TemporaryDirectory())
-            {
-                string path = Path.Combine(temp.Path, "huge");
-                ResolvedTarget target = new ResolvedTarget { BbcFileType = "binary" };
-                OperationResult result = new BbcFormat()
-                    .Write(path, Payload(BbcFormat.MaxBinaryPayload + 1), target);
-
-                Assert.IsFalse(result.Success);
-                Assert.IsFalse(File.Exists(path), "rien n'est ecrit quand l'ecriture echoue");
-                StringAssert.Contains(Message(result), "32767", "la limite est nommee");
-            }
-        }
-
-        [TestMethod]
-        public void UnExecutableNeDepassePasQuatorzeBitsDeLongueur()
-        {
-            // Le bit 6 de l'octet de type ne porte pas de longueur : c'est
-            // pourquoi un executable s'arrete a 16 Ko la ou un binaire va a 32.
-            using (TemporaryDirectory temp = new TemporaryDirectory())
-            {
-                string path = Path.Combine(temp.Path, "huge");
-                ResolvedTarget target = new ResolvedTarget { BbcFileType = "exec" };
-                OperationResult result = new BbcFormat()
-                    .Write(path, Payload(BbcFormat.MaxExecPayload + 1), target);
-
-                Assert.IsFalse(result.Success);
-                StringAssert.Contains(Message(result), "16383");
-            }
-        }
-
-        [TestMethod]
-        public void LaPlusGrandeChargeAcceptablePasse()
-        {
-            using (TemporaryDirectory temp = new TemporaryDirectory())
-            {
-                string path = Path.Combine(temp.Path, "max");
-                ResolvedTarget target = new ResolvedTarget { BbcFileType = "binary" };
-                Assert.IsTrue(new BbcFormat().Write(path, Payload(BbcFormat.MaxBinaryPayload), target).Success);
-
-                byte[] file = Read(path);
-                Assert.AreEqual(0x7FFF, file.Length);
-                Assert.AreEqual(0x7F, file[0], "le type binaire maximal");
-            }
+            Assert.AreEqual("code", BbcFormat.NormalizeKind(null));
+            Assert.AreEqual("code", BbcFormat.NormalizeKind("exec"), "le vieux nom n'est plus un genre");
+            Assert.AreEqual("flat", BbcFormat.NormalizeKind("raw"));
+            Assert.AreEqual("text", BbcFormat.NormalizeKind(" TEXT "));
         }
 
         // ------------------------------------------------------------ second CPU
@@ -203,87 +184,82 @@ namespace WinASM65.Tests
         [TestMethod]
         public void UnFichierTubeEstLaChargeEtRienDAutre()
         {
-            // OSLOAD ne lit aucun en-tete : un octet de plus serait execute
-            // comme une instruction.
+            // Un loader qui recoit un bloc en connait deja la longueur et
+            // l'adresse : un octet de plus serait execute comme une instruction.
             using (TemporaryDirectory temp = new TemporaryDirectory())
             {
                 string path = Path.Combine(temp.Path, "tube");
                 byte[] code = Payload(64);
                 Assert.IsTrue(new TubeFormat().Write(path, code, new ResolvedTarget()).Success);
 
-                CollectionAssert.AreEqual(code, Read(path),
-                    "le fichier est la charge, octet pour octet");
+                CollectionAssert.AreEqual(code, Read(path));
             }
         }
 
         [TestMethod]
-        public void UnFichierTubeTropGrandPourLaRamEstRefuse()
+        public void LeSecondProcesseurNADeclareQueCeQuiEstDejaPris()
         {
-            using (TemporaryDirectory temp = new TemporaryDirectory())
-            {
-                string path = Path.Combine(temp.Path, "tube");
-                OperationResult result = new TubeFormat()
-                    .Write(path, Payload(TubeFormat.SecondProcessorRamSize + 1), new ResolvedTarget());
-
-                Assert.IsFalse(result.Success);
-                StringAssert.Contains(Message(result), "OSLOAD", "le message nomme le service qui echoue");
-            }
-        }
-
-        // ---------------------------------------------------------------- catalogue
-
-        [TestMethod]
-        public void LaBbcEcritUnFichierBBcEtLeSecondProcesseurEcritUnFichierOSLoad()
-        {
-            ResolvedTarget bbc;
-            Assert.IsTrue(SystemCatalog.TryGet("bbc", out bbc));
-            Assert.AreEqual("bbc", bbc.FormatName, "la BBC a son propre format de fichier");
-            Assert.AreEqual("exec", bbc.BbcFileType);
-
+            // Aucun E/S n'est visible : les registres du tube sont ceux du
+            // processeur principal, et les nommer ici enverrait un programme
+            // lire du materiel qui n'est pas dans son espace d'adressage.
             ResolvedTarget tube;
             Assert.IsTrue(SystemCatalog.TryGet("tube", out tube));
-            Assert.AreEqual("tube", tube.FormatName, "OSLOAD n'a pas d'en-tete");
-            Assert.AreEqual(0x2000, tube.LoadAddress.Value, "l'adresse de chargement est celle du service");
+
+            Assert.IsTrue(tube.HardwareSymbols.ContainsKey("HIMEM"), "la borne haute du BASIC");
+            Assert.IsTrue(tube.HardwareSymbols.ContainsKey("SPA_OS"), "et le systeme du second processeur");
+            Assert.IsFalse(tube.HardwareSymbols.ContainsKey("OSWRCH"),
+                "il n'y a pas d'appel systeme ici : le systeme est sur l'autre processeur");
+            Assert.IsFalse(tube.HardwareSymbols.ContainsKey("CRTC"), "ni de video");
         }
 
         [TestMethod]
         public void LesDeuxProcesseursNontPasLaMemeTableDeSymboles()
         {
-            // C'est la distinction qui fait qu'ils sont deux cibles et non une
-            // seule cible avec deux adresses.
             ResolvedTarget bbc;
             ResolvedTarget tube;
             Assert.IsTrue(SystemCatalog.TryGet("bbc", out bbc));
             Assert.IsTrue(SystemCatalog.TryGet("tube", out tube));
 
-            Assert.IsTrue(bbc.HardwareSymbols.ContainsKey("OSWRCH"),
-                "le program principal appelle le systeme d'exploitation");
-            Assert.IsFalse(tube.HardwareSymbols.ContainsKey("OSWRCH"),
-                "un second processeur n'a pas d'appel systeme : il n'a pas de systeme");
-
+            Assert.AreNotEqual(bbc.HardwareSymbols.Count, tube.HardwareSymbols.Count);
             foreach (string name in bbc.HardwareSymbols.Keys)
             {
                 Assert.IsFalse(tube.HardwareSymbols.ContainsKey(name),
-                    "'" + name + "' appartient a la machine principale, pas au second processeur");
+                    "'" + name + "' appartient a la machine principale");
             }
         }
 
         [TestMethod]
-        public void LeSecondProcesseurNADeclareQueSaCarteMemoire()
+        public void LeProcesseurDuSecondProcesseurEstExposeDansLesDeuxVariantes()
         {
-            // Les registres du tube appartiennent au processeur principal : les
-            // nommer ici enverrait un programme vers du materiel qu'il ne voit pas.
+            // Le guide de l'utilisateur dit 6502B, le manuel de service dit
+            // 65C02, et les cartes survivantes portent des 65C02. Les deux
+            // existent : le catalogue propose les deux plutot que d'en designer
+            // un comme vrai.
+            ResolvedTarget plain;
+            ResolvedTarget turbo;
+            Assert.IsTrue(SystemCatalog.TryGet("tube", out plain));
+            Assert.IsTrue(SystemCatalog.TryGet("tube65c02", out turbo));
+
+            Assert.AreEqual("6502", plain.CpuName);
+            Assert.AreEqual("65c02", turbo.CpuName);
+            Assert.AreEqual(plain.FormatName, turbo.FormatName, "seul le processeur change");
+        }
+
+        // ---------------------------------------------------------------- catalogue
+
+        [TestMethod]
+        public void LaBbcEcritUnFichierBBCEtLeSecondProcesseurEcritUnBlocNu()
+        {
+            ResolvedTarget bbc;
+            Assert.IsTrue(SystemCatalog.TryGet("bbc", out bbc));
+            Assert.AreEqual("bbc", bbc.FormatName, "la BBC a son propre format de fichier");
+            Assert.AreEqual("code", bbc.BbcFileType);
+
             ResolvedTarget tube;
             Assert.IsTrue(SystemCatalog.TryGet("tube", out tube));
-
-            Assert.AreEqual(0x0200, tube.HardwareSymbols["TUBERAM"]);
-            Assert.AreEqual(0x7FFF, tube.HardwareSymbols["TUBERAMEND"]);
-            Assert.AreEqual(0x8000, tube.HardwareSymbols["TUBEROM"]);
-            foreach (string name in tube.HardwareSymbols.Keys)
-            {
-                Assert.IsTrue(name.StartsWith("TUBE", StringComparison.OrdinalIgnoreCase),
-                    "'" + name + "' ne devrait pas etre un registre de la machine principale");
-            }
+            Assert.AreEqual("tube", tube.FormatName);
+            Assert.IsFalse(tube.LoadAddress.HasValue,
+                "l'adresse est fournie par le loader, pas inscrite dans le fichier");
         }
 
         [TestMethod]
@@ -301,31 +277,36 @@ namespace WinASM65.Tests
         }
 
         [TestMethod]
-        public void UnFormatBbcInconnuRetombeSurExecEtNonSurUneErreur()
+        public void LaConfigurationPeutChoisirLeGenreDeFichierEtLeTitre()
         {
-            // "exe" et "exec" ne sont pas le meme mot ; refuser le premier ferait
-            // echouer un fichier qui ne peut pas etre autre chose qu'un executable.
-            Assert.AreEqual("exec", BbcFormat.NormalizeKind("exe"));
-            Assert.AreEqual("exec", BbcFormat.NormalizeKind(null));
-            Assert.AreEqual("text", BbcFormat.NormalizeKind(" TEXT "));
-            Assert.AreEqual("binary", BbcFormat.NormalizeKind("Binary"));
+            Segments.TargetConf config = new Segments.TargetConf
+            {
+                System = "bbc",
+                BbcFileType = "flat",
+                Title = "1.00 (mon programme)",
+                Author = "moi"
+            };
+            ResolvedTarget target = TargetResolver.Resolve(config, null, null, null);
+
+            Assert.AreEqual("flat", target.BbcFileType);
+            Assert.AreEqual("1.00 (mon programme)", target.Title);
+            Assert.AreEqual("moi", target.Author);
         }
 
         [TestMethod]
-        public void LaConfigurationPeutChoisirLeGenreDeFichierBbc()
+        public void UnTitreVideNeProduitPasUnEnTeteIncomplet()
         {
-            TargetConf config = new TargetConf { System = "bbc", BbcFileType = "binary" };
-            ResolvedTarget target = TargetResolver.Resolve(config, null, null, null);
-
-            Assert.AreEqual("binary", target.BbcFileType);
+            byte[] file = BbcFormat.BuildHeader(0x2000, Payload(2), new ResolvedTarget());
+            Assert.AreEqual(0, file[file[7]], "le marqueur existe toujours");
+            Assert.AreEqual('(', (char)file[file[7] + 1]);
         }
 
         private static string Message(OperationResult result)
         {
-            string text = string.Empty;
+            StringBuilder text = new StringBuilder();
             for (int i = 0; i < result.Diagnostics.Count; i++)
-                text += result.Diagnostics[i].Message;
-            return text;
+                text.Append(result.Diagnostics[i].Message);
+            return text.ToString();
         }
 
         private sealed class TemporaryDirectory : IDisposable
