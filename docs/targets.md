@@ -15,7 +15,7 @@ impose la suite du chantier.
 |---|---|---|---|
 | **Executable plat** | NES, Commodore (PRG), Apple II (A2BIN), Atari 8 (XEX), Atari 2600 (ROM), BBC, Electron, Oric, Lynx, X16 | binaire 6502 | **non** — memoire en ROM |
 | **Executable segmente** | GEOS (prevu, T8/T9) | records VLIR + image D64 | **oui** — le kernal relocalise |
-| **Fichier texte** | DOS 3.2/3.3, ProDOS, Waterloo BASIC, GECOS, BBC BASIC (prevus, T10/T15) | **texte tokenise** | non au chargement ; stub runtime si partage |
+| **Fichier texte** | DOS 3.2/3.3, ProDOS, Waterloo BASIC, BBC BASIC (T10/T15) ; GECOS hors perimetre, son BASIC n'est pas un BASIC 6502 | **texte tokenise** | non au chargement ; stub runtime si partage |
 
 ### Consequence majeure
 
