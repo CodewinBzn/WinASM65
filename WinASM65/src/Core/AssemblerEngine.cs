@@ -94,6 +94,19 @@ namespace WinASM65.Core
         private static readonly Regex MemReserveRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s+\.(RES|res)\s+(?<value>(.)+)$", RegexOptions.Compiled);
         private static readonly Regex MacroCallRegex = new Regex(@"^(\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*))(\s+(?<value>(.)+))?", RegexOptions.Compiled);
 
+        /// <summary>
+        /// A label that shares its line with a directive, as in <c>Data: .byte $AA</c>.
+        /// <para>
+        /// DirectiveRegex is not anchored, so on such a line it matches the directive
+        /// part and wins the dispatch, which used to drop the label on the floor: the
+        /// directive emitted its bytes and the name silently never existed, so a later
+        /// reference resolved to $0000 with no diagnostic at all. This pattern is
+        /// anchored and demands a directive after the label, which is what separates
+        /// this line from a bare label, a constant and an instruction.
+        /// </para>
+        /// </summary>
+        private static readonly Regex LabelDirectiveRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s*:?\s+\.[a-zA-Z]+", RegexOptions.Compiled);
+
         #region Properties & IAssemblyContext
 
         public IBinaryEmitter Emitter { get { return _emitter; } }
@@ -391,6 +404,17 @@ namespace WinASM65.Core
             else if (MemReserveRegex.IsMatch(line))
             {
                 HandleMemReserve(MemReserveRegex.Match(line));
+            }
+            else if (LabelDirectiveRegex.IsMatch(line))
+            {
+                // The label takes the address the directive is about to emit at, so
+                // it is defined first and the directive then fills that address.
+                HandleLabel(LabelDirectiveRegex.Match(line));
+                Match labelled = DirectiveRegex.Match(line);
+                _directiveDispatcher.TryDispatch(
+                    labelled.Groups["directive"].Value.ToLowerInvariant(),
+                    labelled.Groups["value"].Value,
+                    this);
             }
             else if (DirectiveRegex.IsMatch(line))
             {
