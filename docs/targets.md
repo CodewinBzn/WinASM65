@@ -64,8 +64,11 @@ supprimes. `apple-2e` et `apple2e` designent donc la meme cible.
 | `atari800` | 6502 | `xex` | `$0600` | idem `atari8` |
 | `atari2600` | 6502 | `rom` | — | VSYNC, WSYNC, COLUBK… (rom 4096) |
 | `vcs` | 6502 | `rom` | — | idem `atari2600` |
-| `bbc` | 6502 | `bin` | `$0E00` | OSWRCH, OSBYTE, OSWORD |
-| `bbcmicro` | 6502 | `bin` | `$0E00` | idem `bbc` |
+| `bbc` | 6502 | `bbc` | `$0E00` | OSWRCH, OSWORD, CRTC, ULA, les deux VIA |
+| `bbcmicro` | 6502 | `bbc` | `$0E00` | idem `bbc` |
+| `tube` | 6502 | `tube` | `$2000` | bornes de sa carte memoire |
+| `bbc2p` | 6502 | `tube` | `$2000` | idem `tube` |
+| `tube6502` | 6502 | `tube` | `$2000` | idem `tube` |
 | `electron` | 6502 | `bin` | `$0E00` | — |
 | `oric` | 6502 | `bin` | `$0500` | — |
 | `lynx` | 65c02 | `bin` | — | non |
@@ -144,6 +147,58 @@ acceptes, pas une exception.
 | `o65` | `O65Format` | en-tete plat de 12 octets, puis charge |
 | `ihex` | `IntelHexFormat` | enregistrements Intel HEX |
 | `srec` | `MotorolaSrecFormat` | enregistrements Motorola S-record |
+| `bbc` | `BbcFormat` | fichier BBC avec en-tete : executable, binaire ou texte |
+| `tube` | `TubeFormat` | la charge seule, ce qu'attend OSLOAD |
+
+### `bbc` en particulier (T13)
+
+La BBC deduit la nature d'un fichier d'un seul octet, puis de la longueur
+que cet octet encode. Les trois formes :
+
+| Type | Octet 0 | Longueur | Donnees | Adresse |
+|---|---|---|---|---|
+| texte | `$FF` | aucune | a partir de l'octet 1 | aucune |
+| binaire | `$00`-`$7F` | `T * 256 + octet 1` | a partir de l'octet **6** | `$4F $4F` puis 2 octets, a l'octet 4 |
+| executable | `$80`-`$FE` | `(T AND $3F) * 256 + octet 1` | a partir de l'octet **2** | `$4F $4F` puis 2 octets, au debut des donnees |
+
+Deux consequences qu'il faut avoir a l'esprit :
+
+- **Le bit 6 ne porte pas de longueur.** Un executable s'arrete donc a 16 Ko
+  la ou un binaire va a 32. Depasser la limite donne un diagnostic, jamais une
+  troncature : un fichier tronque reste un fichier valide pour la machine, et
+  l'erreur n'apparaitrait qu'a l'execution.
+- **La longueur annoncee est celle du fichier**, en-tete et adresse compris.
+  Ecrire `octet 1 = longueur de la charge` produit un fichier dont les
+  $4F $4F d'adresse sont pris pour des instructions.
+
+`$4F $4F` est le marqueur « les deux octets qui suivent sont une adresse ». Il
+sert d'en-tete dans le binaire et de prefixe dans l'executable. Inserer une
+adresse maladroitement est un piege : un source qui ecrit lui-meme `$4F $4F` en tete
+resserait decale de quatre octets. `BbcFormat` reconnait ce cas et garde
+l'adresse du source au lieu d'en inserer une seconde.
+
+Le genre se choisit par configuration, `BbcFileType` : `exec` (defaut),
+`binary`, `text`. Un genre inconnu retombe sur `exec` plutot que d'echouer :
+c'est le seul qui reste plausible pour du code.
+
+### `tube` en particulier (T13)
+
+OSLOAD ne lit aucun en-tete. Un octet de plus serait execute comme une
+instruction, donc `TubeFormat` ecrit la charge et rien d'autre. C'est aussi
+pourquoi l'adresse de chargement n'est pas une donnee du fichier mais une
+regle de la machine, portee par la cible.
+
+La cible `tube` ne declare que **les bornes de sa carte memoire**
+(`TUBERAM`...`TUBEROMEND`), et deliberement pas les registres du tube : ce
+sont des registres du processeur principal, et un programme du second
+processeur qui les nommerait irait lire du materiel qu'il ne voit pas. C'est
+la difference qui en fait deux cibles et non une seule avec deux adresses.
+
+**Une adresse reste ouverte.** Les sources du second processeur 6502 sont
+assemblees pour `$0200`, la ou est la RAM, alors qu'OSLOAD charge a `$2000`.
+Les deux valeurs sont reelles et la documentation diverge. La cible prend
+`$2000`, celle du service, et `LoadAddress` la change : le choix appartient au
+programme, pas a l'ecrivain.
 
 ### Priorite de l'adresse
 
@@ -304,7 +359,35 @@ et n'existent que si des regions sont declarees.
 
 ---
 
-## 6. Le mode direct reste la contrat
+## 6. Un symbole non defini, en mode fichier unique (T13)
+
+Le moteur de traitement des symboles laisse en place toute expression qu'il
+n'a pas reussie a resoudre, et l'espace qu'il reserve est **un zero**. Dans un
+build multi-fichiers c'est correct : un nom utilise par un fichier peut etre
+defini par un fichier lu plus tard, et l'orchestrateur verifie les restes une
+fois tous les fichiers de symboles charges
+(`MultiSegmentOrchestrator.cs:121`).
+
+Un assemblage **seul**, lui, n'a pas de fichier plus tard. Le zero restait en
+place, le fichier s'ecrivait, le code de sortie etait zero, et l'image etait
+fausse sur la machine. C'est exactement l'« erreur de resolution differee » que
+le plan signale comme risque.
+
+La correction est un choix explicite, `AssemblerOptions.ReportUndefinedSymbols` :
+
+- **faux** par defaut, parce que le meme moteur sert aux deux roles ;
+- **vrai** pour l'assemblage autonome de la ligne de commande.
+
+Un nom declare par `.import` n'est jamais refuse : c'est le linker qui le
+resout, et le refuser ici rendrait un module impossible a assembler seul.
+
+Le message cite le nom **et la ligne**, la ligne etant reprise de la table de
+relocations qui porte deja cette provenance. Une erreur qui ne nomme que le
+symbole envoie le lecteur chercher dans tout le fichier.
+
+---
+
+## 7. Le mode direct reste la contrat
 
 Toute evolution doit preserver :
 

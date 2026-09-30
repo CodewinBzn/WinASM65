@@ -75,6 +75,13 @@ namespace WinASM65.Core
         private readonly IDictionary<string, long> _predefinedSymbols;
 
         /// <summary>
+        /// Whether a name nobody defines is an error. See
+        /// <see cref="AssemblerOptions.ReportUndefinedSymbols"/> for why this is
+        /// a decision and not a constant.
+        /// </summary>
+        private readonly bool _reportUndefinedSymbols;
+
+        /// <summary>
         /// The names the target predefined and that no source has taken over yet.
         /// </summary>
         private readonly HashSet<string> _predefinedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -157,7 +164,8 @@ namespace WinASM65.Core
             IDiagnosticReporter diagnostics = null,
             IDirectiveDispatcher directiveDispatcher = null,
             IDictionary<string, long> predefinedSymbols = null,
-            ushort? defaultOrigin = null)
+            ushort? defaultOrigin = null,
+            bool reportUndefinedSymbols = false)
         {
             _cpu = cpu ?? new Cpu6502();
             _tokenizer = tokenizer ?? new WinASM65.Expressions.Tokenizer();
@@ -169,6 +177,7 @@ namespace WinASM65.Core
             _directiveDispatcher = directiveDispatcher ?? CreateDefaultDispatcher();
             _predefinedSymbols = predefinedSymbols;
             _defaultOrigin = defaultOrigin;
+            _reportUndefinedSymbols = reportUndefinedSymbols;
         }
 
         private static IDirectiveDispatcher CreateDefaultDispatcher()
@@ -225,6 +234,15 @@ namespace WinASM65.Core
             ProcessFileStack();
 
             ResolvePendingSymbols();
+
+            // A name nobody ever defined leaves a placeholder in the buffer, and
+            // the placeholder is zero. The image therefore builds clean, writes a
+            // file, and is wrong on the target: the failure only shows up as a
+            // machine that does not do what the source says. The multi-file path
+            // already refuses this case; a single file must refuse it too, or
+            // moving code to a target with a different hardware table silently
+            // zeroes every register it names.
+            ReportStillUndefinedSymbols();
 
             _emitter.SaveToFile(outputFile);
             _listingService.Finish(_emitter.ToArray());
@@ -327,6 +345,70 @@ namespace WinASM65.Core
         public void ResolvePendingSymbols()
         {
             _scopeManager.ResolveSymbols(_evaluator, PatchResolvedExpression);
+        }
+
+        /// <summary>
+        /// Reports the names that are still unresolved once every file has been
+        /// read, and which no <c>.import</c> declared. A declared import is left
+        /// alone on purpose: the linker is the one that resolves it, and refusing
+        /// it here would make a module impossible to assemble on its own.
+        /// </summary>
+        private void ReportStillUndefinedSymbols()
+        {
+            if (!_reportUndefinedSymbols)
+                return;
+
+            Dictionary<string, UnresolvedSymbol> unsolved = _scopeManager.GlobalScope.UnsolvedSymbols;
+            if (unsolved.Count == 0 && _scopeManager.UnsolvedExprList.Count == 0)
+                return;
+
+            ModuleDirectiveState state = ModuleDirectiveState.Peek(this);
+            List<string> declared = new List<string>();
+            if (state != null)
+            {
+                for (int i = 0; i < state.Imports.Count; i++)
+                    declared.Add(state.Imports[i].Symbol);
+            }
+
+            List<string> missing = new List<string>();
+            foreach (string name in unsolved.Keys)
+            {
+                if (declared.Count == 0 || !declared.Contains(name))
+                    missing.Add(name);
+            }
+            missing.Sort(StringComparer.OrdinalIgnoreCase);
+
+            // An expression can be pending because a name inside it is unknown.
+            // That name is already in the unsolved symbol table, so it is not
+            // counted twice here.
+            for (int i = 0; i < missing.Count; i++)
+            {
+                SourceLocation where = LocationOf(missing[i]);
+                _diagnostics.ReportError(where,
+                    ErrorCodes.UNDEFINED_SYMBOL + ": " + missing[i]
+                    + ". Define it, or declare it with .import when another module provides it.");
+            }
+        }
+
+        /// <summary>
+        /// Where a name was last written. The relocation table already carries
+        /// that provenance, and an error without a line only says the name is
+        /// wrong, not where.
+        /// </summary>
+        private SourceLocation LocationOf(string symbol)
+        {
+            IReadOnlyList<RelocationRecord> relocations = _emitter.Relocations;
+            for (int i = 0; i < relocations.Count; i++)
+            {
+                RelocationRecord record = relocations[i];
+                if (record != null
+                    && string.Equals(record.TargetSymbol, symbol, StringComparison.OrdinalIgnoreCase)
+                    && !string.IsNullOrEmpty(record.SourceFile))
+                {
+                    return new SourceLocation(record.SourceFile, record.SourceLine);
+                }
+            }
+            return CurrentLocation;
         }
 
         private void Reset()

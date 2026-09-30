@@ -70,8 +70,13 @@ namespace WinASM65.Targets
             Add(map, "atari800", "6502", "xex", 0x0600, Atari8Symbols(), true, null);
             Add(map, "atari2600", "6502", "rom", null, Atari2600Symbols(), true, t => t.RomSize = 4096);
             Add(map, "vcs", "6502", "rom", null, Atari2600Symbols(), true, t => t.RomSize = 4096);
-            Add(map, "bbc", "6502", "bin", 0xE00, BbcSymbols(), true, null);
-            Add(map, "bbcmicro", "6502", "bin", 0xE00, BbcSymbols(), true, null);
+            Add(map, "bbc", "6502", "bbc", 0xE00, BbcSymbols(), true,
+                t => t.BbcFileType = "exec");
+            Add(map, "bbcmicro", "6502", "bbc", 0xE00, BbcSymbols(), true,
+                t => t.BbcFileType = "exec");
+            Add(map, "tube", "6502", "tube", TubeFormat.DefaultLoadAddress, TubeSymbols(), true, null);
+            Add(map, "bbc2p", "6502", "tube", TubeFormat.DefaultLoadAddress, TubeSymbols(), true, null);
+            Add(map, "tube6502", "6502", "tube", TubeFormat.DefaultLoadAddress, TubeSymbols(), true, null);
             Add(map, "electron", "6502", "bin", 0xE00, null, true, null);
             Add(map, "oric", "6502", "bin", 0x0500, null, true, null);
             Add(map, "lynx", "65c02", "bin", null, null, false, null);
@@ -150,9 +155,48 @@ namespace WinASM65.Targets
 
         private static Dictionary<string, long> BbcSymbols()
         {
+            // The OS calls are in the top page of ROM, so they are fixed for every
+            // BBC. The VIC and the two VIAs are the machine a program talks to;
+            // their layout is what a driver needs to name.
             return new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase)
             {
-                { "OSWRCH", 0xFFEE }, { "OSBYTE", 0xFFF4 }, { "OSWORD", 0xFFF1 }
+                // OS entry points
+                { "OSWRCH", 0xFFEE }, { "OSWORD", 0xFFF1 }, { "OSBYTE", 0xFFF4 },
+                { "OSCLI", 0xFFF7 }, { "OSNEWLINE", 0xFFE7 }, { "OSASCI", 0xFFE3 },
+                { "PUTC", 0xFFE4 }, { "GETS", 0xFFE0 }, { "OSRDM", 0xFFB3 },
+                { "OSWRM", 0xFFCF },
+
+                // Video ULA
+                { "CRTC", 0xFE00 }, { "ACORN", 0xFE10 }, { "VIDULA", 0xFE20 },
+                { "ULAINT", 0xFE22 }, { "ULAENABLE", 0xFE23 }, { "ROMSEL", 0xFE24 },
+
+                // System VIA. The register order is not the 6522's own: DDRC and
+                // DDRB sit before the interrupt registers, which is why the
+                // standard names would point at the wrong registers here.
+                { "SYSEOR_ORA", 0xFCB0 }, { "SYSEOR_ORB", 0xFCB1 }, { "SYSEOR_FR", 0xFCB2 },
+                { "SYSEOR_DDRC", 0xFCB3 }, { "SYSEOR_DDRB", 0xFCB4 }, { "SYSEOR_IFR", 0xFCB5 },
+                { "SYSEOR_IER", 0xFCB6 }, { "SYSEOR_IRA", 0xFCB7 }, { "SYSEOR_IRB", 0xFCB8 },
+                { "USROR_ORA", 0xFCA0 }, { "USROR_ORB", 0xFCA1 }, { "USROR_FR", 0xFCA2 },
+                { "USROR_DDRC", 0xFCA3 }, { "USROR_DDRB", 0xFCA4 }, { "USROR_IFR", 0xFCA5 },
+                { "USROR_IER", 0xFCA6 }, { "USROR_IRA", 0xFCA7 }, { "USROR_IRB", 0xFCA8 },
+
+                // Keyboard, analogue converter, timing
+                { "ADCON", 0xFE70 }, { "ADCTL", 0xFE60 }, { "FRAMETIME", 0xFF20 }
+            };
+        }
+
+        /// <summary>
+        /// A 6502 second processor sees no I/O at all: the tube registers belong
+        /// to the main processor, so naming them here would point a second
+        /// processor program at hardware it cannot read. What it has instead is
+        /// a map, and that is what these four names are for.
+        /// </summary>
+        private static Dictionary<string, long> TubeSymbols()
+        {
+            return new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "TUBERAM", 0x0200 }, { "TUBERAMEND", 0x7FFF },
+                { "TUBEROM", 0x8000 }, { "TUBEROMEND", 0xFFFF }
             };
         }
     }

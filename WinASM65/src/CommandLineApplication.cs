@@ -168,7 +168,8 @@ namespace WinASM65
                         EnableListing = enableListing,
                         Cpu = cpu,
                         PredefinedSymbols = symbols,
-                        DefaultOrigin = target.LoadAddress
+                        DefaultOrigin = target.LoadAddress,
+                        ReportUndefinedSymbols = true
                     };
                     AssemblyResult assembly = _assemblerFactory.Create(options).Assemble(sourceFile, objectFile);
                     if (!assembly.Success) { DisplayDiagnostics(assembly.Diagnostics); return 1; }
@@ -668,9 +669,9 @@ namespace WinASM65
         {
             _console.WriteLine(string.Format("WinASM65 {0}", Assembly.GetExecutingAssembly().GetName().Version));
             _console.WriteLine("Usage: WinASM65 [-f source] [-o object] [-t system] [-cpu cpu] [-format fmt] [-l] [-c config] [-h|-help]");
-            _console.WriteLine("  -t <system>   Target system (nes, c64, c128, vic20, apple2, apple2e, atari8, atari800, atari2600, bbc, bbcmicro, electron, oric, x16, lynx). Use 'list' to enumerate all.");
+            _console.WriteLine("  -t <system>   Target system. Use 'list' to enumerate all, which includes bbc, tube (the BBC second processor), and the hardware variants.");
             _console.WriteLine("  -cpu <cpu>    CPU override (6502 or 65c02). Defaults to target system CPU.");
-            _console.WriteLine("  -format <fmt> Output format override (bin, nes, ines, prg, xex, a2bin, rom, o65, ihex, srec, w65). 'w65' writes a linkable module instead of an executable. Defaults to target system format.");
+            _console.WriteLine("  -format <fmt> Output format override (bin, nes, ines, prg, xex, a2bin, rom, o65, ihex, srec, bbc, tube, w65). 'w65' writes a linkable module instead of an executable. Defaults to target system format.");
             _console.WriteLine("");
                 _console.WriteLine("Verbs:");
                 _console.WriteLine("  link <module.w65>...   Link modules into a flat burnable image");

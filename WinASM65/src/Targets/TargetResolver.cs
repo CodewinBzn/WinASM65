@@ -37,6 +37,8 @@ namespace WinASM65.Targets
                 if (config.DefineHardwareSymbols.HasValue)
                     target.DefineHardwareSymbols = config.DefineHardwareSymbols.Value;
                 ApplyInes(target, config.Ines);
+                if (!string.IsNullOrWhiteSpace(config.BbcFileType))
+                    target.BbcFileType = config.BbcFileType.Trim().ToLowerInvariant();
             }
 
             if (!string.IsNullOrWhiteSpace(cliCpu))

@@ -96,6 +96,12 @@ namespace WinASM65.Segments
         public InesConf Ines { get; set; }
 
         /// <summary>
+        /// Kind of BBC file to produce: <c>exec</c>, <c>binary</c> or <c>text</c>.
+        /// Null leaves the target's own choice, which is <c>exec</c> for the BBC.
+        /// </summary>
+        public string BbcFileType { get; set; }
+
+        /// <summary>
         /// Named memory regions. Empty when the section is absent, which is the case
         /// for every configuration written before regions existed: a configuration
         /// without regions behaves exactly as it did, because no declared region
