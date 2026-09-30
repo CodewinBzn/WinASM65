@@ -125,17 +125,18 @@ namespace WinASM65.TextFormat
                         break;
                     }
 
-                    // A token that takes more than one byte is either an escape,
-                    // which the byte after it names, or a number the reader has
-                    // no keyword for and hands back as the bytes it is.
-                    if (length == 2)
+                    // A token that takes more than one byte is either one that
+                    // follows a marker, which the bytes after it name, or a
+                    // number the reader has no keyword for and hands back as
+                    // the bytes it is.
+                    if (length > 1 && !_dialect.IsOpaqueToken(b))
                     {
                         string extended;
-                        if (_dialect.TryKeyword(b, data[at + 1], out extended))
+                        if (_dialect.TryExtended(data, at, out extended))
                         {
                             Separator(text);
                             text.Append(extended);
-                            at++;
+                            at += length - 1;
                             continue;
                         }
                     }

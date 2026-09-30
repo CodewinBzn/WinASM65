@@ -187,15 +187,11 @@ namespace WinASM65.TextFormat
                     string keyword;
                     if (TryKeyword(text, at, out matched, out token, out keyword))
                     {
-                        // A token that costs two bytes is written after the
-                        // escape that says so. The keyword that was matched is
-                        // the one that decides, not the one the byte is also
+                        // A token that costs more than one byte is written after
+                        // the marker that says so. The keyword that was matched
+                        // is the one that decides, not the one the byte is also
                         // known by: $99 is ATN on its own and RENUMBER after $C7.
-                        byte escape;
-                        if (_dialect.TryEscape(keyword, out escape))
-                            body.Add(escape);
-
-                        body.Add(token);
+                        body.AddRange(_dialect.ExtendedBytes(keyword, token));
                         at += matched;
                         if (keyword == "REM" || keyword == "DATA")
                             literal = true;

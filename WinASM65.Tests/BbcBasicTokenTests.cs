@@ -49,13 +49,13 @@ namespace WinASM65.Tests
         public void UnTokenEtenduSeEcritApresSonEchappement()
         {
             BasicDialect dialect = Dialect();
-            byte escape;
+            byte[] escape;
             Assert.IsTrue(dialect.TryEscape("CASE", out escape));
-            Assert.AreEqual(0xC8, escape, "CASE est un enonce etendu");
+            CollectionAssert.AreEqual(new byte[] { 0xC8 }, escape, "CASE est un enonce etendu");
             Assert.IsTrue(dialect.TryEscape("RENUMBER", out escape));
-            Assert.AreEqual(0xC7, escape, "RENUMBER est une commande etendue");
+            CollectionAssert.AreEqual(new byte[] { 0xC7 }, escape, "RENUMBER est une commande etendue");
             Assert.IsTrue(dialect.TryEscape("SUM", out escape));
-            Assert.AreEqual(0xC6, escape, "SUM est une fonction etendue");
+            CollectionAssert.AreEqual(new byte[] { 0xC6 }, escape, "SUM est une fonction etendue");
             Assert.IsFalse(dialect.TryEscape("PRINT", out escape), "PRINT tient en un octet");
         }
 

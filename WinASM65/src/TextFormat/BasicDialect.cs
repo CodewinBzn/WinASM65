@@ -47,9 +47,10 @@ namespace WinASM65.TextFormat
     public class BasicDialect
     {
         private readonly Dictionary<string, byte> _keywords = new Dictionary<string, byte>(StringComparer.Ordinal);
-        private readonly Dictionary<string, byte> _escapes = new Dictionary<string, byte>(StringComparer.Ordinal);
-        private readonly Dictionary<byte, Dictionary<byte, string>> _extended =
-            new Dictionary<byte, Dictionary<byte, string>>();
+        private readonly Dictionary<string, byte[]> _escapes = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+        private readonly Dictionary<string, Dictionary<byte, string>> _prefixes =
+            new Dictionary<string, Dictionary<byte, string>>(StringComparer.Ordinal);
+        private readonly Dictionary<byte, int> _widths = new Dictionary<byte, int>();
         private readonly Dictionary<byte, string> _text = new Dictionary<byte, string>();
         private readonly List<string> _byLength = new List<string>();
 
@@ -101,44 +102,107 @@ namespace WinASM65.TextFormat
         }
 
         /// <summary>
-        /// Defines a token that costs two bytes: an escape, then the token. BBC
-        /// BASIC spends three of its 128 slots on escapes, so the keywords that
-        /// follow them live above $8D and are named here.
+        /// Defines a token that costs more than one byte: a marker, then the
+        /// token. BBC BASIC spends three of its 128 slots on one byte markers,
+        /// so the keywords that follow them live above $8D and are named here.
+        /// Waterloo Structured BASIC spends two bytes on its marker instead, so
+        /// the marker is given as a sequence rather than as a byte.
         /// </summary>
         public void Define(byte token, string keyword, byte escape)
         {
-            Define(token, keyword);
-            if (!_escapes.ContainsKey(keyword))
-                _escapes.Add(keyword, escape);
+            Define(token, keyword, new byte[] { escape });
+        }
 
+        /// <summary>
+        /// Defines a token that follows a marker of any length. The first
+        /// definition of a marker wins, so a clash is visible here.
+        /// </summary>
+        public void Define(byte token, string keyword, params byte[] escape)
+        {
+            Define(token, keyword);
+
+            byte[] marker = escape ?? new byte[0];
+            if (marker.Length == 0)
+                return;
+            if (!_escapes.ContainsKey(keyword))
+                _escapes.Add(keyword, marker);
+
+            string key = MarkerKey(marker);
             Dictionary<byte, string> tokens;
-            if (!_extended.TryGetValue(escape, out tokens))
+            if (!_prefixes.TryGetValue(key, out tokens))
             {
                 tokens = new Dictionary<byte, string>();
-                _extended.Add(escape, tokens);
+                _prefixes.Add(key, tokens);
             }
             if (!tokens.ContainsKey(token))
                 tokens.Add(token, keyword);
+
+            // The reader bounds itself with the length of a token, so a marker
+            // has to say how long the tokens it introduces are.
+            if (!_widths.ContainsKey(marker[0]))
+                _widths.Add(marker[0], 1 + marker.Length);
         }
 
-        /// <summary>The escape a two byte token has to be preceded by, if any.</summary>
-        public bool TryEscape(string keyword, out byte escape)
+        /// <summary>How many bytes a token introduced by a marker takes, marker included.</summary>
+        public int TokenLengthOf(byte token)
+        {
+            int width;
+            return _widths.TryGetValue(token, out width) ? width : 1;
+        }
+
+        private static string MarkerKey(byte[] marker)
+        {
+            StringBuilder key = new StringBuilder(marker.Length * 2);
+            for (int i = 0; i < marker.Length; i++)
+                key.Append(marker[i].ToString("X2", CultureInfo.InvariantCulture));
+            return key.ToString();
+        }
+
+        /// <summary>The marker a token that costs more than one byte has to follow.</summary>
+        public bool TryEscape(string keyword, out byte[] escape)
         {
             return _escapes.TryGetValue(keyword, out escape);
         }
 
         /// <summary>
-        /// Names an extended token, given the escape it follows. The same byte
-        /// is a different keyword under a different escape — $99 is ATN on its
-        /// own and RENUMBER after $C7 — so the escape is part of the name.
+        /// The bytes a keyword is written as: its marker and the token, or the
+        /// token alone when the keyword costs one byte.
         /// </summary>
-        public bool TryKeyword(byte escape, byte token, out string keyword)
+        public byte[] ExtendedBytes(string keyword, byte token)
+        {
+            byte[] escape;
+            if (!TryEscape(keyword, out escape) || escape == null || escape.Length == 0)
+                return new byte[] { token };
+
+            List<byte> bytes = new List<byte>(escape.Length + 1);
+            bytes.AddRange(escape);
+            bytes.Add(token);
+            return bytes.ToArray();
+        }
+
+        /// <summary>
+        /// Names the token that starts at an offset, given that it is written
+        /// after a marker. The marker is part of the name: the same byte is a
+        /// different keyword under a different marker.
+        /// </summary>
+        public bool TryExtended(byte[] data, int at, out string keyword)
         {
             keyword = null;
-            Dictionary<byte, string> tokens;
-            if (!_extended.TryGetValue(escape, out tokens))
+            if (data == null || at < 0 || at >= data.Length)
                 return false;
-            return tokens.TryGetValue(token, out keyword);
+
+            int width = TokenLengthOf(data[at]) - 1;
+            if (width <= 0 || at + 1 + width > data.Length)
+                return false;
+
+            byte[] marker = new byte[width];
+            for (int i = 0; i < width; i++)
+                marker[i] = data[at + i];
+
+            Dictionary<byte, string> tokens;
+            if (!_prefixes.TryGetValue(MarkerKey(marker), out tokens))
+                return false;
+            return tokens.TryGetValue(data[at + width], out keyword);
         }
 
         public bool IsKeyword(string keyword)
