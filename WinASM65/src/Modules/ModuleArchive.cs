@@ -442,7 +442,29 @@ namespace WinASM65.Modules
         /// </summary>
         public static OperationResult BuildSymbolIndex(ArchiveResolution resolution)
         {
-            List<Diagnostic> diagnostics = new List<Diagnostic>();
+            return BuildSymbolIndexInto(resolution, null, null);
+        }
+
+        /// <summary>
+        /// Builds the symbol index of one archive into a resolution, without the
+        /// caller having to fill in <see cref="ArchiveResolution.Archives"/>
+        /// first. The viewer shows a single archive on its own, and it wants the
+        /// same duplicate detection the resolver does, not a second looser pass.
+        /// </summary>
+        public static OperationResult BuildSymbolIndexInto(ArchiveResolution resolution,
+            ModuleArchive only, List<Diagnostic> diagnostics)
+        {
+            if (resolution == null)
+                return new OperationResult(false, new List<Diagnostic>());
+
+            if (diagnostics == null)
+                diagnostics = new List<Diagnostic>();
+            else
+                diagnostics.Clear();
+
+            if (only != null && resolution.Archives.Count == 0)
+                resolution.Archives.Add(only);
+
             Dictionary<string, ArchiveSymbol> seen = new Dictionary<string, ArchiveSymbol>(StringComparer.Ordinal);
 
             for (int a = 0; a < resolution.Archives.Count; a++)
