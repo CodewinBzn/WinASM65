@@ -19,12 +19,12 @@ namespace WinASM65.Tests
     /// test that only checks that a relocation exists. So each case below pins the
     /// type, the width and the offsets, and several would fail under the guess.
     ///
-    /// Operands are spelled in upper case throughout. InstructionRegex takes the first
-    /// three letters as a candidate label, so a lower-case three-letter mnemonic
-    /// followed by a lower-case symbol is reparsed with the operand upper-cased and
-    /// stops matching the symbol table. That is a pre-existing parsing bug, unrelated
-    /// to relocations, verified identical on the base commit; see
-    /// LowercaseOperand_IsReparsedByTheInstructionRegex.
+    /// Operands are spelled in upper case throughout, which keeps the cases where a
+    /// label could be mistaken for a mnemonic out of these tests. InstructionRegex
+    /// does take the first three letters as a candidate label, so a lower-case
+    /// three-letter mnemonic followed by a lower-case symbol has to be recovered by
+    /// hand; the operand keeps the case it was written in, so it still matches the
+    /// symbol table. See ThreeLetterOperand_KeepsItsCase.
     /// </summary>
     [TestClass]
     public class RelocationTests
@@ -555,36 +555,38 @@ namespace WinASM65.Tests
         #region Pre-existing behaviour, pinned so a later fix is visible
 
         /// <summary>
-        /// Pins a parsing bug found while writing these tests. It is present on the
-        /// base commit and is not introduced by T1/T2.
+        /// Pins the three-letter operand case, which used to be broken.
         ///
         /// ParseLine tries LabelDeclareRegex and ConstantRegex before
         /// InstructionRegex, and ConstantRegex is not anchored: its value group is
         /// (.+), so on <c>tgt = $1234</c> it matches with the "label" being the whole
         /// line up to the "=" and the "value" being $1234. ParseLine then calls
         /// HandleConstant("tgt ", "$1234"), which trims to "tgt" and calls
-        /// AddSymbol — fine. The break is in HandleInstruction: InstructionRegex has
+        /// AddSymbol — fine. The break was in HandleInstruction: InstructionRegex has
         /// an optional leading label group, so on <c>lda tgt</c> it takes "lda" as
         /// the label and "tgt" as the opcode. HandleInstruction then finds that
-        /// "LDA" is an instruction, so it rewrites the line to <c>LDA TGT</c> with
-        /// the operand upper-cased. The symbol table is case-sensitive, so the
-        /// lookup misses and the operand is silently left as a placeholder.
+        /// "LDA" is an instruction, so it swaps the two back — but it swapped the
+        /// upper-cased copy, turning the operand into "TGT". The symbol table is
+        /// case-sensitive, so the lookup missed and the operand was silently left as
+        /// a placeholder.
         ///
-        /// The trigger is a three-letter mnemonic followed by an operand, where the
-        /// mnemonic is also a valid label token. Fixing it is out of scope here; this
-        /// test exists so that a future fix is a deliberate, visible change.
+        /// The trigger is any three-letter mnemonic followed by a three-letter
+        /// operand, because only then can the label group swallow the mnemonic. It
+        /// was invisible at assembly time and only showed up at link time as an
+        /// unresolvable symbol, which is what makes it worth a test of its own.
         /// </summary>
         [TestMethod]
-        public void LowercaseOperand_IsReparsedByTheInstructionRegex()
+        public void ThreeLetterOperand_KeepsItsCase()
         {
             AssemblyResult upper = Assemble(".org $8000\nTGT = $1234\nlda tgt\n");
             AssemblyResult lower = Assemble(".org $8000\ntgt = $1234\nLDA tgt\n");
 
             Assert.AreEqual(0x1234, Only(upper).Value,
                 "a lower-case operand matches a symbol defined in upper case");
-            Assert.AreEqual(0, Only(lower).Value,
-                "a lower-case symbol definition is silently missed by the upper-cased operand");
-            Assert.IsFalse(lower.Relocations[0].IsResolved);
+            Assert.AreEqual(0x1234, Only(lower).Value,
+                "a lower-case operand must match a symbol defined in lower case too");
+            Assert.IsTrue(Only(lower).IsResolved,
+                "l operande garde la casse ecrite, donc il rejoint le symbole");
         }
 
         #endregion

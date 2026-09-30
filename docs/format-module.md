@@ -206,6 +206,53 @@ decision produit une relocation fausse de facon silencieuse.
 
 ---
 
+## 2bis. Archives (`.w65a`)
+
+Une archive regroupe plusieurs modules `.w65` et peut en referencer une
+autre. `WinASM65 link` accepte une archive en entree et la developpe, de
+sorte que le linker n'a jamais a connaitre les archives.
+
+```
+[ magic "W65A"  4 octets ]
+[ version majeure 2 ][ version mineure 2 ]
+[ nombre de membres  4 ]
+[ taille des tables 4 ]
+[ debut de la charge utile 4 ]  absolu
+[ table des membres            ]  nom, offset absolu, longueur
+[ table des references         ]  chemins d'archives
+[ blobs des membres            ]  chacun un .w65 complet
+```
+
+**Pas d'index de symboles stocke.** L'index est l'union des tables d'export
+des membres, calculee a l'ouverture. Un index stocke serait une seconde
+copie de faits qui deja vivent dans les membres, et les deux pourraient
+diverger ; rien ici ne peut contenir une copie perimee.
+
+**References.** Un chemin relatif a l'archive qui le nomme, ce qui permet
+de deplacer une bibliotheque avec ses dependants tant que leurs positions
+relatives tiennent. La resolution est transitive. Un cycle est une
+**erreur** : il n'empêche pas la resolution, puisque chaque archive n'est
+developpee qu'une fois, mais il signale toujours une faute dans la
+description du projet et se taire la cacherait. Le message nomme toute la
+chaine, parce qu'au-dela de deux archives la paire qui boucle n'est pas
+evidente.
+
+**Ordre.** Une archive referencee est placee avant celle qui la reference,
+donc avant son dependant dans l'ordre de liaison.
+
+**Export en double.** Erreur, et non avertissement : rien dans la
+resolution ne dit lequel des deux modules un importateur voulait, et en
+choisir un silencieusement relierait l'appel a la mauvaise routine. Les
+deux fournisseurs sont nommes, car « symbole en double X » seul laisse le
+lecteur deviner quelle archive ouvrir.
+
+```
+WinASM65 archive base.w65 milieu.w65 -o lib.w65a -ref base.w65a
+WinASM65 link lib.w65a main.w65 -o game.bin
+```
+
+---
+
 ## 3. Directives source
 
 Le source doit pouvoir declarer ses exports et ses imports.

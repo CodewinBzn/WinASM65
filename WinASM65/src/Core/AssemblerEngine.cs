@@ -578,6 +578,16 @@ namespace WinASM65.Core
             }
 
             ushort opcodeAddress = _emitter.CurrentAddress;
+
+            // The label group in InstructionRegex is greedy, so "lda Mid" parses as
+            // label="lda", opcode="Mid": a three letter operand is
+            // indistinguishable from a three letter mnemonic. The swap below
+            // recovers the right reading, and it has to recover the operand as it
+            // was written. Uppercasing it first turned a symbol called "Mid" into
+            // "MID", which the linker's ordinal export table then failed to match.
+            // Six letter operands are unaffected, because the regex cannot split
+            // them and falls back to the unambiguous reading on its own.
+            string writtenOpcode = opcode;
             opcode = opcode.ToUpperInvariant();
 
             if (!string.IsNullOrWhiteSpace(label))
@@ -585,7 +595,7 @@ namespace WinASM65.Core
                 string tmpLabel = label.ToUpperInvariant();
                 if (_cpu.IsInstruction(tmpLabel))
                 {
-                    operands = opcode;
+                    operands = writtenOpcode;
                     opcode = tmpLabel;
                 }
                 else

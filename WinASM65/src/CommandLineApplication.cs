@@ -65,6 +65,15 @@ namespace WinASM65
                 return RunLink(rest);
             }
 
+            // Archives are a verb too, for the same reason: they take .w65 modules
+            // as input, which the assemble path has no way to accept.
+            if (string.Equals(args[0], "archive", StringComparison.OrdinalIgnoreCase))
+            {
+                string[] rest = new string[args.Length - 1];
+                Array.Copy(args, 1, rest, 0, rest.Length);
+                return RunArchive(rest);
+            }
+
             string sourceFile = null;
             string objectFile = null;
             ConfigFile config = null;
@@ -210,6 +219,97 @@ namespace WinASM65
         }
 
         /// <summary>
+        /// Builds a .w65a archive out of .w65 modules.
+        /// <para>
+        /// -ref names another archive this one needs. The reference is stored as
+        /// given and resolved relative to the archive being written, so a library
+        /// keeps working when it is moved along with its dependents.
+        /// </para>
+        /// </summary>
+        private int RunArchive(string[] args)
+        {
+            List<string> inputs = new List<string>();
+            List<string> references = new List<string>();
+            string output = "lib.w65a";
+
+            for (int i = 0; i < args.Length; i++)
+            {
+                switch (args[i])
+                {
+                    case "-o": if (i + 1 < args.Length) output = args[++i]; break;
+                    case "-ref":
+                    case "-reference":
+                        if (i + 1 < args.Length) references.Add(args[++i]);
+                        break;
+                    case "-h":
+                    case "-help":
+                        _console.WriteLine("Usage: WinASM65 archive <module.w65>... -o <lib.w65a> [-ref <other.w65a>...]");
+                        _console.WriteLine("  Packs modules into an archive with a symbol index over them.");
+                        _console.WriteLine("  -ref records an archive this one needs; resolution is transitive.");
+                        return 0;
+                    default:
+                        if (!args[i].StartsWith("-", StringComparison.Ordinal))
+                            inputs.Add(args[i]);
+                        break;
+                }
+            }
+
+            if (inputs.Count == 0)
+            {
+                _console.WriteError("Nothing to archive: give at least one .w65 module.");
+                return 1;
+            }
+
+            ModuleArchive archive = new ModuleArchive();
+            for (int i = 0; i < inputs.Count; i++)
+            {
+                ModuleImage module;
+                string moduleName;
+                OperationResult read = W65Format.TryRead(inputs[i], out module, out moduleName);
+                if (!read.Success)
+                {
+                    DisplayDiagnostics(read.Diagnostics);
+                    return 1;
+                }
+                archive.Members.Add(new ArchiveMember(
+                    string.IsNullOrEmpty(moduleName) ? "module" + i : moduleName, module));
+            }
+
+            for (int i = 0; i < references.Count; i++)
+                archive.References.Add(references[i]);
+
+            OperationResult written = ArchiveFormat.Write(output, archive);
+            if (!written.Success)
+            {
+                DisplayDiagnostics(written.Diagnostics);
+                return 1;
+            }
+
+            _console.WriteLine(string.Format("Archived {0} module(s) -> {1}", archive.Members.Count, output));
+            for (int i = 0; i < archive.Members.Count; i++)
+                _console.WriteLine("  " + archive.Members[i].Name);
+            for (int i = 0; i < archive.References.Count; i++)
+                _console.WriteLine("  needs " + archive.References[i]);
+            return 0;
+        }
+
+        private static bool IsArchive(string path)
+        {
+            try
+            {
+                return ArchiveFormat.HasMagic(File.ReadAllBytes(path));
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Runs the linker verb. Every input is a .w65 module; the output is the flat
         /// image in the format named by -format, or raw.
         /// </summary>
@@ -252,6 +352,35 @@ namespace WinASM65
             List<Diagnostic> diagnostics = new List<Diagnostic>();
             foreach (string input in inputs)
             {
+                // An archive stands for every module it holds plus everything its
+                // references pull in, so it is expanded here rather than being one
+                // more module: the linker never needs to know archives existed.
+                if (IsArchive(input))
+                {
+                    ArchiveResolution resolution;
+                    OperationResult resolved = ArchiveFormat.Resolve(input, out resolution);
+                    if (!resolved.Success)
+                    {
+                        DisplayDiagnostics(resolved.Diagnostics);
+                        return 1;
+                    }
+
+                    for (int a = 0; a < resolution.Archives.Count; a++)
+                    {
+                        ModuleArchive archive = resolution.Archives[a];
+                        _console.WriteLine("archive " + archive.Name + ": "
+                            + archive.Members.Count + " module(s)");
+                        for (int m = 0; m < archive.Members.Count; m++)
+                        {
+                            ModuleImage member = archive.Members[m].Module;
+                            if (member != null && string.IsNullOrEmpty(member.ModuleName))
+                                member.ModuleName = archive.Members[m].Name;
+                            modules.Add(member);
+                        }
+                    }
+                    continue;
+                }
+
                 ModuleImage module;
                 string moduleName;
                 OperationResult read = W65Format.TryRead(input, out module, out moduleName);
