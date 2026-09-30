@@ -5,6 +5,7 @@ using System.Reflection;
 using Newtonsoft.Json;
 using WinASM65.Core;
 using WinASM65.Cpu;
+using WinASM65.Modules;
 using WinASM65.Segments;
 using WinASM65.Targets;
 
@@ -122,7 +123,19 @@ namespace WinASM65
                 AssemblyResult assembly = _assemblerFactory.Create(options).Assemble(sourceFile, objectFile);
                 if (!assembly.Success) { DisplayDiagnostics(assembly.Diagnostics); return 1; }
 
-                if (!IsRawFormat(target))
+                if (IsModuleFormat(target))
+                {
+                    if (assembly.Module == null)
+                    {
+                        DisplayDiagnostics(new List<Diagnostic> { new Diagnostic(
+                            new SourceLocation(sourceFile, 0),
+                            "Format 'w65' needs a module: the source declares no .export and no .import.") });
+                        return 1;
+                    }
+                    OperationResult written = W65Format.Write(objectFile, assembly.Module);
+                    if (!written.Success) { DisplayDiagnostics(written.Diagnostics); return 1; }
+                }
+                else if (!IsRawFormat(target))
                 {
                     target.OriginAddress = assembly.OriginAddress;
                     OperationResult published = _executablePublisher.Publish(objectFile, assembly.OutputBytes, target);
@@ -168,6 +181,17 @@ namespace WinASM65
                 || target.FormatName.Trim().Equals("bin", StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>
+        /// True for the module object format. A module is not an executable: it is
+        /// unplaced segments plus relocations, and it is produced by the linker
+        /// rather than burned.
+        /// </summary>
+        private static bool IsModuleFormat(ResolvedTarget target)
+        {
+            return !string.IsNullOrWhiteSpace(target.FormatName)
+                && target.FormatName.Trim().Equals("w65", StringComparison.OrdinalIgnoreCase);
+        }
+
         private int ReportConfigurationError(string message) { _console.WriteError(message); return 1; }
         private void DisplayDiagnostics(IReadOnlyList<Diagnostic> diagnostics)
         {
@@ -179,7 +203,7 @@ namespace WinASM65
             _console.WriteLine("Usage: WinASM65 [-f source] [-o object] [-t system] [-cpu cpu] [-format fmt] [-l] [-c config] [-h|-help]");
             _console.WriteLine("  -t <system>   Target system (nes, c64, c128, vic20, apple2, apple2e, atari8, atari800, atari2600, bbc, bbcmicro, electron, oric, x16, lynx). Use 'list' to enumerate all.");
             _console.WriteLine("  -cpu <cpu>    CPU override (6502 or 65c02). Defaults to target system CPU.");
-            _console.WriteLine("  -format <fmt> Output format override (bin, nes, ines, prg, xex, a2bin, rom, o65, ihex, srec). Defaults to target system format.");
+            _console.WriteLine("  -format <fmt> Output format override (bin, nes, ines, prg, xex, a2bin, rom, o65, ihex, srec, w65). 'w65' writes a linkable module instead of an executable. Defaults to target system format.");
         }
     }
 }
