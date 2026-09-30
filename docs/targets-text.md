@@ -136,11 +136,71 @@ entrelacement par paires de secteurs, points d'entree explicites, et une
 un format de segments explicite, ce qui le rapproche du modele `.w65` — mais
 le load file ProDOS ne contient pas de table de relocations.
 
+Implemente dans `src/Targets/ProDosImage.cs`, d'apres le ProDOS 8 Technical
+Reference (annexe B) :
+
+- **Volume** : 280 blocs de 512 octets par defaut (143K). Deux blocs reserves,
+  quatre blocs de repertoire, trente deux blocs de bitmap, puis les donnees.
+  Le bitmap est alloue meme si personne ne le lit : sans lui ProDOS distribuerait
+  son propre systeme de fichiers comme espace libre.
+- **Repertoire** : liste chainee de blocs, chacun commencant par le bloc
+  precedent puis le suivant. L'entete de volume est la **premiere entree du bloc
+  2**, de $27 octets, comme les autres ; il y en a 13 par bloc.
+- **Fichier** : un seul fork de donnees. Un fichier d'un bloc ou moins est un
+  *seedling*, stocke de facon contigue ; au-dela c'est un *sapling*, avec un
+  bloc d'index devant. Un *tree* (au-dela de 128K) est refuse plutot
+  qu'ecrit a moitie.
+- **Load file** : en-tete (type, version, version minimale, point d'entree sur
+  deux octets), puis un record par segment (numero, longueur, adresse de
+  charge, nom), puis des records de donnees de 512 octets au plus — un compte
+  de zero veut dire « bloc plein ».
+- **Entrelacement** : l'ordre `0, 8, 1, 9, 2, 10, …` se repetant tous les seize
+  blocs. Il se lit « quel bloc logique est ici » : le bloc logique 0 est le
+  premier ecrit, le bloc logique 8 le deuxieme. ProDOS numerote ses blocs en
+  logique, et une image `.po` non entrelacee les stocke dans cet ordre-la ;
+  l'entrelacement est donc une propriete de cet ecrivain, pas du systeme de
+  fichiers.
+
+Le format suit champ par champ, mais **rien ici n'a ete valide sur machine** :
+les tests relisent l'image comme le ferait ProDOS (chaine du repertoire, clef,
+index, bitmap) sans prouver qu'un emulateur ProDOS l'accepterait. C'est le meme
+cas que T9 et T11.
+
 ### BBC BASIC
 
 Les tokens sont differents de ceux d'Applesoft, mais le conteneur est un
 **fichier texte brut**, sans secteurs entrelaces. C'est le cas le plus
 simple de la famille, et il releve de T15 plutot que de T10.
+
+BBC BASIC V est implemente dans `src/TextFormat/BbcBasicDialect.cs`, d'apres
+les sources RISC OS Open (via la derivation de Matt Godbolt) :
+
+- **Ligne** : `0D`, numero sur deux octets, longueur de tout l'enregistrement,
+  puis les tokens. Longueur maximale 251. Le programme se termine par `0D FF` —
+  d'ou la limite de 65279 pour un numero de ligne, puisque `$FF` dans l'octet
+  haut marque la fin.
+- **Tokens a partir de `$7F`**, et non de `$80`. Trois valeurs sont des
+  echappements : `$C6`, `$C7` et `$C8` sont chacune suivies d'un second octet
+  qui nomme le vrai token (fonctions, commandes, enonces etendus : `CASE`,
+  `RENUMBER`, `SUM`...). `$8D` n'est pas un mot-cle : c'est une reference de
+  ligne.
+- **Chaines avec leurs guillemets** : pas de longueur devant, un guillemet
+  ecrit deux fois n'en occupe qu'un.
+- **Reference de ligne en trois octets** : les deux bits hauts de chaque octet du
+  numero sont packs dans un premier octet, combine puis `EOR $54` ; les six
+  bits restants de chaque octet sont stockes avec le bit 6 mis. Aucun octet
+  d'une reference ne peut donc etre lu comme un token, ce qui permet a
+  l'interpreteur de chercher `ELSE` sur une ligne sans tomber sur un `GOTO`.
+  L'octet extended et la longueur viennent de la meme source, et les deux
+  exemples de la derivation (139 et 204) sont des tests.
+
+Le programme existe aussi **en texte** (`BbcBasicText.Render`) : la machine
+tokenise un fichier texte au chargement, et c'est la seule forme ou un
+commentaire et un mot-cle sont distingues par la personne et non par
+l'interpreteur.
+
+Comme pour ProDOS, **rien ici n'a ete execute sur un BBC** : la validation reste
+structurelle (aller-retour octet pour octet, table confrontee a sa source).
 
 ---
 
@@ -152,6 +212,15 @@ simple de la famille, et il releve de T15 plutot que de T10.
 | **Waterloo Structured BASIC** | Apple II, C64, PET ; le plus widespread apres Applesoft, et le plus proche d'un BASIC « de Production » | variable selon la machine |
 | **GECOS** | cible distincte, decouverte avec GEOS | a definir |
 | **BBC BASIC** | tokens differents, conteneur texte | texte brut |
+
+Etat d'avancement (T15) : BBC BASIC V est fait. Restent Waterloo Structured
+BASIC, GECOS, et les deux conteneurs Apple II DOS 3.2 / 3.3.
+
+L'encodeur est devenu generique : un `BasicDialect` porte la table de tokens, la
+facon dont une chaine s'ecrit, la facon dont une reference de ligne s'ecrit, et
+la mise en page des enregistrements (`Frame`, `TryReadRecord`). Applesoft et BBC
+BASIC partagent le meme encodeur, ce que prouve le fait que le refactoring n'a
+change aucun octet de la sortie Applesoft.
 
 Le plan borne explicitement ce perimetre : **les quatre BASIC principaux**.
 Les dialectes mineurs ou experimentaux n'en font pas partie, et une nouvelle
