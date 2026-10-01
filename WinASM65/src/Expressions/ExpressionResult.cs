@@ -32,6 +32,22 @@ namespace WinASM65.Expressions
     }
 
     /// <summary>
+    /// Which byte of the value the expression asked for.
+    /// <para>
+    /// <c>&lt;label</c> and <c>&gt;label</c> are not sugar the evaluator can finish
+    /// on its own: the symbol they read is usually not known yet, so the selection
+    /// has to survive the two passes and be applied by whoever writes the value.
+    /// Without it the linker receives a whole address for a one-byte field.
+    /// </para>
+    /// </summary>
+    public enum ByteSelector
+    {
+        None = 0,
+        Low = 1,
+        High = 2
+    }
+
+    /// <summary>
     /// One identifier actually read by an expression, with the source location it
     /// was read at. The provenance is what turns a relocation into something a
     /// diagnostic can point at.
@@ -96,6 +112,13 @@ namespace WinASM65.Expressions
         /// <summary>Where the expression was written.</summary>
         public SourceLocation Location { get; private set; }
 
+        /// <summary>
+        /// Which byte of the value the source asked for with <c>&lt;</c> or <c>&gt;</c>.
+        /// Carried through the unresolved path on purpose: that is exactly the case
+        /// where the value is not known and the selection cannot be applied yet.
+        /// </summary>
+        public ByteSelector Selector { get; private set; }
+
         public bool IsResolved
         {
             get { return UndefinedSymbols == null || UndefinedSymbols.Count == 0; }
@@ -117,7 +140,7 @@ namespace WinASM65.Expressions
         }
 
         private ExpressionResult(Value value, ExpressionRole role, IReadOnlyList<SymbolReference> usedSymbols,
-            string expression, SourceLocation location)
+            string expression, SourceLocation location, ByteSelector selector)
         {
             Value = value;
             UndefinedSymbols = new List<string>();
@@ -125,10 +148,12 @@ namespace WinASM65.Expressions
             UsedSymbols = usedSymbols ?? new List<SymbolReference>();
             Expression = expression ?? string.Empty;
             Location = location;
+            Selector = selector;
         }
 
         private ExpressionResult(IReadOnlyList<string> undefinedSymbols, ExpressionRole role,
-            IReadOnlyList<SymbolReference> usedSymbols, string expression, SourceLocation location)
+            IReadOnlyList<SymbolReference> usedSymbols, string expression, SourceLocation location,
+            ByteSelector selector)
         {
             Value = default(Value);
             UndefinedSymbols = undefinedSymbols ?? new List<string>();
@@ -136,6 +161,7 @@ namespace WinASM65.Expressions
             UsedSymbols = usedSymbols ?? new List<SymbolReference>();
             Expression = expression ?? string.Empty;
             Location = location;
+            Selector = selector;
         }
 
         public static ExpressionResult Success(Value value)
@@ -146,7 +172,13 @@ namespace WinASM65.Expressions
         public static ExpressionResult Success(Value value, ExpressionRole role, IReadOnlyList<SymbolReference> usedSymbols,
             string expression, SourceLocation location)
         {
-            return new ExpressionResult(value, role, usedSymbols, expression, location);
+            return Success(value, role, usedSymbols, expression, location, ByteSelector.None);
+        }
+
+        public static ExpressionResult Success(Value value, ExpressionRole role, IReadOnlyList<SymbolReference> usedSymbols,
+            string expression, SourceLocation location, ByteSelector selector)
+        {
+            return new ExpressionResult(value, role, usedSymbols, expression, location, selector);
         }
 
         public static ExpressionResult WithUndefinedSymbols(IReadOnlyList<string> undefinedSymbols)
@@ -157,7 +189,13 @@ namespace WinASM65.Expressions
         public static ExpressionResult WithUndefinedSymbols(IReadOnlyList<string> undefinedSymbols, ExpressionRole role,
             IReadOnlyList<SymbolReference> usedSymbols, string expression, SourceLocation location)
         {
-            return new ExpressionResult(undefinedSymbols, role, usedSymbols, expression, location);
+            return WithUndefinedSymbols(undefinedSymbols, role, usedSymbols, expression, location, ByteSelector.None);
+        }
+
+        public static ExpressionResult WithUndefinedSymbols(IReadOnlyList<string> undefinedSymbols, ExpressionRole role,
+            IReadOnlyList<SymbolReference> usedSymbols, string expression, SourceLocation location, ByteSelector selector)
+        {
+            return new ExpressionResult(undefinedSymbols, role, usedSymbols, expression, location, selector);
         }
 
         /// <summary>
@@ -167,8 +205,8 @@ namespace WinASM65.Expressions
         public ExpressionResult WithRole(ExpressionRole role)
         {
             if (IsResolved)
-                return new ExpressionResult(Value, role, UsedSymbols, Expression, Location);
-            return new ExpressionResult(UndefinedSymbols, role, UsedSymbols, Expression, Location);
+                return new ExpressionResult(Value, role, UsedSymbols, Expression, Location, Selector);
+            return new ExpressionResult(UndefinedSymbols, role, UsedSymbols, Expression, Location, Selector);
         }
     }
 }

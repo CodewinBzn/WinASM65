@@ -403,11 +403,20 @@ namespace WinASM65.Linking
                     ushort value;
                     if (!string.IsNullOrEmpty(record.TargetSymbol))
                     {
-                        if (!symbols.TryGetValue(record.TargetSymbol, out value))
+                        // Exports first, then the module's own labels. The order only
+                        // matters for a name that is both, which is a contradictory
+                        // program; resolving an import as an import is the reading that
+                        // matches how every other import behaves.
+                        string problem;
+                        if (!symbols.TryGetValue(record.TargetSymbol, out value)
+                            && !TryLocalValue(modules, placed, m, record.TargetSymbol, owner,
+                                out value, out problem))
                         {
+                            if (string.IsNullOrEmpty(problem))
+                                problem = "Relocation in " + owner + " needs '" + record.TargetSymbol +
+                                    "', which no linked module exports and which " + owner + " does not define.";
                             diagnostics.Add(new Diagnostic(new SourceLocation(record.SourceFile, record.SourceLine),
-                                "Relocation in " + owner + " needs '" + record.TargetSymbol +
-                                "', which no linked module exports."));
+                                problem));
                             return false;
                         }
                     }
@@ -442,8 +451,61 @@ namespace WinASM65.Linking
             return true;
         }
 
-        private static bool Holds(List<LinkedReference> references, ushort address, int width)
+        /// <summary>
+        /// Reads a label the module defined for itself, in its own table.
+        /// <para>
+        /// This is the fix for the reference that names a label three lines above it:
+        /// the assembler records a relocation for it like any other, so the linker
+        /// needs the name, and the name is in the module's symbol table rather than
+        /// in anybody's exports.
+        /// </para>
+        /// <para>
+        /// <paramref name="problem"/> is filled only when the module does have the
+        /// label but it cannot be placed — a segment index that no longer exists, or
+        /// an offset past $FFFF. A missing label leaves it empty, because the caller
+        /// has a better sentence for that case than this method does.
+        /// </para>
+        /// </summary>
+        private static bool TryLocalValue(IReadOnlyList<ModuleImage> modules, List<PlacedSegment> placed,
+            int moduleIndex, string name, string owner, out ushort value, out string problem)
         {
+            value = 0;
+            problem = null;
+
+            ModuleImage module = modules[moduleIndex];
+            ModuleSymbol symbol = null;
+            for (int i = 0; i < module.Symbols.Count; i++)
+            {
+                if (string.Equals(module.Symbols[i].Name, name, StringComparison.Ordinal))
+                {
+                    symbol = module.Symbols[i];
+                    break;
+                }
+            }
+            if (symbol == null)
+                return false;
+
+            PlacedSegment host;
+            if (!TrySegment(placed, moduleIndex, symbol.SegmentIndex, out host))
+            {
+                problem = "Label '" + name + "' of " + owner + " names segment " +
+                    symbol.SegmentIndex + ", which does not exist.";
+                return false;
+            }
+
+            long resolved = (long)host.Address + symbol.Offset;
+            if (resolved > 0xFFFF)
+            {
+                problem = "Label '" + name + "' of " + owner + " falls outside the address space at $" +
+                    resolved.ToString("X") + ".";
+                return false;
+            }
+
+            value = (ushort)resolved;
+            return true;
+        }
+
+        private static bool Holds(List<LinkedReference> references, ushort address, int width)        {
             for (int i = 0; i < references.Count; i++)
             {
                 if (references[i].Address == address && references[i].Width == width)
@@ -479,6 +541,15 @@ namespace WinASM65.Linking
                 case RelocationType.Seg:
                     data[offset] = (byte)(value & 0xFF);
                     data[offset + 1] = (byte)((value >> 8) & 0xFF);
+                    return true;
+                case RelocationType.LowByte:
+                    // The source asked for one half of the address, so writing the
+                    // whole thing here would be the bug, not the check: "lda #<label"
+                    // on a label above page zero is a normal instruction.
+                    data[offset] = (byte)(value & 0xFF);
+                    return true;
+                case RelocationType.HighByte:
+                    data[offset] = (byte)((value >> 8) & 0xFF);
                     return true;
                 case RelocationType.Zp8:
                 case RelocationType.Imm8:

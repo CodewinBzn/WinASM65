@@ -37,7 +37,13 @@ namespace WinASM65.Output
         Data16 = 6,
 
         /// <summary>Address of a segment. Not produced yet: it needs the .w65 segments (T3).</summary>
-        Seg = 7
+        Seg = 7,
+
+        /// <summary>Low byte of the resolved value, <c>lda #&lt;label</c>.</summary>
+        LowByte = 8,
+
+        /// <summary>High byte of the resolved value, <c>lda #&gt;label</c>.</summary>
+        HighByte = 9
     }
 
     /// <summary>
@@ -112,6 +118,30 @@ namespace WinASM65.Output
         /// </summary>
         public static RelocationType TypeFor(ExpressionRole role, byte operandWidth)
         {
+            return TypeFor(role, operandWidth, ByteSelector.None);
+        }
+
+        /// <summary>
+        /// Same decision, with the byte selector the source asked for.
+        /// <para>
+        /// <c>&lt;</c> and <c>&gt;</c> only make sense on a one-byte field: there the
+        /// value written is half of an address, and keeping the whole address would
+        /// make <c>lda #&gt;label</c> fail with "does not fit on one octet" on every
+        /// label outside page zero. On a two-byte field the selection is dropped,
+        /// because a narrowed value in a word field is a different mistake and not
+        /// something to guess at here.
+        /// </para>
+        /// </summary>
+        public static RelocationType TypeFor(ExpressionRole role, byte operandWidth, ByteSelector selector)
+        {
+            if (operandWidth == 1)
+            {
+                if (selector == ByteSelector.Low)
+                    return RelocationType.LowByte;
+                if (selector == ByteSelector.High)
+                    return RelocationType.HighByte;
+            }
+
             switch (role)
             {
                 case ExpressionRole.RelativeBranch:

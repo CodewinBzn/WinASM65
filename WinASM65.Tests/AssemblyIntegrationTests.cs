@@ -25,6 +25,74 @@ namespace WinASM65.Tests
         }
 
         [TestMethod]
+        public void Assembler_GardeLesEtiquettesLocalesDansLeModule()
+        {
+            // Le module doit pouvoir relire ses propres etiquettes, exportees ou non.
+            // Sans cette table, une reference a une etiquette definie trois lignes
+            // plus haut devenait une relocation que personne ne pouvait resoudre, et
+            // le linker annoncait qu'aucun module n'exportait le nom.
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string source = Path.Combine(temp.Path, "labels.asm");
+                File.WriteAllText(source,
+                    ".org $8000\n" +
+                    "Start:  jmp Boucle\n" +
+                    "Boucle: jmp Boucle\n" +
+                    "Pointeur = $1234\n" +
+                    "        .export Start\n");
+                AssemblyResult result = new AssemblerEngine().Assemble(source, Path.Combine(temp.Path, "labels.o"));
+
+                Assert.IsTrue(result.Success);
+                Assert.IsNotNull(result.Module, "un module qui declare un export est produit");
+
+                WinASM65.Modules.ModuleSymbol found = null;
+                for (int i = 0; i < result.Module.Symbols.Count; i++)
+                {
+                    if (result.Module.Symbols[i].Name == "Boucle")
+                        found = result.Module.Symbols[i];
+                }
+
+                Assert.IsNotNull(found, "Boucle est une etiquette du source, donc une etiquette du module");
+                Assert.AreEqual(3u, found.Offset, "Boucle est apres le jmp de trois octets");
+            }
+        }
+
+        [TestMethod]
+        public void Assembler_NEMetPasLesConstantesDansLaTableDesEtiquettes()
+        {
+            // Une constante est une valeur, pas une adresse. La mettre dans la table
+            // ferait qu'une relocation nommant un calcul aurait l'air de viser une
+            // etiquette, et gonflerait chaque module de ce qu'il compte de constantes.
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string source = Path.Combine(temp.Path, "const.asm");
+                File.WriteAllText(source, ".org $8000\nStart: rts\nPointeur = $1234\n        .export Start\n");
+                AssemblyResult result = new AssemblerEngine().Assemble(source, Path.Combine(temp.Path, "const.o"));
+
+                Assert.IsTrue(result.Success);
+                for (int i = 0; i < result.Module.Symbols.Count; i++)
+                    Assert.AreNotEqual("Pointeur", result.Module.Symbols[i].Name,
+                        "une constante n'est pas une etiquette");
+            }
+        }
+
+        [TestMethod]
+        public void Assembler_LEtiquetteExporteeNestPasRepeteeDansLaTableDesLocales()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string source = Path.Combine(temp.Path, "exp.asm");
+                File.WriteAllText(source, ".org $8000\nStart: rts\nAutre: nop\n        .export Start\n");
+                AssemblyResult result = new AssemblerEngine().Assemble(source, Path.Combine(temp.Path, "exp.o"));
+
+                Assert.IsTrue(result.Success);
+                Assert.AreEqual(1, result.Module.Exports.Count);
+                Assert.AreEqual(1, result.Module.Symbols.Count, "seule l'etiquette non exportee est locale");
+                Assert.AreEqual("Autre", result.Module.Symbols[0].Name);
+            }
+        }
+
+        [TestMethod]
         public void BinaryCombiner_PadsInputsAndRejectsMissingFiles()
         {
             using (TemporaryDirectory temp = new TemporaryDirectory())

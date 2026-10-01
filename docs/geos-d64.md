@@ -134,6 +134,15 @@ branche relative est deja correcte ou que le code bouge ou non, la page zero est
 la page zero a toute adresse de chargement, et une valeur immediate n'est pas
 une adresse.
 
+Un site d'un octet choisi par `<` ou `>` n'y figure pas non plus, et c'est une
+limite a nommer : le linker ecrit bien le bon octet a la bonne adresse de
+chargement, mais le kernal ne saura pas le corriger si l'application est chargee
+ailleurs, parce que rien dans la table ne lui dit qu'il existe. `lda #>Table`
+dans une application GEOS est donc un code correct au lien et faux au
+relocalisation. La parade est de poser la table en RAM par une reference de deux
+octets — c'est ce que fait le stub runtime de T11 — et de ne garder que des
+references 16 bits dans le code relocalisable.
+
 **Pas de stub auto-positionne.** Un 6502 ne peut pas lire son propre compteur de
 programme sans un `JSR` dont la cible est une adresse d'execution, et une
 constante d'assemblage n'en est pas une : le `JSR` pousserait la bonne adresse

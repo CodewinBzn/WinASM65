@@ -92,6 +92,14 @@ namespace WinASM65.Core
         private readonly RepeatBlockState _repeatState = new RepeatBlockState();
         private readonly Stack<SourceFileState> _fileStack = new Stack<SourceFileState>();
 
+        /// <summary>
+        /// The labels this unit defined, in the order it defined them. They are kept
+        /// apart from the symbol table because the symbol table also holds constants
+        /// and predefined hardware names, which are values and not addresses: only a
+        /// label can be the target of a relocation.
+        /// </summary>
+        private readonly List<SourceLabel> _sourceLabels = new List<SourceLabel>();
+
         private SourceFileState _currentFile;
         private bool _stopAssembling;
         private MacroDefinition _currentMacroBeingDefined;
@@ -295,6 +303,25 @@ namespace WinASM65.Core
                 image.AddImport(new ModuleImport(state.Imports[i].Symbol, state.Imports[i].ModuleName));
             }
 
+            // The labels the unit wrote down, minus the ones it exports, which are
+            // already in the table above. A label outside this segment is left out
+            // rather than clamped: this module carries one segment, and a name that
+            // points elsewhere has no offset to give. That is a real hole for a unit
+            // with several .org, and it is better to leave the label unresolved —
+            // which the linker reports by name — than to place it wrongly.
+            for (int i = 0; i < _sourceLabels.Count; i++)
+            {
+                string name = _sourceLabels[i].Name;
+                if (state.Exports.Contains(name))
+                    continue;
+
+                long offset = (_sourceLabels[i].Address - segment.OriginAddress) & 0xFFFF;
+                if (offset >= segment.OccupiedSize)
+                    continue;
+
+                image.AddSymbol(new ModuleSymbol(name, segmentIndex, (uint)offset));
+            }
+
             for (int i = 0; i < _emitter.Relocations.Count; i++)
                 image.AddRelocation(_emitter.Relocations[i]);
 
@@ -339,7 +366,36 @@ namespace WinASM65.Core
         private bool AddSourceSymbol(string label, long value, out string error)
         {
             bool replace = _predefinedNames.Remove(label);
-            return _scopeManager.AddSymbol(label, value, replace, out error);
+            if (!_scopeManager.AddSymbol(label, value, replace, out error))
+                return false;
+
+            // Recorded on success only: a rejected definition never held the address,
+            // so writing it here would put a label in the module that the source does
+            // not have. A redefinition replaces the entry, keeping the first position
+            // so the order a reader sees does not depend on how often a name recurs.
+            for (int i = 0; i < _sourceLabels.Count; i++)
+            {
+                if (string.Equals(_sourceLabels[i].Name, label, StringComparison.Ordinal))
+                {
+                    _sourceLabels[i] = new SourceLabel(label, value);
+                    return true;
+                }
+            }
+            _sourceLabels.Add(new SourceLabel(label, value));
+            return true;
+        }
+
+        /// <summary>A label as the source wrote it: a name and the address it sits at.</summary>
+        private sealed class SourceLabel
+        {
+            public string Name { get; private set; }
+            public long Address { get; private set; }
+
+            public SourceLabel(string name, long address)
+            {
+                Name = name;
+                Address = address;
+            }
         }
 
         public void ResolvePendingSymbols()
@@ -858,7 +914,7 @@ namespace WinASM65.Core
             if (exprRes == null || exprRes.IsConstant)
                 return;
 
-            RelocationType type = RelocationRecord.TypeFor(exprRes.Role, width);
+            RelocationType type = RelocationRecord.TypeFor(exprRes.Role, width, exprRes.Selector);
             if (type == RelocationType.None)
                 return;
 

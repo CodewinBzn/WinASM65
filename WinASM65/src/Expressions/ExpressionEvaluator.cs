@@ -43,10 +43,14 @@ namespace WinASM65.Expressions
             List<string> undefinedSymbols = new List<string>();
             List<SymbolReference> usedSymbols = new List<SymbolReference>();
             List<EvaluatorToken> evalTokens = new List<EvaluatorToken>();
+            ByteSelector selector = ByteSelector.None;
 
             for (int i = 0; i < tokens.Count; i++)
             {
                 Token token = tokens[i];
+                if (selector == ByteSelector.None && IsPrefixByteSelector(tokens, i))
+                    selector = token.Type == TokenType.LessThan ? ByteSelector.Low : ByteSelector.High;
+
                 switch (token.Type)
                 {
                     case TokenType.DecimalNumber:
@@ -99,15 +103,51 @@ namespace WinASM65.Expressions
             }
 
             // Undefined symbols abort before any reduction: a partially evaluated
-            // result is never returned. The symbols read are still reported.
+            // result is never returned. The symbols read are still reported, and so is
+            // the byte selector, because a relocation is exactly what happens next and
+            // it needs to know which half of the address it has to write.
             if (undefinedSymbols.Count > 0)
             {
                 return ExpressionResult.WithUndefinedSymbols(undefinedSymbols, ExpressionRole.None,
-                    usedSymbols, expression, location);
+                    usedSymbols, expression, location, selector);
             }
 
             Value result = EvaluateTokens(evalTokens);
-            return ExpressionResult.Success(result, ExpressionRole.None, usedSymbols, expression, location);
+            return ExpressionResult.Success(result, ExpressionRole.None, usedSymbols, expression, location, selector);
+        }
+
+        /// <summary>
+        /// Tells <c>&lt;label</c> and <c>&gt;label</c> from the binary <c>&lt;</c> and <c>&gt;</c>.
+        /// <para>
+        /// The rule is the one the evaluator already uses to decide unary from binary:
+        /// a comparison in prefix position, i.e. with nothing usable before it, is the
+        /// byte selector. Only the first one counts, since it is the outermost one.
+        /// </para>
+        /// </summary>
+        private static bool IsPrefixByteSelector(IReadOnlyList<Token> tokens, int index)
+        {
+            TokenType type = tokens[index].Type;
+            if (type != TokenType.LessThan && type != TokenType.GreaterThan)
+                return false;
+
+            if (index == 0)
+                return true;
+
+            Token previous = tokens[index - 1];
+            switch (previous.Type)
+            {
+                case TokenType.DecimalNumber:
+                case TokenType.HexNumber:
+                case TokenType.BinaryNumber:
+                case TokenType.CharacterConstant:
+                case TokenType.Identifier:
+                case TokenType.CloseParenthesis:
+                case TokenType.True:
+                case TokenType.False:
+                    return false;
+                default:
+                    return true;
+            }
         }
 
         private Value EvaluateTokens(List<EvaluatorToken> tokens)

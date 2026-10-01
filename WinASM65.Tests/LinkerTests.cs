@@ -250,6 +250,191 @@ namespace WinASM65.Tests
             StringAssert.Contains(Describe(result.Diagnostics), "Nothing to link");
         }
 
+        [TestMethod]
+        public void LeHautDUneAdresseCrossModuleEstEcritSurUnOctet()
+        {
+            // "lda #>Ptr" is the standard way to set up a pointer, and Ptr is almost
+            // never in the same module as the code that uses it. Before the byte
+            // selector existed the whole address reached the one-byte field and the
+            // link stopped with "does not fit on one octet" on the first label above
+            // page zero, which is most of them.
+            ModuleImage library = NewModule("lib");
+            library.AddSegment(NewSegment("DATA", new byte[] { 0 }, 0x9000));
+            library.AddExport(new ModuleExport("Ptr", 0, 0));
+
+            ModuleImage program = NewModule("main");
+            program.AddSegment(NewSegment("CODE", new byte[] { 0xA9, 0 }, 0xC000));
+            program.AddImport(new ModuleImport("Ptr", "lib"));
+            program.AddRelocation(Reloc(0, 1, 0xC001, 1, RelocationType.HighByte, "Ptr"));
+
+            LinkedImage image;
+            OperationResult result = new Linker().Link(
+                new List<ModuleImage> { library, program }, out image);
+
+            Assert.IsTrue(result.Success, Describe(result.Diagnostics));
+            int at = 0xC000 - image.OriginAddress + 1;
+            Assert.AreEqual(0x90, image.Data[at], "le haut de $9000 est $90");
+        }
+
+        [TestMethod]
+        public void LeBasDUneAdresseCrossModuleEstEcritSurUnOctet()
+        {
+            ModuleImage library = NewModule("lib");
+            library.AddSegment(NewSegment("DATA", new byte[] { 0 }, 0x9123));
+            library.AddExport(new ModuleExport("Ptr", 0, 0));
+
+            ModuleImage program = NewModule("main");
+            program.AddSegment(NewSegment("CODE", new byte[] { 0xA9, 0 }, 0xC000));
+            program.AddImport(new ModuleImport("Ptr", "lib"));
+            program.AddRelocation(Reloc(0, 1, 0xC001, 1, RelocationType.LowByte, "Ptr"));
+
+            LinkedImage image;
+            OperationResult result = new Linker().Link(
+                new List<ModuleImage> { library, program }, out image);
+
+            Assert.IsTrue(result.Success, Describe(result.Diagnostics));
+            int at = 0xC000 - image.OriginAddress + 1;
+            Assert.AreEqual(0x23, image.Data[at], "le bas de $9123 est $23");
+        }
+
+        [TestMethod]
+        public void LeSelecteurDOctetSuitLeDecalage()
+        {
+            // The selector is applied by the linker, after the shift, not before it:
+            // "lda #>Ptr" on an image moved to $D000 has to read $D0, not $90.
+            ModuleImage library = NewModule("lib");
+            library.AddSegment(NewSegment("DATA", new byte[] { 0 }, 0x9000));
+            library.AddExport(new ModuleExport("Ptr", 0, 0));
+
+            ModuleImage program = NewModule("main");
+            program.AddSegment(NewSegment("CODE", new byte[] { 0xA9, 0 }, 0xC000));
+            program.AddImport(new ModuleImport("Ptr", "lib"));
+            program.AddRelocation(Reloc(0, 1, 0xC001, 1, RelocationType.HighByte, "Ptr"));
+
+            LinkerOptions options = new LinkerOptions();
+            options.AddressShift = 0x2000;
+
+            LinkedImage image;
+            OperationResult result = new Linker().Link(
+                new List<ModuleImage> { library, program }, options, out image);
+
+            Assert.IsTrue(result.Success, Describe(result.Diagnostics));
+            int at = 0xE000 - image.OriginAddress + 1;
+            Assert.AreEqual(0xB0, image.Data[at], "le haut de $B000 est $B0");
+        }
+
+        [TestMethod]
+        public void UneEtiquetteLocaleEstResolueSansEtreExportee()
+        {
+            // Le cas que la table de symboles locaux a fait exister : une reference a
+            // une etiquette du meme module. L'assembleur enregistre une relocation la
+            // comme pour un import, donc sans cette table le lien echouait en
+            // annonçant qu'aucun module n'exportait le nom — alors qu'il etait dans le
+            // fichier, trois lignes plus haut.
+            ModuleImage module = NewModule("main");
+            module.AddSegment(NewSegment("CODE", new byte[] { 0x4C, 0, 0 }, 0xC000));
+            module.AddExport(new ModuleExport("Start", 0, 0));
+            module.AddSymbol(new ModuleSymbol("Boucle", 0, 3));
+            module.AddRelocation(Reloc(0, 1, 0xC001, 2, RelocationType.Abs16, "Boucle"));
+
+            LinkedImage image;
+            OperationResult result = new Linker().Link(new List<ModuleImage> { module }, out image);
+
+            Assert.IsTrue(result.Success, Describe(result.Diagnostics));
+            int at = 0xC000 - image.OriginAddress + 1;
+            Assert.AreEqual(0x03, image.Data[at], "Boucle est a $C000 + 3");
+            Assert.AreEqual(0xC0, image.Data[at + 1]);
+        }
+
+        [TestMethod]
+        public void UneEtiquetteLocaleSuitLeDecalage()
+        {
+            // Meme etiquette, image deplacee : la valeur vient de l'adresse placee du
+            // segment plus l'offset, donc elle suit le decalage comme un export.
+            ModuleImage module = NewModule("main");
+            module.AddSegment(NewSegment("CODE", new byte[] { 0x4C, 0, 0 }, 0xC000));
+            module.AddExport(new ModuleExport("Start", 0, 0));
+            module.AddSymbol(new ModuleSymbol("Boucle", 0, 3));
+            module.AddRelocation(Reloc(0, 1, 0xC001, 2, RelocationType.Abs16, "Boucle"));
+
+            LinkerOptions options = new LinkerOptions();
+            options.AddressShift = 0x2000;
+
+            LinkedImage image;
+            OperationResult result = new Linker().Link(new List<ModuleImage> { module }, options, out image);
+
+            Assert.IsTrue(result.Success, Describe(result.Diagnostics));
+            int at = 0xE000 - image.OriginAddress + 1;
+            Assert.AreEqual(0x03, image.Data[at], "Boucle est a $E000 + 3");
+            Assert.AreEqual(0xE0, image.Data[at + 1]);
+        }
+
+        [TestMethod]
+        public void UneEtiquetteLocaleDechaqueeChezDeuxModulesNeSeConfondentPas()
+        {
+            // Deux modules peuvent chacun avoir un "Boucle" prive. Les tables sont
+            // par module, donc aucune collision : c'est tout l'interet de ne pas les
+            // mettre dans une table globale comme les exports.
+            ModuleImage first = NewModule("un");
+            first.AddSegment(NewSegment("CODE", new byte[] { 0x4C, 0, 0 }, 0xC000));
+            first.AddExport(new ModuleExport("A", 0, 0));
+            first.AddSymbol(new ModuleSymbol("Boucle", 0, 1));
+            first.AddRelocation(Reloc(0, 1, 0xC001, 2, RelocationType.Abs16, "Boucle"));
+
+            ModuleImage second = NewModule("deux");
+            second.AddSegment(NewSegment("CODE", new byte[] { 0x4C, 0, 0 }, 0xD000));
+            second.AddExport(new ModuleExport("B", 0, 0));
+            second.AddSymbol(new ModuleSymbol("Boucle", 0, 2));
+            second.AddRelocation(Reloc(0, 1, 0xD001, 2, RelocationType.Abs16, "Boucle"));
+
+            LinkedImage image;
+            OperationResult result = new Linker().Link(
+                new List<ModuleImage> { first, second }, out image);
+
+            Assert.IsTrue(result.Success, Describe(result.Diagnostics));
+            int inFirst = 0xC000 - image.OriginAddress + 1;
+            int inSecond = 0xD000 - image.OriginAddress + 1;
+            Assert.AreEqual(0x01, image.Data[inFirst], "Boucle du premier module est a $C001");
+            Assert.AreEqual(0xC0, image.Data[inFirst + 1]);
+            Assert.AreEqual(0x02, image.Data[inSecond], "Boucle du second est a $D002");
+            Assert.AreEqual(0xD0, image.Data[inSecond + 1]);
+        }
+
+        [TestMethod]
+        public void UnSymboleNiExporteNiDefiniEstRefuseEnDisantLesDeuxCherches()
+        {
+            // Le message doit nommer les deux manieres d'y echouer, sinon il renvoie
+            // vers la table d'exports et laisse croire qu'il suffit d'exporter.
+            ModuleImage module = NewModule("main");
+            module.AddSegment(NewSegment("CODE", new byte[] { 0x4C, 0, 0 }, 0xC000));
+            module.AddRelocation(Reloc(0, 1, 0xC001, 2, RelocationType.Abs16, "Introuvable"));
+
+            LinkedImage image;
+            OperationResult result = new Linker().Link(new List<ModuleImage> { module }, out image);
+
+            Assert.IsFalse(result.Success);
+            string text = Describe(result.Diagnostics);
+            StringAssert.Contains(text, "Introuvable");
+            StringAssert.Contains(text, "no linked module exports");
+            StringAssert.Contains(text, "does not define");
+        }
+
+        [TestMethod]
+        public void UneEtiquetteLocaleQuiPointeUnSegmentAbsentEstRefuseeParSonNom()
+        {
+            ModuleImage module = NewModule("main");
+            module.AddSegment(NewSegment("CODE", new byte[] { 0x4C, 0, 0 }, 0xC000));
+            module.AddExport(new ModuleExport("Start", 0, 0));
+            module.AddSymbol(new ModuleSymbol("Boucle", 7, 0));
+            module.AddRelocation(Reloc(0, 1, 0xC001, 2, RelocationType.Abs16, "Boucle"));
+
+            LinkedImage image;
+            OperationResult result = new Linker().Link(new List<ModuleImage> { module }, out image);
+
+            Assert.IsFalse(result.Success);
+            StringAssert.Contains(Describe(result.Diagnostics), "Boucle");
+        }
+
         private static ModuleImage NewModule(string name)
         {
             ModuleImage module = new ModuleImage();

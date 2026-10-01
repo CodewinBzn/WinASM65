@@ -20,9 +20,14 @@ namespace WinASM65.Tests
     /// Ce que ces tests prouvent est limite et le dit : ils prouvent que le meme
     /// code source produit deux images correctes a deux adresses, et que chaque
     /// copie a ses relocations reecrites vers sa propre adresse. Ils ne prouvent
-    /// pas que le jeu s'execute, ni qu'un NES le demarre. Cela demanderait un
-    /// emulateur, et un test automatique ne peut pas l'affirmer a la place d'un
-    /// humain qui a vu tourner la machine.
+    /// pas que le jeu s'execute, ni qu'un NES le demarre : une comparaison
+    /// d'octets ne dit rien de ce que fait la machine.
+    /// </para>
+    /// <para>
+    /// La seconde moitie de la validation est dans
+    /// <see cref="NesEmulatorTests"/> : la ou ces tests s'arretent a l'octet,
+    /// celle-la publie chaque image en ROM iNES, la lance dans Mesen, et relit
+    /// les temoins que la machine a ecrits en RAM.
     /// </para>
     /// </summary>
     [TestClass]
