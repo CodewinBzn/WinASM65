@@ -102,6 +102,42 @@ namespace WinASM65.Modules
     }
 
     /// <summary>
+    /// A label the source wrote down, kept so that a reference to it can still be
+    /// resolved after the module is closed and reloaded.
+    /// <para>
+    /// The export table is not enough on its own, and the reason is a false
+    /// diagnostic rather than a missing feature at the source: an assembler records
+    /// a relocation for every reference that reads a name, including one the same
+    /// unit defines three lines above. With only exports carried across, such a
+    /// reference reaches the linker naming a label that plainly is in the file, and
+    /// the link stops with "which no linked module exports". Demanding
+    /// <c>.export Boucle</c> for a private loop label is a price with no payoff, so
+    /// the local names travel too.
+    /// </para>
+    /// <para>
+    /// Like an export, it holds a segment and an offset, never an address.
+    /// </para>
+    /// </summary>
+    public sealed class ModuleSymbol
+    {
+        public string Name { get; private set; }
+        public int SegmentIndex { get; private set; }
+        public uint Offset { get; private set; }
+
+        public ModuleSymbol(string name, int segmentIndex, uint offset)
+        {
+            Name = name ?? string.Empty;
+            SegmentIndex = segmentIndex;
+            Offset = offset;
+        }
+
+        public override string ToString()
+        {
+            return Name + " [" + SegmentIndex + "+" + Offset + "]";
+        }
+    }
+
+    /// <summary>
     /// A whole module, in memory: its segments, the names it publishes, the names
     /// it needs, and the sites whose value depends on a name.
     /// </summary>
@@ -111,6 +147,7 @@ namespace WinASM65.Modules
         private readonly List<ModuleExport> _exports = new List<ModuleExport>();
         private readonly List<ModuleImport> _imports = new List<ModuleImport>();
         private readonly List<RelocationRecord> _relocations = new List<RelocationRecord>();
+        private readonly List<ModuleSymbol> _symbols = new List<ModuleSymbol>();
 
         public string ModuleName { get; set; }
 
@@ -118,6 +155,13 @@ namespace WinASM65.Modules
         public IReadOnlyList<ModuleExport> Exports { get { return _exports; } }
         public IReadOnlyList<ModuleImport> Imports { get { return _imports; } }
         public IReadOnlyList<RelocationRecord> Relocations { get { return _relocations; } }
+
+        /// <summary>
+        /// The labels the source defined and did not export. Kept separate from the
+        /// exports on purpose: an exported name is global at link time and a local
+        /// one is not, and merging the two would make "who publishes this" unreadable.
+        /// </summary>
+        public IReadOnlyList<ModuleSymbol> Symbols { get { return _symbols; } }
 
         public ModuleImage()
         {
@@ -136,6 +180,30 @@ namespace WinASM65.Modules
         {
             if (export != null)
                 _exports.Add(export);
+        }
+
+        /// <summary>
+        /// Adds a local label, or replaces the one already recorded under that name.
+        /// <para>
+        /// Replacing is what a redefinition means: the source is the authority on its
+        /// own labels, and the last definition is the one that holds. A list would
+        /// keep both, and the first one would win at link time, which is the opposite
+        /// of what the source says.
+        /// </para>
+        /// </summary>
+        public void AddSymbol(ModuleSymbol symbol)
+        {
+            if (symbol == null)
+                return;
+            for (int i = 0; i < _symbols.Count; i++)
+            {
+                if (string.Equals(_symbols[i].Name, symbol.Name, StringComparison.Ordinal))
+                {
+                    _symbols[i] = symbol;
+                    return;
+                }
+            }
+            _symbols.Add(symbol);
         }
 
         public void AddImport(ModuleImport import)

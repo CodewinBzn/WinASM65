@@ -636,6 +636,95 @@ namespace WinASM65.Tests
 
         #endregion
 
+        #region The byte selector — <label and >label across modules
+
+        /// <summary>
+        /// <c>&lt;</c> and <c>&gt;</c> used to be applied by the evaluator and nowhere
+        /// else, which worked only while every symbol was known. An imported symbol is
+        /// not known until the linker resolves it, and the linker was handed a whole
+        /// address for a one-byte field. These cases pin where the selection is
+        /// decided and that it survives the unresolved path.
+        /// </summary>
+        [TestMethod]
+        public void Evaluator_RecordsTheByteSelector()
+        {
+            Dictionary<string, long> symbols = new Dictionary<string, long> { { "BASE", 0x1234 } };
+
+            Assert.AreEqual(ByteSelector.High, Evaluate(">BASE", new StaticResolver(symbols)).Selector,
+                ">BASE asks for the high byte");
+            Assert.AreEqual(ByteSelector.Low, Evaluate("<BASE", new StaticResolver(symbols)).Selector,
+                "<BASE asks for the low byte");
+            Assert.AreEqual(ByteSelector.None, Evaluate("BASE", new StaticResolver(symbols)).Selector,
+                "a bare symbol asks for the whole value");
+        }
+
+        [TestMethod]
+        public void Evaluator_KeepsTheByteSelectorOnAnUndefinedSymbol()
+        {
+            ExpressionResult result = new ExpressionEvaluator(new Tokenizer())
+                .Evaluate(">MISSING", new StaticResolver(new Dictionary<string, long>()));
+
+            Assert.IsFalse(result.IsResolved);
+            Assert.AreEqual(ByteSelector.High, result.Selector,
+                "the unresolved path is exactly where the selection has to survive");
+        }
+
+        [TestMethod]
+        public void Evaluator_DoesNotMistakeAComparisonForAByteSelector()
+        {
+            Dictionary<string, long> symbols = new Dictionary<string, long>
+                {
+                    { "A", 1 },
+                    { "B", 2 }
+                };
+
+            Assert.AreEqual(ByteSelector.None, Evaluate("A < B", new StaticResolver(symbols)).Selector,
+                "a comparison between two symbols selects no byte");
+            Assert.AreEqual(ByteSelector.None, Evaluate("A > B", new StaticResolver(symbols)).Selector,
+                "a comparison between two symbols selects no byte");
+        }
+
+        [TestMethod]
+        public void Relocation_UsesTheHighByteTypeForAHighByteOperand()
+        {
+            AssemblyResult result = Assemble(".org $8000\n  LDA #>EXTERNAL\n  .import EXTERNAL\n");
+
+            Assert.AreEqual(RelocationType.HighByte, Only(result).Type,
+                "the relocation has to carry the selection, not just the width");
+            Assert.AreEqual((byte)1, Only(result).Width, "the field is still one octet");
+        }
+
+        [TestMethod]
+        public void Relocation_UsesTheLowByteTypeForALowByteOperand()
+        {
+            AssemblyResult result = Assemble(".org $8000\n  LDA #<EXTERNAL\n  .import EXTERNAL\n");
+
+            Assert.AreEqual(RelocationType.LowByte, Only(result).Type);
+        }
+
+        [TestMethod]
+        public void Relocation_AByteDirectiveKeepsTheSelectorToo()
+        {
+            // ".byte >SYM" is how a table of pointers is built, so the directive path
+            // needs the same treatment as the instruction path.
+            AssemblyResult result = Assemble(".org $8000\nPOINTERS: .byte >EXTERNAL\n  .import EXTERNAL\n");
+
+            Assert.AreEqual(RelocationType.HighByte, Only(result).Type);
+        }
+
+        [TestMethod]
+        public void Relocation_AnImmediateWithoutSelectorStaysAnImmediate()
+        {
+            // The guard on the fix: "lda #SYM" on a one-byte field must still be
+            // refused at link time when SYM is out of range, not silently narrowed.
+            AssemblyResult result = Assemble(".org $8000\n  LDA #EXTERNAL\n  .import EXTERNAL\n");
+
+            Assert.AreEqual(RelocationType.Imm8, Only(result).Type,
+                "no selector means no narrowing");
+        }
+
+        #endregion
+
         private static string Nops(int count)
         {
             string text = string.Empty;

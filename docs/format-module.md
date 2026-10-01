@@ -49,6 +49,7 @@ sections est impose.
 [ Table des exports                 ]
 [ Table des imports                 ]
 [ Table des relocations             ]
+[ Table des symbols locaux   1.1+   ]
 [ Charge utile des segments         ]
 ```
 
@@ -59,8 +60,8 @@ sections est impose.
 | $00 | 4 | magic `W65` (0x57 0x36 0x35) |
 | $04 | 2 | version du format, majeure |
 | $06 | 2 | version du format, mineure |
-| $08 | 4 | position de la table des segments (octets) |
-| $0C | 4 | taille totale du fichier |
+| $08 | 4 | taille du bloc des tables |
+| $0C | 4 | position de la charge utile |
 
 Le magic vaut `W65`, et non `O65`, pour eviter toute confusion avec le
 format O65 de cc65. Un fichier commencant par `o65` **n'est pas** un module
@@ -153,6 +154,20 @@ Une implementation ne doit pas retenir un seul symbole par site : une
 expression comme `lda BASE+DELTA` lit deux symboles, et un linker qui n'en
 garde qu'un resolvra le site contre la mauvaise valeur.
 
+### 2.6 Table des symbols locaux (version 1.1)
+
+Meme forme qu'un export : un nom, un index de segment, un offset.
+
+| Champ | Taille | Role |
+|---|---|---|
+| nom | longueur + octets | etiquette definie par le source et **non** exportee |
+| index de segment | 4 | segment ou l'etiquette est posee |
+| offset | 4 | position dans ce segment |
+
+Elle est ecrite apres les relocations et n'est lue que si la version mineure
+le dit. Voir « Une etiquette nommee par une relocation est resolue, exportee ou
+non » plus bas pour ce qu'elle corrige.
+
 ### Types de relocation
 
 | Type | Signification |
@@ -175,6 +190,82 @@ donc dut nommer :
 Ces deux constats ne sont pas des corrections de code face a une doc
 fautive : le code n'existait pas. Ce sont des trous de la specification,
 signales ici parce que T3 et T4 dependront de la liste reelle des types.
+
+Deux types sont venus de la validation T7, qui execute enfin le code lie
+sur un NES emule :
+
+| Type | Signification | Pourquoi il a fallu l'inventer |
+|---|---|---|
+| `low8` | octet bas de la valeur resolue, `lda #<LABEL` | la selection d'octet ne peut pas etre appliquee a l'assemblage : sur un symbole importe, la valeur n'est pas encore connue |
+| `high8` | octet haut de la valeur resolue, `lda #>LABEL` | idem, et c'est le cas le plus courant : montage d'un pointeur sur deux octets |
+
+### Le selecteur d'octet
+
+`<` et `>` ne sont pas du sucre que l'evaluateur peut finir seul. L'evaluateur
+les applique quand il peut, c'est-a-dire quand le symbole est deja defini. Un
+symbole **importe** ne l'est pas : le resultat est « non resolu », et c'est
+justement le cas qui passe par le linker. Sans transport de la selection,
+l'adresse entiere arrivait dans un champ d'un octet et la lien echouait sur
+`lda #>pointeur` avec « does not fit on one octet » — pour toute etiquette au
+dessus de la page zero, donc presque toutes.
+
+La selection est donc decidee par l'evaluateur (`ExpressionResult.Selector`),
+conservee sur le chemin non resolu, et traduite en `low8` / `high8` par
+`RelocationRecord.TypeFor`. Le linker l'applique apres le decalage d'adresse,
+donc `lda #>pointeur` sur une image deplacee de $2000 lit bien le haut de
+l'adresse decalee.
+
+Deux limites, nommees plutot que laissees a decouvrir :
+
+- sur un champ de **deux** octets, la selection est ignoree. Un `.word >SYM`
+  est une autre erreur et il ne revient pas au linker de la deviner ;
+- seul le **premier** selecteur compte, donc le plus exterieur. Un
+  `#<(<SYM)` imbrique n'est pas un cas aoin on a un etat, et l'ecrire
+  supposerait d'evaluer l'expression, ce qu'on ne peut pas faire ici.
+
+### Une etiquette nommee par une relocation est resolue, exportee ou non
+
+L'assembleur enregistre une relocation pour **toute** reference qui lit un nom,
+y compris une etiquette que la meme unite definit trois lignes plus haut. Le
+module ne transporte que ses exports, donc une telle reference arrivait au linker
+nommant une etiquette qui etait pourtant dans le fichier, et le lien echouait
+sur « which no linked module exports ». Exporter `Boucle` pour une boucle
+privee n'achetait rien et LearnASM65 ne pouvait pas l'expliquer.
+
+Le `.w65` est donc passe en **version 1.1** et porte une **table de symbols
+locaux** : nom, segment, offset. Comme un export, jamais une adresse. Le linker
+resout une relocation dans les exports d'abord, puis dans la table du module qui
+possede la relocation — l'ordre ne compte que pour un nom qui est les deux, donc
+un programme contradictoire, et resoudre un import comme un import est la lecture
+qui colle au reste.
+
+Trois consequences, toutes testees :
+
+- une reference a une etiquette locale se resout, **et suit le decalage** : la
+  valeur est l'adresse placee du segment plus l'offset, donc elle bouge avec
+  l'image comme un export ;
+- deux modules peuvent chacun avoir un `Boucle` prive : les tables sont par
+  module, aucune collision ;
+- quand le nom n'est **ni** exporte **ni** defini, le message nomme les deux
+  recherches, pour ne pas renvoyer vers la seule table d'exports.
+
+L'assembleur ne met dans cette table que des **etiquettes**. Une constante
+(`Pointeur = $1234`) est une valeur et pas une adresse : la mettre ferait qu'une
+relocation nommant un calcul semblerait viser une etiquette. Une etiquette
+exportee n'y est pas non plus, elle est deja dans la table d'exports.
+
+**Compatibilite.** La table de symbols est la derniere des tables et c'est la
+version mineure qui dit si elle est la : un lecteur 1.0 s'arrete apres les
+relocations et l'ignore, un fichier 1.0 se lit avec une table vide plutot qu'avec
+du bruit lu dans les donnees du segment. Un module ecrit par l'assembleur actuel
+se lie donc avec un linker plus ancien, moins les etiquettes locales — et une
+reference a une etiquette locale dans un tel fichier echoue pour une raison
+juste : le nom n'y est pas.
+
+Une limite reste : `BuildModule` ne produit qu'un segment par unite, donc une
+etiquette posee hors de ce segment — une unite avec plusieurs `.org` — n'a pas
+d'offset a donner et n'est pas enregistree. La reference echoue alors en la
+nommant, ce qui vaut mieux qu'une place au hasard.
 
 ### Etat de l'implementation apres T1/T2
 

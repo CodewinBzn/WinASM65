@@ -38,7 +38,7 @@ namespace WinASM65.Directives
                 bufferOffset,
                 (ushort)(context.Emitter.CurrentAddress - width),
                 width,
-                RelocationRecord.TypeFor(res.Role, width),
+                RelocationRecord.TypeFor(res.Role, width, res.Selector),
                 symbols,
                 res.Location,
                 res.Expression);

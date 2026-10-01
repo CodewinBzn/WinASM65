@@ -205,7 +205,136 @@ namespace WinASM65.Tests
                 new List<string> { "Tbl" }, new Core.SourceLocation("a.asm", 5), "Tbl"));
             image.AddRelocation(new RelocationRecord(0, string.Empty, 12, 0xFFFF, 1, RelocationType.Rel8,
                 new List<string> { "Loop" }, new Core.SourceLocation("a.asm", 6), "Loop"));
+            image.AddSymbol(new ModuleSymbol("Boucle", 0, 3));
+            image.AddSymbol(new ModuleSymbol("Fixe", 1, 9));
             return image;
+        }
+
+        [TestMethod]
+        public void AllerRetour_LesEtiquettesLocalesReviennentIntacles()
+        {
+            ModuleImage read = RoundTrip(BuildImage());
+
+            Assert.AreEqual(2, read.Symbols.Count, "les deux etiquettes locales reviennent");
+            Assert.AreEqual("Boucle", read.Symbols[0].Name);
+            Assert.AreEqual(0, read.Symbols[0].SegmentIndex);
+            Assert.AreEqual(3u, read.Symbols[0].Offset);
+            Assert.AreEqual("Fixe", read.Symbols[1].Name, "une etiquette dans un segment bss aussi");
+            Assert.AreEqual(1, read.Symbols[1].SegmentIndex);
+            Assert.AreEqual(9u, read.Symbols[1].Offset);
+        }
+
+        [TestMethod]
+        public void UneRedefinitionLocaleNEcritPasUneSecondeEntree()
+        {
+            // Deux entreites sous le meme nom feraient que la premiere gagne au lien,
+            // alors que la derniere definition est celle que le source dit.
+            ModuleImage image = new ModuleImage();
+            image.AddSegment(new ModuleSegment("CODE", new byte[8], SegmentKind.Ro, 1, 0));
+            image.AddSymbol(new ModuleSymbol("Passe", 0, 1));
+            image.AddSymbol(new ModuleSymbol("Passe", 0, 5));
+
+            ModuleImage read = RoundTrip(image);
+
+            Assert.AreEqual(1, read.Symbols.Count);
+            Assert.AreEqual(5u, read.Symbols[0].Offset, "c'est la derniere definition qui tient");
+        }
+
+        [TestMethod]
+        public void UnModuleVersion10SeLitSansTableDeSymboles()
+        {
+            // La compatibilite ascendante est le pari de la version 1.1 : un fichier
+            // ecrit avant la table doit encore se lire, et sa table doit etre vide
+            // plutot que remplie de bruit lu dans les donnees du segment.
+            byte[] older = SerializeAs10("CODE", new byte[] { 0xA9, 0x01, 0x60 }, 0xC000);
+
+            ModuleImage read;
+            string moduleName;
+            Core.OperationResult result = W65Format.TryRead(older, "ancien.w65", out read, out moduleName);
+
+            Assert.IsTrue(result.Success, Describe(result.Diagnostics));
+            Assert.AreEqual(0, read.Symbols.Count, "un fichier 1.0 n'a pas d'etiquettes locales");
+            CollectionAssert.AreEqual(new byte[] { 0xA9, 0x01, 0x60 }, read.Segments[0].Data,
+                "les donnees du segment sont intactes");
+            Assert.AreEqual(1, read.Exports.Count, "les autres tables se lisent toujours");
+            Assert.AreEqual("Start", read.Exports[0].Name);
+        }
+
+        /// <summary>
+        /// Writes a version 1.0 module: magic, 1.0, the four tables a 1.0 file had,
+        /// then the payload. Hand-rolled because the only honest way to test the
+        /// reader's version gate is to hand it a file the current writer cannot
+        /// produce any more, and cutting a 1.1 file down would leave the payload
+        /// offsets in the segment table pointing four bytes too far.
+        /// <para>
+        /// One RO segment, one export, no imports and no relocations: enough to prove
+        /// the reader stops at the relocations instead of walking into the payload.
+        /// </para>
+        /// </summary>
+        private static byte[] SerializeAs10(string segmentName, byte[] data, ushort origin)
+        {
+            MemoryStream tables = new MemoryStream();
+            WriteU32(tables, 1);
+            WriteString(tables, segmentName);
+            WriteU32(tables, (uint)data.Length);
+            WriteU32(tables, 1);
+            tables.WriteByte((byte)SegmentKind.Ro);
+            tables.WriteByte(0);
+            WriteU32(tables, 0);                    // file offset, patched below
+            WriteU16(tables, origin);
+
+            WriteU32(tables, 1);                    // one export
+            WriteString(tables, "Start");
+            WriteU32(tables, 0);
+            WriteU32(tables, 0);
+
+            WriteU32(tables, 0);                    // no import
+            WriteU32(tables, 0);                    // no relocation
+            WriteU32(tables, 0);                    // and, being 1.0, no symbol table
+
+            byte[] tableBytes = tables.ToArray();
+            uint payloadBase = (uint)(16 + tableBytes.Length);
+            // The segment table entry for the one segment starts after the count.
+            WriteU32(tableBytes, 4 + 4 + segmentName.Length + 4 + 4 + 2, payloadBase);
+
+            MemoryStream file = new MemoryStream();
+            file.Write(new byte[] { (byte)'W', (byte)'6', (byte)'5', 0x00 }, 0, 4);
+            WriteU16(file, 1);
+            WriteU16(file, 0);
+            WriteU32(file, (uint)tableBytes.Length);
+            WriteU32(file, payloadBase);
+            file.Write(tableBytes, 0, tableBytes.Length);
+            file.Write(data, 0, data.Length);
+            return file.ToArray();
+        }
+
+        private static void WriteString(Stream stream, string value)
+        {
+            byte[] bytes = System.Text.Encoding.UTF8.GetBytes(value);
+            WriteU32(stream, (uint)bytes.Length);
+            stream.Write(bytes, 0, bytes.Length);
+        }
+
+        private static void WriteU16(Stream stream, ushort value)
+        {
+            stream.WriteByte((byte)(value & 0xFF));
+            stream.WriteByte((byte)((value >> 8) & 0xFF));
+        }
+
+        private static void WriteU32(Stream stream, uint value)
+        {
+            stream.WriteByte((byte)(value & 0xFF));
+            stream.WriteByte((byte)((value >> 8) & 0xFF));
+            stream.WriteByte((byte)((value >> 16) & 0xFF));
+            stream.WriteByte((byte)((value >> 24) & 0xFF));
+        }
+
+        private static void WriteU32(byte[] data, int offset, uint value)
+        {
+            data[offset] = (byte)(value & 0xFF);
+            data[offset + 1] = (byte)((value >> 8) & 0xFF);
+            data[offset + 2] = (byte)((value >> 16) & 0xFF);
+            data[offset + 3] = (byte)((value >> 24) & 0xFF);
         }
 
         private static ModuleImage RoundTrip(ModuleImage image)

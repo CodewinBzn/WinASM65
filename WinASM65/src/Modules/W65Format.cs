@@ -7,7 +7,13 @@
 //   [ export table    ]
 //   [ import table    ]
 //   [ relocation table]
+//   [ symbol table    ]  version 1.1 and later
 //   [ segment data    ]
+//
+// The symbol table sits last among the tables and is recognised by the version,
+// not by its position being assumed. A 1.0 reader stops after the relocations and
+// ignores it, which is exactly the compatibility wanted: a module written by the
+// current assembler still links with an older one, minus the local labels.
 //
 // The magic is W65, never o65: this is not a cc65 O65 object, and confusing
 // the two would be worse than having no format at all.
@@ -30,7 +36,16 @@ namespace WinASM65.Modules
 
         public const int HeaderSize = 16;
         public const ushort VersionMajor = 1;
-        public const ushort VersionMinor = 0;
+
+        /// <summary>
+        /// 1.1 adds the table of local labels. 1.0 files read back with an empty
+        /// table, and their relocations naming a local label still fail — which is
+        /// the honest outcome: the name really is not in that file.
+        /// </summary>
+        public const ushort VersionMinor = 1;
+
+        /// <summary>First minor version whose files carry the local symbol table.</summary>
+        public const ushort VersionMinorWithSymbols = 1;
 
         public const byte RelocAbs16 = 2;
         public const byte RelocImm8 = 3;
@@ -94,6 +109,7 @@ namespace WinASM65.Modules
             WriteExportTable(measure, image.Exports);
             WriteImportTable(measure, image.Imports);
             WriteRelocationTable(measure, image.Relocations);
+            WriteSymbolTable(measure, image.Symbols);
             uint tablesLength = (uint)measure.Length;
             uint payloadBase = (uint)(HeaderSize + tablesLength);
 
@@ -114,6 +130,7 @@ namespace WinASM65.Modules
             WriteExportTable(body, image.Exports);
             WriteImportTable(body, image.Imports);
             WriteRelocationTable(body, image.Relocations);
+            WriteSymbolTable(body, image.Symbols);
             byte[] tables = body.ToArray();
             byte[] bytes = payload.ToArray();
 
@@ -187,8 +204,22 @@ namespace WinASM65.Modules
             }
         }
 
-        // ----------------------------------------------------------------- read
+        /// <summary>
+        /// The labels the module defined and did not export. A relocation may name
+        /// one of them, so the linker has to be able to read it back.
+        /// </summary>
+        private static void WriteSymbolTable(Stream stream, IReadOnlyList<ModuleSymbol> symbols)
+        {
+            WriteU32(stream, (uint)symbols.Count);
+            for (int i = 0; i < symbols.Count; i++)
+            {
+                WriteString(stream, symbols[i].Name);
+                WriteU32(stream, (uint)symbols[i].SegmentIndex);
+                WriteU32(stream, symbols[i].Offset);
+            }
+        }
 
+        // ----------------------------------------------------------------- read
         /// <summary>Reads a .w65 file. Returns null and a diagnostic if the file is not one.</summary>
         public static OperationResult TryRead(string path, out ModuleImage image, out string moduleName)
         {
@@ -241,6 +272,18 @@ namespace WinASM65.Modules
 
             try
             {
+                // The magic is three bytes and a zero, then the two version fields.
+                int versionCursor = Magic.Length + 1;
+                ushort versionMajor = ReadU16(data, ref versionCursor);
+                ushort versionMinor = ReadU16(data, ref versionCursor);
+                if (versionMajor != VersionMajor)
+                {
+                    diagnostics.Add(new Diagnostic(new SourceLocation(path, 0),
+                        "'" + path + "' is a .w65 module of version " + versionMajor + "." +
+                        versionMinor + ", and this build reads version " + VersionMajor + ".x."));
+                    return new OperationResult(false, diagnostics);
+                }
+
                 int cursor = HeaderSize;
                 ModuleImage result = new ModuleImage();
 
@@ -321,6 +364,21 @@ namespace WinASM65.Modules
                         (RelocationType)type,
                         string.IsNullOrEmpty(target) ? new List<string>() : new List<string> { target },
                         new SourceLocation(sourceFile, (int)sourceLine), string.Empty));
+                }
+
+                // Read only when the version promises the table. A 1.0 file simply has
+                // none, and reading past its relocation table would land in the segment
+                // payload and invent labels out of code bytes.
+                if (versionMinor >= VersionMinorWithSymbols)
+                {
+                    uint symbolCount = ReadU32(data, ref cursor);
+                    for (uint i = 0; i < symbolCount; i++)
+                    {
+                        string name = ReadString(data, ref cursor);
+                        uint segment = ReadU32(data, ref cursor);
+                        uint offset = ReadU32(data, ref cursor);
+                        result.AddSymbol(new ModuleSymbol(name, (int)segment, offset));
+                    }
                 }
 
                 image = result;

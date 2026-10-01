@@ -140,6 +140,17 @@ namespace WinASM65.Modules
                 return "<tr><td>" + Escape(import.Name) + "</td><td>" + provider + "</td></tr>\n";
             }, "<tr><th>name</th><th>expected from</th></tr>\n");
 
+            // The local labels are listed too, because the question they answer is
+            // exactly the one the linker used to leave open: is that name in this
+            // module or not? A view that showed only the exports answered "no" for a
+            // label sitting in the file.
+            Symbols(html, "Local labels", image.Symbols.Count, delegate(int i)
+            {
+                ModuleSymbol symbol = image.Symbols[i];
+                return "<tr><td>" + Escape(symbol.Name) + "</td><td>" + symbol.SegmentIndex
+                    + "</td><td>" + symbol.Offset + "</td></tr>\n";
+            }, "<tr><th>name</th><th>segment</th><th>offset</th></tr>\n");
+
             html.Append("<h2>Relocations</h2>\n");
             if (image.Relocations.Count == 0)
             {
@@ -389,6 +400,7 @@ namespace WinASM65.Modules
             html.Append("<h" + level + ">" + Escape(title) + "</h" + level + ">\n");
             html.Append("<p class=\"sub\">" + image.Segments.Count + " segment(s), "
                 + image.Exports.Count + " export(s), " + image.Imports.Count + " import(s), "
+                + image.Symbols.Count + " local label(s), "
                 + image.Relocations.Count + " relocation(s)</p>\n");
         }
 
