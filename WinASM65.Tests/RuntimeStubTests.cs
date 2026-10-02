@@ -14,6 +14,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinASM65.Core;
+using WinASM65.Execution;
 using WinASM65.Linking;
 using WinASM65.Modules;
 using WinASM65.Output;
@@ -65,7 +66,7 @@ namespace WinASM65.Tests
             RuntimeBlock block = RuntimeBlock.Build(Link(code, 0x8000), Options(0x2000, 0x4000), diagnostics);
             Assert.AreEqual(0, diagnostics.Count, Describe(diagnostics));
 
-            TestCpu6502 cpu = Run(block);
+            Cpu6502Core cpu = Run(block);
 
             for (int i = 0; i < code.Length; i++)
                 Assert.AreEqual(code[i], cpu[(ushort)(0x4000 + i)], "l'octet " + i + " du bloc");
@@ -86,7 +87,7 @@ namespace WinASM65.Tests
             Assert.AreEqual(0, diagnostics.Count, Describe(diagnostics));
             Assert.AreEqual(0x01, block.Data[block.StubLength + 8], "un site a decaler");
 
-            TestCpu6502 cpu = Run(block);
+            Cpu6502Core cpu = Run(block);
 
             Assert.AreEqual(0x00, cpu[0x4001], "l'octet bas de la reference a suivi le bloc");
             Assert.AreEqual(0x40, cpu[0x4002], "et l'octet haut aussi");
@@ -109,7 +110,7 @@ namespace WinASM65.Tests
             Assert.AreEqual(0, diagnostics.Count, Describe(diagnostics));
             Assert.AreEqual(0x03, block.Data[block.StubLength + 8], "trois sites a decaler");
 
-            TestCpu6502 cpu = Run(block);
+            Cpu6502Core cpu = Run(block);
 
             Assert.AreEqual(0x40, cpu[0x4002], "premiere reference");
             Assert.AreEqual(0x40, cpu[0x4005], "deuxieme reference");
@@ -131,7 +132,7 @@ namespace WinASM65.Tests
             Assert.AreEqual(0xFF, block.Data[block.StubLength + 2], "4000 - 9001, en complement a deux");
             Assert.AreEqual(0xAF, block.Data[block.StubLength + 3]);
 
-            TestCpu6502 cpu = Run(block);
+            Cpu6502Core cpu = Run(block);
 
             Assert.AreEqual(0x00, cpu[0x4001], "l'octet bas a suivi la baisse, retenue comprise");
             Assert.AreEqual(0x40, cpu[0x4002], "et l'octet haut avec elle");
@@ -151,7 +152,7 @@ namespace WinASM65.Tests
             Assert.AreEqual(0, diagnostics.Count, Describe(diagnostics));
             Assert.AreEqual(0x4002, block.EntryAddress, "l'entree est le bloc decale de son offset");
 
-            TestCpu6502 cpu = Run(block);
+            Cpu6502Core cpu = Run(block);
             Assert.AreEqual(0x42, cpu.A, "c'est la routine du point d'entree qui a rendu la main");
         }
 
@@ -217,7 +218,7 @@ namespace WinASM65.Tests
             Assert.AreEqual(0, diagnostics.Count, Describe(diagnostics));
             Assert.IsTrue(block.CodedLength < 30, "600 octets tiennent en " + block.CodedLength);
 
-            TestCpu6502 cpu = Run(block);
+            Cpu6502Core cpu = Run(block);
 
             for (int i = 0; i < code.Length; i++)
                 Assert.AreEqual(code[i], cpu[(ushort)(0x4000 + i)], "l'octet " + i);
@@ -242,7 +243,7 @@ namespace WinASM65.Tests
             RuntimeBlock block = RuntimeBlock.Build(Link(code, 0x8000), options, diagnostics);
             Assert.AreEqual(0, diagnostics.Count, Describe(diagnostics));
 
-            TestCpu6502 cpu = Run(block);
+            Cpu6502Core cpu = Run(block);
             for (int i = 0; i < code.Length; i++)
                 Assert.AreEqual(code[i], cpu[(ushort)(0x4000 + i)], "l'octet " + i);
         }
@@ -270,9 +271,9 @@ namespace WinASM65.Tests
         /// </summary>
         private const ushort Caller = 0x00FE;
 
-        private static TestCpu6502 Run(RuntimeBlock block)
+        private static Cpu6502Core Run(RuntimeBlock block)
         {
-            TestCpu6502 cpu = new TestCpu6502();
+            Cpu6502Core cpu = new Cpu6502Core();
             cpu.Load(block.StubAddress, block.Data);
 
             cpu[Caller] = 0x20;

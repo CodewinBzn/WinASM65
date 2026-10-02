@@ -1,6 +1,7 @@
 using System;
+using System.Collections.Generic;
 
-namespace WinASM65.Tests
+namespace WinASM65.Execution
 {
     /// <summary>
     /// A small NMOS 6502, used to run the code the toolchain generates.
@@ -12,17 +13,70 @@ namespace WinASM65.Tests
     /// produced" and "this code relocates the image".
     /// </para>
     /// <para>
-    /// It is a test fixture, not a product: it implements the documented
-    /// instruction set and refuses anything else, and decimal mode is refused
-    /// rather than faked, because no generated stub uses it.
+    /// It started as a test fixture and is now the toolchain's own deterministic
+    /// machine: a debugger can be pointed at it without an emulator being
+    /// installed, and it answers the same questions an emulator answers — the
+    /// registers, the memory, why it stopped. What it still refuses is what no
+    /// generated code uses: the documented instruction set and nothing else, and
+    /// decimal mode refused rather than faked.
+    /// </para>
+    /// <para>
+    /// It executes the processor and nothing else. There is no video, no timing
+    /// and no hardware, so a capability that a user interface can switch on has to
+    /// be answered by the type that owns the machine, not by this one.
     /// </para>
     /// </summary>
-    internal sealed class TestCpu6502
+    public sealed class Cpu6502Core
     {
         public const ushort IrqVector = 0xFFFE;
         public const ushort ResetVector = 0xFFFC;
+        public const ushort NmiVector = 0xFFFA;
 
-        private readonly byte[] _ram = new byte[0x10000];
+        /// <summary>
+        /// What taking an interrupt costs: seven cycles, the same as the BRK
+        /// instruction, because on the processor they are the same sequence.
+        /// </summary>
+        public const int InterruptCycles = 7;
+
+        private readonly ICpuBus _bus;
+        private readonly HashSet<ushort> _breakpoints = new HashSet<ushort>();
+        private readonly WatchpointSet _watchpoints = new WatchpointSet();
+
+        // Set only while an instruction is executing, so a debugger reading memory
+        // through the bus is never reported as an access the processor made.
+        private bool _executing;
+        private ExecutionStop _watchHit;
+
+        // What the instruction being executed did to the cycle count beyond its
+        // base cost. Both are cleared before every instruction, so a branch cannot
+        // charge a penalty to the instruction after it.
+        private bool _pageCrossed;
+        private bool _branchTaken;
+
+        /// <summary>A machine over flat, writable 64K of memory.</summary>
+        public Cpu6502Core()
+            : this(new RamBus())
+        {
+        }
+
+        /// <summary>A machine over a bus the caller supplies.</summary>
+        public Cpu6502Core(ICpuBus bus)
+        {
+            if (bus == null)
+                throw new ArgumentNullException("bus");
+            _bus = bus;
+            Reset();
+        }
+
+        /// <summary>
+        /// The memory this machine runs on. A debugger reads and writes through it
+        /// directly; doing so is not an access the processor made, so it never
+        /// triggers a watchpoint.
+        /// </summary>
+        public ICpuBus Bus
+        {
+            get { return _bus; }
+        }
 
         public ushort PC { get; set; }
         public byte A { get; set; }
@@ -37,13 +91,59 @@ namespace WinASM65.Tests
         public bool Overflow { get; set; }
         public bool Negative { get; set; }
 
-        public long Instructions { get; private set; }
-
-        public TestCpu6502()
+        /// <summary>
+        /// The status register as one byte: the unused bit set, the break bit
+        /// clear. A caller setting it sets the six flags and ignores both of those,
+        /// which is what the processor does with a byte it pulls.
+        /// </summary>
+        public byte Status
         {
-            Reset();
+            get { return Flags(false); }
+            set { SetFlags(value); }
         }
 
+        public long Instructions { get; private set; }
+
+        /// <summary>
+        /// Cycles executed since the last reset: the base cost of each
+        /// instruction, plus a cycle for a branch that was taken and a cycle for
+        /// each page an access crossed. It is how a caller tells a machine that
+        /// ran from one that stood still.
+        /// </summary>
+        public long Cycles { get; private set; }
+
+        /// <summary>
+        /// The base cost of an opcode, in cycles, before anything the instruction
+        /// did while running. What a machine actually spent is in
+        /// <see cref="Cycles"/>.
+        /// </summary>
+        public static int GetBaseCycles(byte opcode)
+        {
+            return Cpu6502CycleTable.Base(opcode);
+        }
+
+        /// <summary>
+        /// Everything a debugger panel shows, read at one instant.
+        /// <para>
+        /// Taken before a run rather than after: a caller that renders a machine
+        /// which is moving wants the state it can show now, and the reason it
+        /// stopped says which instruction the next read should be about.
+        /// </para>
+        /// </summary>
+        public ProcessorState CaptureState()
+        {
+            return new ProcessorState(PC, A, X, Y, SP, Status, Cycles, Instructions);
+        }
+
+        /// <summary>
+        /// Puts the processor back at the reset vector with empty registers.
+        /// <para>
+        /// What the debugger asked to be told about survives: the machine is in a
+        /// new state, but the breakpoints and watchpoints belong to the user, and
+        /// losing them because a program jumped to its own entry point would be
+        /// the machine deciding what the user asked for.
+        /// </para>
+        /// </summary>
         public void Reset()
         {
             SP = 0xFD;
@@ -57,13 +157,14 @@ namespace WinASM65.Tests
             X = 0;
             Y = 0;
             Instructions = 0;
+            Cycles = 0;
             PC = Peek16(ResetVector);
         }
 
         public byte this[ushort address]
         {
-            get { return _ram[address]; }
-            set { _ram[address] = value; }
+            get { return _bus.Read(address); }
+            set { _bus.Write(address, value); }
         }
 
         public void Load(ushort address, byte[] data)
@@ -71,7 +172,7 @@ namespace WinASM65.Tests
             if (data == null)
                 return;
             for (int i = 0; i < data.Length; i++)
-                _ram[(ushort)(address + i)] = data[i];
+                _bus.Write((ushort)(address + i), data[i]);
         }
 
         public ushort Peek16(ushort address)
@@ -79,29 +180,29 @@ namespace WinASM65.Tests
             // The 6501 bug wrapped the pointer inside page zero. Nothing
             // generated here needs it, and reproducing it silently would make a
             // passing test mean something slightly weaker than it looks.
-            return (ushort)(_ram[address] | (_ram[(ushort)(address + 1)] << 8));
+            return (ushort)(_bus.Read(address) | (_bus.Read((ushort)(address + 1)) << 8));
         }
 
         /// <summary>Places a routine and its end address, the way a machine would.</summary>
         public void LoadProgram(ushort address, byte[] code, ushort returnAddress)
         {
             Load(address, code);
-            _ram[ResetVector] = (byte)(address & 0xFF);
-            _ram[(ushort)(ResetVector + 1)] = (byte)(address >> 8);
+            _bus.Write(ResetVector, (byte)(address & 0xFF));
+            _bus.Write((ushort)(ResetVector + 1), (byte)(address >> 8));
             Push16(returnAddress);
             PC = address;
         }
 
         public void Push(byte value)
         {
-            _ram[SP] = value;
+            _bus.Write(SP, value);
             SP--;
         }
 
         public byte Pull()
         {
             SP++;
-            return _ram[SP];
+            return _bus.Read(SP);
         }
 
         public void Push16(ushort value)
@@ -117,11 +218,123 @@ namespace WinASM65.Tests
             return (ushort)(low | (high << 8));
         }
 
+        // ------------------------------------------------------------------ stops
+
+        /// <summary>
+        /// Stops execution at the next address whose execution the debugger asked
+        /// to be told about. False when the address was already being watched:
+        /// that is a state already reached, not a failure.
+        /// </summary>
+        public bool AddBreakpoint(ushort address)
+        {
+            return _breakpoints.Add(address);
+        }
+
+        public bool RemoveBreakpoint(ushort address)
+        {
+            return _breakpoints.Remove(address);
+        }
+
+        public void ClearBreakpoints()
+        {
+            _breakpoints.Clear();
+        }
+
+        public bool HasBreakpoint(ushort address)
+        {
+            return _breakpoints.Contains(address);
+        }
+
+        public int BreakpointCount
+        {
+            get { return _breakpoints.Count; }
+        }
+
+        /// <summary>
+        /// Adds a watchpoint over a straight range of addresses. False when a
+        /// watchpoint of the same kind already covers the range.
+        /// </summary>
+        public bool AddWatchpoint(WatchpointKind kind, ushort start, ushort end)
+        {
+            return _watchpoints.Add(new Watchpoint(kind, start, end));
+        }
+
+        public bool RemoveWatchpoint(WatchpointKind kind, ushort start, ushort end)
+        {
+            return _watchpoints.Remove(kind, start, end);
+        }
+
+        public void ClearWatchpoints()
+        {
+            _watchpoints.Clear();
+        }
+
+        /// <summary>The watchpoints in effect, in the order they were added.</summary>
+        public IList<Watchpoint> Watchpoints
+        {
+            get { return _watchpoints.Items; }
+        }
+
+        // ------------------------------------------------------------------ running
+
+        /// <summary>
+        /// Raises the interrupt line, which is what a caller pressing IRQ or
+        /// clicking an interrupt request in a user interface means.
+        /// <para>
+        /// The processor masks it while the interrupt disable flag is set, and
+        /// refusing to mask it here would be the emulator deciding something the
+        /// program gets to decide for itself: a program that has turned
+        /// interrupts off would still be interrupted.
+        /// </para>
+        /// </summary>
+        public void Interrupt()
+        {
+            if (InterruptDisable)
+                return;
+            EnterInterrupt(IrqVector, false);
+        }
+
+        /// <summary>
+        /// Raises the non-maskable interrupt line.
+        /// <para>
+        /// Nothing masks this one, which is the entire reason it exists: an
+        /// interrupt a program cannot refuse is the only one a machine can be
+        /// trusted to take, and a core that let the flag hide it would be a
+        /// machine whose crashes it could explain away.
+        /// </para>
+        /// </summary>
+        public void NonMaskableInterrupt()
+        {
+            EnterInterrupt(NmiVector, false);
+        }
+
+        /// <summary>
+        /// Runs the software break sequence: the same one a BRK instruction runs,
+        /// but through the vector rather than from a byte in the program.
+        /// <para>
+        /// The return address pushed is the address of the next instruction, which
+        /// is what a caller that pressed the key expects to come back to.
+        /// </para>
+        /// </summary>
+        public void Break()
+        {
+            EnterInterrupt(IrqVector, true);
+        }
+
+        private void EnterInterrupt(ushort vector, bool withBreak)
+        {
+            Push16(PC);
+            Push(Flags(withBreak));
+            InterruptDisable = true;
+            PC = Peek16(vector);
+            Cycles += InterruptCycles;
+        }
+
         /// <summary>
         /// Runs until the program branches out through a jump to this address,
         /// or until the step budget runs out.
         /// </summary>
-        public void Run(ushort stopAt, long maxSteps = 200000)
+        public void Run(ushort stopAt, long maxSteps = ExecutionOptions.DefaultMaxSteps)
         {
             for (long i = 0; i < maxSteps; i++)
             {
@@ -134,12 +347,86 @@ namespace WinASM65.Tests
                 + " within " + maxSteps + " instructions; it is at $" + PC.ToString("X4") + ".");
         }
 
-        public void Step()
+        /// <summary>
+        /// Runs until a stop condition is met, and says which one.
+        /// <para>
+        /// The run stops at an instruction boundary. A watchpoint is noticed while
+        /// the instruction that caused it is executing, and the machine is allowed
+        /// to finish that instruction before it stops: reporting a watchpoint with
+        /// the program counter half way through the instruction that set it would
+        /// hand the user a state no machine is ever in, and the address to
+        /// disassemble would be the middle of an operand.
+        /// </para>
+        /// </summary>
+        public ExecutionStop Run(ExecutionOptions options)
         {
-            byte opcode = Read(PC);
-            PC++;
-            Instructions++;
-            Execute(opcode);
+            if (options == null)
+                throw new ArgumentNullException("options");
+
+            for (long i = 0; i < options.MaxSteps; i++)
+            {
+                if (options.CheckBreakpoints && _breakpoints.Contains(PC))
+                    return ExecutionStop.BreakpointReached(PC);
+
+                ExecutionStop stop = Step();
+                if (stop.Reason != ExecutionStopReason.StepComplete)
+                    return stop;
+            }
+
+            return ExecutionStop.BudgetExhausted(PC);
+        }
+
+        /// <summary>
+        /// Executes one instruction and says why it stopped.
+        /// <para>
+        /// A single step is not a resume, so breakpoints are not consulted: the
+        /// caller has already said which instruction comes next. A watchpoint is
+        /// still reported, because the instruction the user asked for is the
+        /// instruction that touched the address they are watching.
+        /// </para>
+        /// </summary>
+        public ExecutionStop Step()
+        {
+            _watchHit = null;
+            _pageCrossed = false;
+            _branchTaken = false;
+            _executing = true;
+            try
+            {
+                byte opcode = Read(PC);
+                PC++;
+                Instructions++;
+                Execute(opcode);
+                Cycles += CostOf(opcode);
+            }
+            finally
+            {
+                _executing = false;
+            }
+
+            if (_watchHit != null)
+                return _watchHit;
+            return ExecutionStop.StepComplete(PC);
+        }
+
+        /// <summary>
+        /// What an instruction cost: its base count, plus one cycle for a branch
+        /// that was taken, plus one more for the page it crossed.
+        /// <para>
+        /// Both extra costs are real and both are visible, which is what lets a
+        /// program loop be measured rather than guessed at. A caller that only
+        /// wants the base cost of an opcode reads <see cref="GetBaseCycles"/>;
+        /// this is what the machine actually spent.
+        /// </para>
+        /// </summary>
+        private int CostOf(byte opcode)
+        {
+            int cost = GetBaseCycles(opcode);
+            if (_branchTaken)
+                cost++;
+            if (_pageCrossed)
+                cost++;
+            return cost;
         }
 
         private void Execute(byte op)
@@ -151,8 +438,8 @@ namespace WinASM65.Tests
                 case 0xA5: A = Read(Zp(Read(PC++))); SetNZ(A); return;
                 case 0xB5: A = Read((ushort)(Zp(Read(PC++)) + X)); SetNZ(A); return;
                 case 0xAD: A = Read(Next16()); SetNZ(A); return;
-                case 0xBD: A = Read((ushort)(Next16() + X)); SetNZ(A); return;
-                case 0xB9: A = Read((ushort)(Next16() + Y)); SetNZ(A); return;
+                case 0xBD: A = Read(Indexed(Next16(), X)); SetNZ(A); return;
+                case 0xB9: A = Read(Indexed(Next16(), Y)); SetNZ(A); return;
                 case 0xA1: A = Read((ushort)(ZpIndexedX(Read(PC++)))); SetNZ(A); return;
                 case 0xB1: A = Read(IndirectY(Read(PC++))); SetNZ(A); return;
 
@@ -160,21 +447,21 @@ namespace WinASM65.Tests
                 case 0xA6: X = Read(Zp(Read(PC++))); SetNZ(X); return;
                 case 0xB6: X = Read((ushort)(Zp(Read(PC++)) + Y)); SetNZ(X); return;
                 case 0xAE: X = Read(Next16()); SetNZ(X); return;
-                case 0xBE: X = Read((ushort)(Next16() + Y)); SetNZ(X); return;
+                case 0xBE: X = Read(Indexed(Next16(), Y)); SetNZ(X); return;
 
                 case 0xA0: Y = Read(PC++); SetNZ(Y); return;
                 case 0xA4: Y = Read(Zp(Read(PC++))); SetNZ(Y); return;
                 case 0xB4: Y = Read((ushort)(Zp(Read(PC++)) + X)); SetNZ(Y); return;
                 case 0xAC: Y = Read(Next16()); SetNZ(Y); return;
-                case 0xBC: Y = Read((ushort)(Next16() + X)); SetNZ(Y); return;
+                case 0xBC: Y = Read(Indexed(Next16(), X)); SetNZ(Y); return;
 
                 case 0x85: Write(Zp(Read(PC++)), A); return;
                 case 0x95: Write((ushort)(Zp(Read(PC++)) + X), A); return;
                 case 0x8D: Write(Next16(), A); return;
-                case 0x9D: Write((ushort)(Next16() + X), A); return;
-                case 0x99: Write((ushort)(Next16() + Y), A); return;
+                case 0x9D: Write(IndexedStore(Next16(), X), A); return;
+                case 0x99: Write(IndexedStore(Next16(), Y), A); return;
                 case 0x81: Write(ZpIndexedX(Read(PC++)), A); return;
-                case 0x91: Write(IndirectY(Read(PC++)), A); return;
+                case 0x91: Write(IndirectYStore(Read(PC++)), A); return;
 
                 case 0x86: Write(Zp(Read(PC++)), X); return;
                 case 0x96: Write((ushort)(Zp(Read(PC++)) + Y), X); return;
@@ -202,8 +489,8 @@ namespace WinASM65.Tests
                 case 0x25: A &= Read(Zp(Read(PC++))); SetNZ(A); return;
                 case 0x35: A &= Read((ushort)(Zp(Read(PC++)) + X)); SetNZ(A); return;
                 case 0x2D: A &= Read(Next16()); SetNZ(A); return;
-                case 0x3D: A &= Read((ushort)(Next16() + X)); SetNZ(A); return;
-                case 0x39: A &= Read((ushort)(Next16() + Y)); SetNZ(A); return;
+                case 0x3D: A &= Read(Indexed(Next16(), X)); SetNZ(A); return;
+                case 0x39: A &= Read(Indexed(Next16(), Y)); SetNZ(A); return;
                 case 0x21: A &= Read(ZpIndexedX(Read(PC++))); SetNZ(A); return;
                 case 0x31: A &= Read(IndirectY(Read(PC++))); SetNZ(A); return;
 
@@ -211,8 +498,8 @@ namespace WinASM65.Tests
                 case 0x05: A |= Read(Zp(Read(PC++))); SetNZ(A); return;
                 case 0x15: A |= Read((ushort)(Zp(Read(PC++)) + X)); SetNZ(A); return;
                 case 0x0D: A |= Read(Next16()); SetNZ(A); return;
-                case 0x1D: A |= Read((ushort)(Next16() + X)); SetNZ(A); return;
-                case 0x19: A |= Read((ushort)(Next16() + Y)); SetNZ(A); return;
+                case 0x1D: A |= Read(Indexed(Next16(), X)); SetNZ(A); return;
+                case 0x19: A |= Read(Indexed(Next16(), Y)); SetNZ(A); return;
                 case 0x01: A |= Read(ZpIndexedX(Read(PC++))); SetNZ(A); return;
                 case 0x11: A |= Read(IndirectY(Read(PC++))); SetNZ(A); return;
 
@@ -220,8 +507,8 @@ namespace WinASM65.Tests
                 case 0x45: A ^= Read(Zp(Read(PC++))); SetNZ(A); return;
                 case 0x55: A ^= Read((ushort)(Zp(Read(PC++)) + X)); SetNZ(A); return;
                 case 0x4D: A ^= Read(Next16()); SetNZ(A); return;
-                case 0x5D: A ^= Read((ushort)(Next16() + X)); SetNZ(A); return;
-                case 0x59: A ^= Read((ushort)(Next16() + Y)); SetNZ(A); return;
+                case 0x5D: A ^= Read(Indexed(Next16(), X)); SetNZ(A); return;
+                case 0x59: A ^= Read(Indexed(Next16(), Y)); SetNZ(A); return;
                 case 0x41: A ^= Read(ZpIndexedX(Read(PC++))); SetNZ(A); return;
                 case 0x51: A ^= Read(IndirectY(Read(PC++))); SetNZ(A); return;
 
@@ -233,8 +520,8 @@ namespace WinASM65.Tests
                 case 0x65: Adc(Read(Zp(Read(PC++)))); return;
                 case 0x75: Adc(Read((ushort)(Zp(Read(PC++)) + X))); return;
                 case 0x6D: Adc(Read(Next16())); return;
-                case 0x7D: Adc(Read((ushort)(Next16() + X))); return;
-                case 0x79: Adc(Read((ushort)(Next16() + Y))); return;
+                case 0x7D: Adc(Read(Indexed(Next16(), X))); return;
+                case 0x79: Adc(Read(Indexed(Next16(), Y))); return;
                 case 0x61: Adc(Read(ZpIndexedX(Read(PC++)))); return;
                 case 0x71: Adc(Read(IndirectY(Read(PC++)))); return;
 
@@ -242,8 +529,8 @@ namespace WinASM65.Tests
                 case 0xE5: Sbc(Read(Zp(Read(PC++)))); return;
                 case 0xF5: Sbc(Read((ushort)(Zp(Read(PC++)) + X))); return;
                 case 0xED: Sbc(Read(Next16())); return;
-                case 0xFD: Sbc(Read((ushort)(Next16() + X))); return;
-                case 0xF9: Sbc(Read((ushort)(Next16() + Y))); return;
+                case 0xFD: Sbc(Read(Indexed(Next16(), X))); return;
+                case 0xF9: Sbc(Read(Indexed(Next16(), Y))); return;
                 case 0xE1: Sbc(Read(ZpIndexedX(Read(PC++)))); return;
                 case 0xF1: Sbc(Read(IndirectY(Read(PC++)))); return;
 
@@ -251,8 +538,8 @@ namespace WinASM65.Tests
                 case 0xC5: Compare(A, Read(Zp(Read(PC++)))); return;
                 case 0xD5: Compare(A, Read((ushort)(Zp(Read(PC++)) + X))); return;
                 case 0xCD: Compare(A, Read(Next16())); return;
-                case 0xDD: Compare(A, Read((ushort)(Next16() + X))); return;
-                case 0xD9: Compare(A, Read((ushort)(Next16() + Y))); return;
+                case 0xDD: Compare(A, Read(Indexed(Next16(), X))); return;
+                case 0xD9: Compare(A, Read(Indexed(Next16(), Y))); return;
                 case 0xC1: Compare(A, Read(ZpIndexedX(Read(PC++)))); return;
                 case 0xD1: Compare(A, Read(IndirectY(Read(PC++)))); return;
 
@@ -268,11 +555,11 @@ namespace WinASM65.Tests
                 case 0xE6: Inc8(Zp(Read(PC++))); return;
                 case 0xF6: Inc8((ushort)(Zp(Read(PC++) ) + X)); return;
                 case 0xEE: Inc8(Next16()); return;
-                case 0xFE: Inc8((ushort)(Next16() + X)); return;
+                case 0xFE: Inc8(Indexed(Next16(), X)); return;
                 case 0xC6: Dec8(Zp(Read(PC++))); return;
                 case 0xD6: Dec8((ushort)(Zp(Read(PC++)) + X)); return;
                 case 0xCE: Dec8(Next16()); return;
-                case 0xDE: Dec8((ushort)(Next16() + X)); return;
+                case 0xDE: Dec8(Indexed(Next16(), X)); return;
 
                 case 0xE8: X++; SetNZ(X); return;
                 case 0xCA: X--; SetNZ(X); return;
@@ -284,25 +571,25 @@ namespace WinASM65.Tests
                 case 0x06: ShiftMemory(Shl, Zp(Read(PC++)), true); return;
                 case 0x16: ShiftMemory(Shl, (ushort)(Zp(Read(PC++)) + X), true); return;
                 case 0x0E: ShiftMemory(Shl, Next16(), true); return;
-                case 0x1E: ShiftMemory(Shl, (ushort)(Next16() + X), true); return;
+                case 0x1E: ShiftMemory(Shl, Indexed(Next16(), X), true); return;
 
                 case 0x4A: A = Shr(A); return;
                 case 0x46: ShiftMemory(Shr, Zp(Read(PC++)), true); return;
                 case 0x56: ShiftMemory(Shr, (ushort)(Zp(Read(PC++)) + X), true); return;
                 case 0x4E: ShiftMemory(Shr, Next16(), true); return;
-                case 0x5E: ShiftMemory(Shr, (ushort)(Next16() + X), true); return;
+                case 0x5E: ShiftMemory(Shr, Indexed(Next16(), X), true); return;
 
                 case 0x2A: A = Rol(A); return;
                 case 0x26: ShiftMemory(Rol, Zp(Read(PC++)), true); return;
                 case 0x36: ShiftMemory(Rol, (ushort)(Zp(Read(PC++)) + X), true); return;
                 case 0x2E: ShiftMemory(Rol, Next16(), true); return;
-                case 0x3E: ShiftMemory(Rol, (ushort)(Next16() + X), true); return;
+                case 0x3E: ShiftMemory(Rol, Indexed(Next16(), X), true); return;
 
                 case 0x6A: A = Ror(A); return;
                 case 0x66: ShiftMemory(Ror, Zp(Read(PC++)), true); return;
                 case 0x76: ShiftMemory(Ror, (ushort)(Zp(Read(PC++)) + X), true); return;
                 case 0x6E: ShiftMemory(Ror, Next16(), true); return;
-                case 0x7E: ShiftMemory(Ror, (ushort)(Next16() + X), true); return;
+                case 0x7E: ShiftMemory(Ror, Indexed(Next16(), X), true); return;
 
                 // ---- jumps and calls
                 case 0x4C: PC = Next16(); return;
@@ -397,12 +684,35 @@ namespace WinASM65.Tests
 
         private byte Read(ushort address)
         {
-            return _ram[address];
+            byte value = _bus.Read(address);
+            WatchpointHit(WatchpointKind.Read, address);
+            return value;
         }
 
         private void Write(ushort address, byte value)
         {
-            _ram[address] = value;
+            _bus.Write(address, value);
+            WatchpointHit(WatchpointKind.Write, address);
+        }
+
+        /// <summary>
+        /// Records the first watched address the processor touches during an
+        /// instruction, and reports nothing when it is not executing one.
+        /// <para>
+        /// The first match wins, in the order the watchpoints were added, so the
+        /// address a stop reports does not depend on how a set happened to
+        /// enumerate. The access itself has already happened by then: a debugger
+        /// that stops on a write still sees the byte written, which is the whole
+        /// reason to watch a range.
+        /// </para>
+        /// </summary>
+        private void WatchpointHit(WatchpointKind kind, ushort address)
+        {
+            if (!_executing || _watchHit != null)
+                return;
+
+            if (_watchpoints.Match(kind, address) != null)
+                _watchHit = ExecutionStop.WatchpointHit(kind, address);
         }
 
         private ushort Read16(ushort at)
@@ -428,6 +738,45 @@ namespace WinASM65.Tests
             return value;
         }
 
+        /// <summary>
+        /// The address an indexed access reaches, charging one extra cycle when it
+        /// crosses a page.
+        /// <para>
+        /// A read has to go and get the byte, and on the processor the high byte
+        /// of the address is corrected while the low byte is fetched. Leaving the
+        /// crossing out would make every indexed access cost the same whether the
+        /// index stayed on the page or walked off it, which is the difference
+        /// between a cycle count and a rough figure that happens to be close.
+        /// </para>
+        /// </summary>
+        private ushort Indexed(ushort baseAddress, byte index)
+        {
+            ushort address = AddIndex(baseAddress, index);
+            if ((address & 0xFF00) != (baseAddress & 0xFF00))
+                _pageCrossed = true;
+            return address;
+        }
+
+        /// <summary>
+        /// The address an indexed store reaches, which never costs the crossing:
+        /// the processor has no byte to fetch on the way, so it pays nothing for
+        /// the page it did not have to look at.
+        /// <para>
+        /// This is why a store and a load that address the same byte can cost
+        /// different amounts of time, and why a count that charged both alike
+        /// would be wrong every time a program stored past the end of a page.
+        /// </para>
+        /// </summary>
+        private static ushort IndexedStore(ushort baseAddress, byte index)
+        {
+            return AddIndex(baseAddress, index);
+        }
+
+        private static ushort AddIndex(ushort baseAddress, byte index)
+        {
+            return (ushort)(baseAddress + index);
+        }
+
         private ushort ZpIndexedX(byte zp)
         {
             byte basePointer = (byte)(zp + X);
@@ -436,8 +785,17 @@ namespace WinASM65.Tests
 
         private ushort IndirectY(byte zp)
         {
-            ushort pointer = Peek16(zp);
-            return (ushort)(pointer + Y);
+            return Indexed(Peek16(zp), Y);
+        }
+
+        /// <summary>
+        /// The address an indirect store reaches. Page zero has no crossing to
+        /// make and the pointer itself is never indexed, so this is the plain
+        /// addition: STA ($nn),Y is a six cycle instruction whatever it writes.
+        /// </summary>
+        private ushort IndirectYStore(byte zp)
+        {
+            return IndexedStore(Peek16(zp), Y);
         }
 
         private void SetNZ(byte value)
@@ -544,8 +902,20 @@ namespace WinASM65.Tests
         private void Branch(bool taken)
         {
             sbyte offset = (sbyte)Read(PC++);
-            if (taken)
-                PC = (ushort)(PC + offset);
+            if (!taken)
+                return;
+
+            ushort from = PC;
+            PC = (ushort)(PC + offset);
+
+            // A branch that is taken costs one cycle more than one that is not,
+            // and one more again when it lands in another page: the processor
+            // re-fetches the high byte through the same increment. Counting it
+            // here rather than in the table is what makes the cost depend on what
+            // the branch did, which a fixed number per opcode cannot.
+            _branchTaken = true;
+            if ((PC & 0xFF00) != (from & 0xFF00))
+                _pageCrossed = true;
         }
 
         private byte Flags(bool withBreak)
