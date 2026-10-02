@@ -421,6 +421,157 @@ namespace WinASM65.Tests
             Assert.AreEqual(9L, cpu.Cycles);
         }
 
+        /// <summary>A machine with a program placed by hand, and its counters at zero.</summary>
+        private static Cpu6502Core At(ushort address)
+        {
+            Cpu6502Core cpu = new Cpu6502Core();
+            cpu.PC = address;
+            return cpu;
+        }
+
+        [TestMethod]
+        public void AnIndexedReadThatCrossesAPageCostsOneMoreCycle()
+        {
+            // Base four, five when the index walks off the page. A count that did
+            // not know about the crossing would be right for every program whose
+            // tables stayed inside a page, which is most of them, and wrong for
+            // the ones that matter.
+            Cpu6502Core cpu = Programmed(new byte[]
+            {
+                0xA2, 0x01,       // LDX #$01
+                0xBD, 0xFF, 0x12,  // LDA $12FF,X   -> reads $1300
+                0x4C, 0x00, 0x90   // JMP $9000
+            });
+            cpu[0x1300] = 0x7B;
+
+            cpu.Step();
+            Assert.AreEqual(2L, cpu.Cycles, "LDX # costs its two cycles");
+            cpu.Step();
+
+            Assert.AreEqual(0x7B, cpu.A, "the byte past the page was read");
+            Assert.AreEqual(7L, cpu.Cycles, "two for LDX, four plus a crossing for LDA");
+        }
+
+        [TestMethod]
+        public void AnIndexedReadThatStaysOnThePageCostsItsBaseCount()
+        {
+            Cpu6502Core cpu = Programmed(new byte[]
+            {
+                0xA2, 0x01,       // LDX #$01
+                0xBD, 0x00, 0x12,  // LDA $1200,X   -> reads $1201
+                0x4C, 0x00, 0x90   // JMP $9000
+            });
+
+            cpu.Step();
+            cpu.Step();
+
+            Assert.AreEqual(6L, cpu.Cycles, "no crossing, so no extra cycle");
+        }
+
+        [TestMethod]
+        public void AStoreCostsTheSameWhetherOrNotItCrossesAPage()
+        {
+            // The other half of the rule, and the half a "be generous and add it
+            // everywhere" implementation gets wrong. A store has no byte to fetch
+            // on the way, so the processor never pays for the crossing.
+            Cpu6502Core crossing = Programmed(new byte[]
+            {
+                0xA9, 0x55,       // LDA #$55
+                0x9D, 0xFF, 0x12   // STA $12FF,X   with X = 0
+            });
+            crossing.X = 1;
+            crossing.Step();
+            crossing.Step();
+
+            Cpu6502Core samePage = Programmed(new byte[]
+            {
+                0xA9, 0x55,       // LDA #$55
+                0x9D, 0x00, 0x12   // STA $1200,X   with X = 1
+            });
+            samePage.X = 1;
+            samePage.Step();
+            samePage.Step();
+
+            Assert.AreEqual(0x55, crossing[0x1300], "the store past the page happened");
+            Assert.AreEqual(0x55, samePage[0x1201], "and so did the one inside it");
+            Assert.AreEqual(7L, crossing.Cycles, "STA abs,X is five cycles either way");
+            Assert.AreEqual(samePage.Cycles, crossing.Cycles);
+        }
+
+        [TestMethod]
+        public void ABranchCostsOneMoreCycleWhenItIsTaken()
+        {
+            Cpu6502Core taken = Programmed(new byte[]
+            {
+                0xA9, 0x01,       // LDA #$01
+                0xD0, 0x02        // BNE +2
+            });
+            taken.Step();
+            taken.Step();
+
+            Cpu6502Core notTaken = Programmed(new byte[]
+            {
+                0xA9, 0x00,       // LDA #$00
+                0xD0, 0x02        // BNE +2
+            });
+            notTaken.Step();
+            notTaken.Step();
+
+            Assert.AreEqual(5L, taken.Cycles, "two for LDA, three for the branch it took");
+            Assert.AreEqual(4L, notTaken.Cycles, "two for LDA, two for the branch it did not take");
+        }
+
+        [TestMethod]
+        public void ABranchThatLandsInAnotherPageCostsTwoMoreCycles()
+        {
+            Cpu6502Core cpu = At(0x80FD);
+            cpu.Load(0x80FD, new byte[] { 0xD0, 0x02 });  // BNE -> $8101
+            cpu.Load(0x8101, new byte[] { 0xA9, 0x42 });  // LDA #$42
+
+            cpu.Step();
+            Assert.AreEqual(0x8101, cpu.PC, "the branch crossed into the next page");
+            Assert.AreEqual(4L, cpu.Cycles, "two, plus the taken branch, plus the crossing");
+
+            cpu.Step();
+            Assert.AreEqual(0x42, cpu.A);
+            Assert.AreEqual(6L, cpu.Cycles, "and LDA # costs its two, not a leftover crossing");
+        }
+
+        [TestMethod]
+        public void AnIndirectReadThatCrossesAPageCostsOneMoreCycle()
+        {
+            Cpu6502Core cpu = Programmed(new byte[]
+            {
+                0xA0, 0x10,       // LDY #$10
+                0xB1, 0x00,       // LDA ($00),Y
+                0x4C, 0x00, 0x90  // JMP $9000
+            });
+            cpu[0x0000] = 0xFF;
+            cpu[0x0001] = 0x12;  // the pointer is $12FF, so $12FF + $10 crosses
+
+            cpu.Step();
+            cpu.Step();
+
+            Assert.AreEqual(8L, cpu.Cycles, "two for LDY, five plus a crossing for the indirect read");
+        }
+
+        [TestMethod]
+        public void AnIndexedWriteThatCrossesAPageStillCostsItsBaseCount()
+        {
+            // INC abs,X is a read and a write, so it pays the crossing like any
+            // other read: only a pure store is exempt.
+            Cpu6502Core cpu = Programmed(new byte[]
+            {
+                0xFE, 0xFF, 0x12   // INC $12FF,X
+            });
+            cpu.X = 1;
+
+            cpu.Step();
+
+            Assert.AreEqual(8L, cpu.Cycles, "seven base, one for crossing the page");
+            Assert.AreEqual(0x01, cpu[0x1300]);
+        }
+
         /// <summary>
         /// Every opcode the core answers to, and the cycles the published table
         /// gives it. Written out here rather than read back from the table, so a
