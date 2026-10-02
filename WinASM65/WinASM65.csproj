@@ -25,6 +25,10 @@
          turns it into the bytes a machine runs. Embedding it keeps the two from
          drifting apart: a change to the source is a change to the stub. -->
     <EmbeddedResource Include="src\TextFormat\runtime-stub.asm" LogicalName="WinASM65.TextFormat.runtime-stub.asm" />
+    <!-- The GEOS stub, for the same reason: the code that walks the relocation
+         table is source, assembled by this repository, and lives beside the
+         writer that lays it out. -->
+    <EmbeddedResource Include="src\Targets\geos-stub.asm" LogicalName="WinASM65.Targets.geos-stub.asm" />
   </ItemGroup>
 
 </Project>

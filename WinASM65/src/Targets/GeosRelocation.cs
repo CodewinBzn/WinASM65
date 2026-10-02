@@ -8,21 +8,30 @@
 // not loaded where it was assembled has to correct itself, and WinASM65's job
 // is to hand it the list of places to correct.
 //
-// That is what this is: data, not code. A 6502 cannot read its own program
-// counter without a JSR whose target is a runtime address, which a link time
-// constant is not, so a stub that relocates itself cannot be written without
-// the loader passing its address. Emitting one anyway would produce a stub that
-// works at exactly one load address and corrupts memory at every other, which
-// is worse than no stub at all.
+// This file is the table: data, not code. The code that walks it is
+// `geos-stub.asm`, assembled by the same repository, and the two are one thing
+// written twice. It was once believed that no such stub could be written -- that
+// a 6502 cannot learn where it was loaded, so a stub that moved with its
+// program was impossible. That is not true. The kernal leaves the load address
+// in $886C-$886D, and the stub needs nothing else that moves with the code: it
+// reaches the table and the program as the load address plus a fixed offset,
+// and it uses only relative branches, because an absolute branch or a JMP to a
+// label of its own would pin it to the one address it was assembled for. So the
+// stub is position independent, and the application relocates itself whatever
+// address the record lands on.
 //
 // The table is therefore consumable in three ways, and all three are the same
 // loop over the same entries:
-//   - the application, from a stub the application brings itself,
+//   - the application, from the stub that now sits at the head of its record,
 //   - a loader or installer that loads the file somewhere else,
 //   - WinASM65 itself, when asked to write the relocated image out.
 //
-// Layout, recorded in the information sector's free area so that a kernal which
-// ignores that area still loads the file:
+// The table itself sits immediately after the stub, at the head of the first
+// record, so that it is in RAM with the program and the stub can walk it. The
+// information sector's free area carries a summary of it -- magic, base address,
+// where the table is, how many entries -- so that a kernal which ignores that
+// area still loads the file exactly as before. The summary is a description of
+// the table, not the table: what the stub reads is the table proper.
 //
 //   $00-$03  "R65A", so the area cannot be mistaken for empty padding
 //   $04-$05  the address the image was assembled for
