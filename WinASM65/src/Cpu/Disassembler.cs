@@ -83,8 +83,9 @@ namespace WinASM65.Cpu
         }
 
         /// <summary>
-        /// Inversion de la table. Lève si un opcode mappe vers deux couples distincts :
-        /// desassembler silencieusement faux est pire que de refuser de démarrer.
+        /// Inversion of the table. Throws if an opcode maps to two distinct
+        /// mnemonic/mode pairs: silently disassembling wrong is worse than refusing
+        /// to start.
         /// </summary>
         private static Dictionary<byte, OpcodeInfo> BuildIndex(IReadOnlyDictionary<string, byte[]> table)
         {

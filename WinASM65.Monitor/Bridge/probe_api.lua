@@ -26,7 +26,7 @@ local function try_call(label, fn, ...)
   if ok then
     print("PROBE " .. label .. " OK")
   else
-    print("PROBE " .. label .. " refuse: " .. tostring(err))
+    print("PROBE " .. label .. " refused: " .. tostring(err))
   end
 end
 
@@ -40,5 +40,5 @@ for _, candidate in ipairs({ "run", "execute", "tick", "advanceFrames", "step",
   end
 end
 
-print("PROBE fin")
+print("PROBE end")
 emu.stop(0)

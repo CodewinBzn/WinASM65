@@ -23,7 +23,7 @@ end
 local function snapshot(label)
   local ok, state = pcall(emu.getCpuState)
   if not ok then
-    print("PROBE " .. label .. " getCpuState refuse: " .. tostring(state))
+    print("PROBE " .. label .. " getCpuState refused: " .. tostring(state))
     return nil
   end
   local pieces = {}
@@ -43,7 +43,7 @@ local function pc_of(state)
   return nil
 end
 
-print("PROBE depart")
+print("PROBE start")
 local first = snapshot("t0")
 sleep_seconds(2)
 local second = snapshot("t2")
@@ -54,11 +54,11 @@ local a, b, c = pc_of(first), pc_of(second), pc_of(third)
 print(string.format("PROBE PC t0=%s t2=%s t4=%s", tostring(a), tostring(b), tostring(c)))
 if a ~= nil and b ~= nil and c ~= nil then
   if a == b and b == c then
-    print("PROBE VERDICT: PC FIGE, le CPU n'execute pas")
+    print("PROBE VERDICT: PC FROZEN, the CPU does not run")
   else
-    print("PROBE VERDICT: le CPU avance")
+    print("PROBE VERDICT: the CPU advances")
   end
 end
 
-print("PROBE fin")
+print("PROBE end")
 emu.stop(0)

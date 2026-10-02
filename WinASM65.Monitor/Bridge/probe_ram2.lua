@@ -41,7 +41,7 @@ local function nonzero_in(address, length, memtype)
 end
 
 sleep_seconds(4)
-report[#report + 1] = "--- apres 4s de jeu ---"
+report[#report + 1] = "--- after 4s of play ---"
 
 for _, t in ipairs(RAM) do
   local count, sample = nonzero_in(0x0000, 2048, t)
