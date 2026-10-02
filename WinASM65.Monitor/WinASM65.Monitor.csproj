@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Moniteur 6502 interactif.
+
+    Projet distinct de l'assembleur, qui le consomme comme bibliotheque.
+    Contrainte de direction : ce projet ne doit jamais contenir de logique
+    d'assemblage. Tout ce qui sait monter une source, linking, relocation ou
+    emission d'octets appartient a WinASM65 ; le moniteur ne fait que
+   Brancher un emulateur et piloter l'assembleur.
+
+    Regle d'or maintenue ici : le moniteur ne parle a un emulateur que via
+    IMemoryBackend. Un backend reel et le backend de test implementent la meme
+    chose, ce qui permet de tester le moniteur sans lancer d'emulateur.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>WinASM65.Monitor</RootNamespace>
+    <AssemblyName>WinASM65.Monitor</AssemblyName>
+    <StartupObject>WinASM65.Monitor.Cli.Program</StartupObject>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WinASM65\WinASM65.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The bridge travels with the executable so the monitor can start Mesen
+         itself instead of depending on a script sitting in the source tree. -->
+    <None Include="Bridge\**\*.lua" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

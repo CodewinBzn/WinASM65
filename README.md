@@ -18,6 +18,17 @@ dotnet run --project WinASM65 -- -h
 produces a standalone `WinASM65.exe` that runs without a .NET install.
 
 ------------------------------
+## Monitor
+
+`WinASM65.Monitor` assembles a source, places it in a running emulator, reads it
+back, and places it again elsewhere without reassembling. See `docs/monitor.md`
+for the protocol, the measured limits of MesenCE 2.2.1, and the design decisions.
+
+```bash
+dotnet run --project WinASM65.Monitor -- --mesen "C:\...\Mesen.exe" --rom game.nes
+```
+
+------------------------------
 ## Command line 
 
 ### Usage 
