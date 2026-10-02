@@ -1,0 +1,37 @@
+{
+  // The palette the WinASM65 shell paints by.
+  //
+  // Roles, never inline hex anywhere in the code: a role added here is understood
+  // by the shell without a recompile, and a role missing here keeps its built-in
+  // colour. An unknown role is reported in the status line and ignored, so a typo
+  // is visible rather than silently unused.
+  //
+  // "true" is 24-bit and needs a TrueColor terminal. "fallback" is the 16-colour
+  // stand-in used when the terminal cannot do 24-bit, which is the ordinary case
+  // on a plain Windows console. The two are independent: editing one never has to
+  // be mirrored in the other to know which role it belongs to.
+  //
+  // Accepted colour forms: #RRGGBB, #RRGGBBAA, and any colour name Terminal.Gui
+  // already knows ("White", "DarkGray", ...).
+  // Accepted fallback names: black, blue, green, cyan, red, magenta, yellow,
+  // gray/grey/white, and the bright* variants ("bright black" is accepted too).
+  //
+  // A file that is not valid JSON, names a role that does not exist, or gives a
+  // value that is not a colour never stops the monitor: the affected role keeps
+  // its built-in colour and the problem is listed in the status line.
+  "name": "WinASM65 dark",
+  "colors": {
+    "default":    { "true": "#C8D0D8", "fallback": "gray" },
+    "chrome":     { "true": "#5A6672", "fallback": "bright black" },
+    "gutter":     { "true": "#5A6672", "fallback": "bright black" },
+    "mnemonic":   { "true": "#7FB2E5", "fallback": "blue" },
+    "operand":    { "true": "#E8B86D", "fallback": "yellow" },
+    "directive":  { "true": "#C58AF9", "fallback": "magenta" },
+    "label":      { "true": "#8FD67A", "fallback": "green" },
+    "number":     { "true": "#F0C674", "fallback": "yellow" },
+    "comment":    { "true": "#6B7785", "fallback": "bright black" },
+    "error":      { "true": "#F26D6D", "fallback": "red" },
+    "breakpoint": { "true": "#E06C75", "fallback": "red" },
+    "warning":    { "true": "#E5C07B", "fallback": "yellow" }
+  }
+}
