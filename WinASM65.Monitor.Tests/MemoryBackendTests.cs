@@ -142,7 +142,7 @@ namespace WinASM65.Monitor.Tests
     public class MemoryBackendTests
     {
         [TestMethod]
-        public void LectureEcritureAllerRetour()
+        public void ReadWriteRoundTrip()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -153,7 +153,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void LectureHorsPlageEstRefuseeEtNoyeeDansDesZeros()
+        public void AReadOutsideTheRangeIsRefusedAndDrownedInZeros()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -167,7 +167,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void EcriturePartiellementHorsPlageEstRefuseeEntierement()
+        public void AWritePartlyOutsideTheRangeIsRefusedEntirely()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -187,7 +187,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void AdresseNegativeeEstRefusee()
+        public void ANegativeAddressIsRefused()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -196,7 +196,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void ControleDExecutionEstCompte()
+        public void ExecutionControlIsCounted()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -215,7 +215,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void ResetVideLaMemoire()
+        public void ResetClearsMemory()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -227,7 +227,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void PointsDArretSontTriesEtEffacables()
+        public void BreakpointsAreSortedAndClearable()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -241,7 +241,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void InstantaneRestaureLaMemoire()
+        public void ASnapshotRestoresMemory()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -256,7 +256,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void InstantaneDeMauvaiseTailleEstRefuse()
+        public void ASnapshotOfTheWrongSizeIsRefused()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -273,7 +273,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void DisposeMarqueLeBackend()
+        public void DisposeMarksTheBackend()
         {
             FakeMemoryBackend backend = new FakeMemoryBackend();
             backend.Dispose();
@@ -282,7 +282,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void UnBackendDoitEtreLiberableEtTailleDeMemoireEstParametrable()
+        public void ABackendMustBeDisposableAndItsMemorySizeConfigurable()
         {
             using (FakeMemoryBackend small = new FakeMemoryBackend(256))
             {

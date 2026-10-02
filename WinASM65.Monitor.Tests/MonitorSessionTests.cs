@@ -75,7 +75,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void LigneVideNeProduitRien()
+        public void AnEmptyLineProducesNothing()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -89,7 +89,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void PingRenseigneLEmulateur()
+        public void PingReportsTheEmulator()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -98,7 +98,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void LectureAfficheLesOctetsEnHexadecimal()
+        public void ReadShowsTheBytesInHex()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -109,19 +109,19 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void EcriturePasseParLeBackendEtResteVerifiable()
+        public void WriteGoesThroughTheBackendAndStaysVerifiable()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
                 MonitorSession session = Session(machine);
 
-                Assert.AreEqual("OK $0800 3 octet(s)", Only(session.Execute("WRITE $0800 A9 5A 60")));
+                Assert.AreEqual("OK $0800 3 byte(s)", Only(session.Execute("WRITE $0800 A9 5A 60")));
                 CollectionAssert.AreEqual(new byte[] { 0xA9, 0x5A, 0x60 }, machine.Read(0x0800, 3));
             }
         }
 
         [TestMethod]
-        public void DesassemblageSortUneInstructionParLigne()
+        public void DisassemblyYieldsOneInstructionPerLine()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -137,7 +137,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void DesassemblageLitLaMemoireUneSeuleFois()
+        public void DisassemblyReadsMemoryOnlyOnce()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -152,7 +152,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void DesassemblageAuBordDeLEspaceDActivationResteExact()
+        public void DisassemblyAtTheEdgeOfTheActivationSpaceStaysExact()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -172,7 +172,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void DesassemblageDUnCompteNulOuNegatifEstRefuse()
+        public void DisassemblyWithAZeroOrNegativeCountIsRefused()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -182,7 +182,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void CommandeInconnueEstNommeeEtNEstPasTransmiseAuPont()
+        public void AnUnknownCommandIsNamedAndNotSentToTheBridge()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -197,7 +197,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void AdresseInvalideEstRefuseeSansTuerLaSession()
+        public void AnInvalidAddressIsRefusedWithoutKillingTheSession()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -215,7 +215,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void HexadecimalInvalideEstRefuseAvantToutEcriture()
+        public void InvalidHexIsRefusedBeforeAnyWrite()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -230,7 +230,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void LongueurNulleEstRefuseeSurUneLecture()
+        public void AZeroLengthIsRefusedOnARead()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -239,7 +239,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void ControleDEvaluationEstTransmisAuBackend()
+        public void TheEvaluationControlIsPassedToTheBackend()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -258,7 +258,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void LeRefusDuEmulateurConserveSaRaison()
+        public void TheEmulatorRefusalKeepsItsReason()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -275,7 +275,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void PointDArretConnuEstPoseEtRemplaceParLEmulation()
+        public void AKnownBreakpointIsSetAndReplacedByTheEmulator()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -290,7 +290,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void KindDePointDArretInconnuEstNommeApresLAvresse()
+        public void AnUnknownBreakpointKindIsNamedAfterTheAddress()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -305,7 +305,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void InstantaneEstSauveEtRestaure()
+        public void ASnapshotIsSavedAndRestored()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend(256))
             {
@@ -323,7 +323,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void InstantaneRestaureLEmulationDansLEmulationEntiere()
+        public void ASnapshotRestoresTheEmulationWithinTheWholeEmulation()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -340,7 +340,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void AssemblePuisChargeEcritDansLEmulation()
+        public void AssembleThenLoadWritesIntoTheEmulation()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -362,7 +362,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void UniteeEstChargeeSansEtreAssembleeEnCore()
+        public void AUnitIsLoadedWithoutBeingAssembledFirst()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -379,7 +379,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void ChargerUneUniteeInconnueEstRefuse()
+        public void LoadingAnUnknownUnitIsRefused()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -391,7 +391,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void UnitesListeCeQuiEstAssemble()
+        public void UnitsListsWhatIsAssembled()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -406,7 +406,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void AssemblerUnFichierInexistantEstRefuseEtNommeLEChemin()
+        public void AssemblingAMissingFileIsRefusedAndNamesThePath()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -417,7 +417,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void AideListeLesCommandesSansExecuterLaMachine()
+        public void HelpListsTheCommandsWithoutRunningTheMachine()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -433,7 +433,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void QuitterSignaleALaBboucleDeLecture()
+        public void QuitSignalsTheReadLoop()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
@@ -446,7 +446,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void LaSessionExigeUnBackendEtUnCpu()
+        public void TheSessionRequiresABackendAndACpu()
         {
             Assert.ThrowsException<ArgumentNullException>(
                 () => new MonitorSession(null, CpuFactory.Create("6502"), _directory));

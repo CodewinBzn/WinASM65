@@ -10,7 +10,7 @@ namespace WinASM65.Monitor.Tests
     public class ProtocolTests
     {
         [TestMethod]
-        public void AdresseAccepteLesEcrituresHabituelles()
+        public void AddressAcceptsTheUsualNotations()
         {
             int address;
             Assert.IsTrue(MonitorProtocol.TryParseAddress("$8000", out address));
@@ -31,7 +31,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void PrefixeHexEstToujoursAutoritaire()
+        public void TheHexPrefixIsAlwaysAuthoritative()
         {
             // Regression: "$8000" and "0x8000" must mean 32768. An earlier version read
             // them as decimal and aimed at address $1F40, silently at the wrong memory.
@@ -48,7 +48,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void AdresseHorsPlage16BitsEstRefusee()
+        public void AnAddressOutside16BitsIsRefused()
         {
             // A 6502 address is 16 bits: an explicit refusal beats a silently
             // truncated address.
@@ -58,7 +58,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void AdresseInvalideEstRefusee()
+        public void AnInvalidAddressIsRefused()
         {
             int address;
             Assert.IsFalse(MonitorProtocol.TryParseAddress("", out address));
@@ -68,7 +68,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void HexAccepteEtRefuseCorRECTement()
+        public void HexAcceptsAndRefusesCorrectly()
         {
             byte[] bytes;
             Assert.IsTrue(MonitorProtocol.TryParseHex("A90160", out bytes));
@@ -83,7 +83,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void HexEstMajusculeEtStable()
+        public void HexIsUppercaseAndStable()
         {
             CollectionAssert.AreEqual(new byte[] { 0xA9, 0x01, 0x60 },
                 HexOf(MonitorProtocol.ToHex(new byte[] { 0xA9, 0x01, 0x60 })));
@@ -92,7 +92,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void PingRepondLeNomEtLaVersion()
+        public void PingAnswersWithTheNameAndVersion()
         {
             FakeMemoryBackend backend = new FakeMemoryBackend();
             ProtocolServer server = NewServer(backend);
@@ -109,7 +109,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void LectureEcritureParLeProtocole()
+        public void ReadWriteThroughTheProtocol()
         {
             FakeMemoryBackend backend = new FakeMemoryBackend();
             ProtocolServer server = NewServer(backend);
@@ -127,7 +127,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void DesassemblageViaLeProtocole()
+        public void DisassemblyThroughTheProtocol()
         {
             FakeMemoryBackend backend = new FakeMemoryBackend();
             ProtocolServer server = NewServer(backend);
@@ -149,7 +149,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void OpcodeInconnuEstSignaleSansEtreDevine()
+        public void AnUnknownOpcodeIsReportedWithoutBeingGuessed()
         {
             FakeMemoryBackend backend = new FakeMemoryBackend();
             ProtocolServer server = NewServer(backend);
@@ -167,7 +167,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void LectureHorsPlageEstRefuseeEtNommee()
+        public void AReadOutsideTheRangeIsRefusedAndNamed()
         {
             FakeMemoryBackend backend = new FakeMemoryBackend(256);
             ProtocolServer server = NewServer(backend);
@@ -185,7 +185,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void BornesSontAppliqueesAvantLeBackend()
+        public void BoundsAreAppliedBeforeTheBackend()
         {
             // The point: an unbounded request would freeze the Lua bridge. The cap
             // must therefore be refused before any backend call, otherwise it is
@@ -209,7 +209,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void PointsDArretPassentParLeProtocole()
+        public void BreakpointsGoThroughTheProtocol()
         {
             FakeMemoryBackend backend = new FakeMemoryBackend();
             ProtocolServer server = NewServer(backend);
@@ -233,7 +233,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void ControleDExecutionEtInstantanePassentParLeProtocole()
+        public void ExecutionControlAndSnapshotGoThroughTheProtocol()
         {
             FakeMemoryBackend backend = new FakeMemoryBackend(256);
             ProtocolServer server = NewServer(backend);
@@ -265,7 +265,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void CommandeInconnueEstRefuseeEtNommee()
+        public void AnUnknownCommandIsRefusedAndNamed()
         {
             FakeMemoryBackend backend = new FakeMemoryBackend();
             ProtocolServer server = NewServer(backend);
@@ -283,7 +283,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void ParametresMalformesSontRefusesNomme()
+        public void MalformedParametersAreRefusedByName()
         {
             FakeMemoryBackend backend = new FakeMemoryBackend();
             ProtocolServer server = NewServer(backend);
@@ -303,7 +303,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void AllerRetourSurSocketReel()
+        public void RoundTripOverARealSocket()
         {
             // The end to end test: since the Lua bridge is a synchronous script, what
             // matters is that the server answers line by line without ever blocking or
@@ -341,7 +341,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void ConnexionSurPortInexistantEstRefuseeEtNommee()
+        public void ConnectingToAMissingPortIsRefusedAndNamed()
         {
             // The monitor must say "no bridge" clearly rather than crash on a mute
             // socket exception.
@@ -358,7 +358,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void DesassemblageNeLitQueCeQuIlFaut()
+        public void DisassemblyReadsOnlyWhatItNeeds()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -376,7 +376,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void DesassemblagePresDeLaFinDeLEspaceEstTronquePasRefuse()
+        public void DisassemblyNearTheEndOfTheSpaceIsTruncatedNotRefused()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {

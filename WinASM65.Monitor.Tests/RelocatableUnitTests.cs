@@ -78,7 +78,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void UneUniteAssembleeEstGardeeAvecSonOrigineNaturelle()
+        public void AnAssembledUnitIsKeptWithItsNaturalOrigin()
         {
             RelocatableUnit unit = RelocatableUnit.FromSource(
                 WriteSource("routine.asm", RoutineSource), Options());
@@ -90,7 +90,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void LaMemeRoutineSePoseALaMemeAdresse()
+        public void TheSameRoutineLandsAtTheSameAddress()
         {
             // Same source, same address: the placement must reproduce the bytes the
             // assembler produced, or "reloading" is a different operation.
@@ -101,32 +101,32 @@ namespace WinASM65.Monitor.Tests
 
             Assert.AreEqual(0x8000, block.Address);
             Assert.AreEqual(0xAD, block.Bytes[0], "lda Table");
-            Assert.AreEqual(0x80, block.Bytes[2], "la table est a $8000");
-            Assert.AreEqual(0x80, block.Bytes[6], "le haut de Routine vaut $80");
+            Assert.AreEqual(0x80, block.Bytes[2], "the table sits at $8000");
+            Assert.AreEqual(0x80, block.Bytes[6], "the high byte of Routine is $80");
         }
 
         [TestMethod]
-        public void LaMemeRoutineSePosePlusHautSansEtreReassemblee()
+        public void TheSameRoutineLandsHigherWithoutBeingReassembled()
         {
             RelocatableUnit unit = RelocatableUnit.FromSource(
-                WriteSource("haut.asm", RoutineSource), Options());
+                WriteSource("higher.asm", RoutineSource), Options());
 
             LoadedBlock block = unit.PlaceAt(0xF000);
 
             Assert.AreEqual(0xF000, block.Address);
-            Assert.AreEqual(0xF0, block.Bytes[2], "la table est a $F000");
-            Assert.AreEqual(0xF0, block.Bytes[6], "le haut de Routine vaut $F0");
-            Assert.IsTrue(block.Sites.Count > 0, "un deplacement qui ne corrige rien n'est pas une relocation");
+            Assert.AreEqual(0xF0, block.Bytes[2], "the table sits at $F000");
+            Assert.AreEqual(0xF0, block.Bytes[6], "the high byte of Routine is $F0");
+            Assert.IsTrue(block.Sites.Count > 0, "a move that corrects nothing is not a relocation");
         }
 
         [TestMethod]
-        public void UneAdresseInferieureALOrigineProduitUnDecalageNegatif()
+        public void AnAddressBelowTheOriginGivesANegativeShift()
         {
             // Descending is the same operation as ascending: the linker wraps the
             // shift into 16 bits. If it did not, "load the routine lower" would fail
             // while "load it higher" works, for no reason a user could act on.
             RelocatableUnit unit = RelocatableUnit.FromSource(
-                WriteSource("bas.asm", RoutineSource), Options());
+                WriteSource("lower.asm", RoutineSource), Options());
 
             LoadedBlock block = unit.PlaceAt(0x4000);
 
@@ -136,13 +136,13 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void DeuxPlacementsSuccessifsNeSePerturbentPas()
+        public void TwoSuccessivePlacementsDoNotDisturbEachOther()
         {
             // The units are kept between placements, so a second call must not inherit
             // anything from the first. A shift stored on the unit instead of computed
             // per call would make the second placement land at the first's address.
             RelocatableUnit unit = RelocatableUnit.FromSource(
-                WriteSource("deux.asm", RoutineSource), Options());
+                WriteSource("twice.asm", RoutineSource), Options());
 
             LoadedBlock first = unit.PlaceAt(0x8000);
             LoadedBlock second = unit.PlaceAt(0xC000);
@@ -150,14 +150,14 @@ namespace WinASM65.Monitor.Tests
 
             Assert.AreEqual(0x80, first.Bytes[2]);
             Assert.AreEqual(0xC0, second.Bytes[2]);
-            Assert.AreEqual(0x80, third.Bytes[2], "revenir a la premiere adresse redonne les memes octets");
+            Assert.AreEqual(0x80, third.Bytes[2], "going back to the first address gives the same bytes");
         }
 
         [TestMethod]
-        public void UneAdresseHorsDeLEspaceDAdressageEstRefuseeNommee()
+        public void AnAddressOutsideTheAddressSpaceIsRefusedByName()
         {
             RelocatableUnit unit = RelocatableUnit.FromSource(
-                WriteSource("hors.asm", RoutineSource), Options());
+                WriteSource("outside.asm", RoutineSource), Options());
 
             try
             {
@@ -171,12 +171,12 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void UneUniteSansExportNeProduitPasDeModuleEtLeDit()
+        public void AUnitWithoutExportProducesNoModuleAndSaysSo()
         {
             // Named rather than silently empty: without an export there is nothing for
             // a linker to hold, and the failure the user would otherwise see is "the
             // unit is empty", which sends them looking in the wrong place.
-            string path = WriteSource("rien.asm", ".org $8000\nBoucle: jmp Boucle\n");
+            string path = WriteSource("nothing.asm", ".org $8000\nBoucle: jmp Boucle\n");
 
             try
             {
@@ -186,12 +186,12 @@ namespace WinASM65.Monitor.Tests
             catch (MonitorException ex)
             {
                 StringAssert.Contains(ex.Message, "no .export");
-                StringAssert.Contains(ex.Message, "rien.asm");
+                StringAssert.Contains(ex.Message, "nothing.asm");
             }
         }
 
         [TestMethod]
-        public void UneEtiquetteLocaleNonExporteeSuitLeDeplacement()
+        public void ANonExportedLocalLabelFollowsTheMove()
         {
             // Depends on the local symbol table added with the .w65 version 1.1: the
             // branch names a label the unit defines itself, so a link without that
@@ -206,18 +206,18 @@ namespace WinASM65.Monitor.Tests
             LoadedBlock block = unit.PlaceAt(0x9000);
 
             Assert.AreEqual(0x4C, block.Bytes[1], "jmp");
-            Assert.AreEqual(0x01, block.Bytes[2], "Boucle est l'adresse du jmp lui-meme, soit + 1");
-            Assert.AreEqual(0x90, block.Bytes[3], "soit $9001");
+            Assert.AreEqual(0x01, block.Bytes[2], "Boucle is the address of the jmp itself, i.e. + 1");
+            Assert.AreEqual(0x90, block.Bytes[3], "i.e. $9001");
         }
 
         [TestMethod]
-        public void UneUniteADeuxOrgSeDeplaceDUnBlocCommeUnTout()
+        public void AUnitWithTwoOrgsMovesAsOneBlock()
         {
             // A unit is not restricted to a single block: the second .org is a second
             // segment, and both have to arrive at the new base with their own
             // address-dependent sites corrected. If a segment were dropped here, the
             // unit would look like it loaded and simply be missing half its code.
-            string path = WriteSource("deux.asm",
+            string path = WriteSource("twice.asm",
                 ".org $8000\n"
                 + "Depart:  lda BlocA\n"
                 + "         jsr Second\n"
@@ -250,23 +250,23 @@ namespace WinASM65.Monitor.Tests
             // for a unit with two blocks -- they keep their distance.
             LoadedBlock deplace = unit.PlaceAt(0x3000);
             Assert.AreEqual(0xAD, deplace.Bytes[0]);
-            Assert.AreEqual(0x07, deplace.Bytes[1], "BlocA a suivi : $3007, pas $8007");
+            Assert.AreEqual(0x07, deplace.Bytes[1], "BlocA followed: $3007, not $8007");
             Assert.AreEqual(0x30, deplace.Bytes[2]);
             Assert.AreEqual(0x20, deplace.Bytes[3], "jsr");
-            Assert.AreEqual(0x00, deplace.Bytes[4], "Second a suivi : $4000, pas $9000");
+            Assert.AreEqual(0x00, deplace.Bytes[4], "Second followed: $4000, not $9000");
             Assert.AreEqual(0x40, deplace.Bytes[5]);
 
             // The second block is really in the loaded image, not merely linked.
-            Assert.AreEqual(0xAD, deplace.Bytes[0x1000], "le second bloc commence par un lda");
-            Assert.AreEqual(0x04, deplace.Bytes[0x1001], "il vise son propre $4004");
-            Assert.AreEqual(0x60, deplace.Bytes[0x1003], "puis son rts");
-            Assert.AreEqual(0x22, deplace.Bytes[0x1004], "et son octet de donnee y est");
+            Assert.AreEqual(0xAD, deplace.Bytes[0x1000], "the second block starts with an lda");
+            Assert.AreEqual(0x04, deplace.Bytes[0x1001], "it targets its own $4004");
+            Assert.AreEqual(0x60, deplace.Bytes[0x1003], "then its rts");
+            Assert.AreEqual(0x22, deplace.Bytes[0x1004], "and its data byte is there");
         }
 
         [TestMethod]
-        public void UneErreurDAssemblageEstRapporteeParSonDiagnostic()
+        public void AnAssemblyErrorIsReportedByItsDiagnostic()
         {
-            string path = WriteSource("faux.asm", ".org $8000\n lda #$100\n");
+            string path = WriteSource("wrong.asm", ".org $8000\n lda #$100\n");
 
             try
             {
@@ -282,7 +282,7 @@ namespace WinASM65.Monitor.Tests
         // ------------------------------------------------------- the protocol side
 
         [TestMethod]
-        public void AssemblePuisLoadEcritLaRoutineALAdresseDemandee()
+        public void AssembleThenLoadWritesTheRoutineAtTheRequestedAddress()
         {
             FakeMemoryBackend backend = new FakeMemoryBackend();
             ProtocolServer server = new ProtocolServer(backend, CpuFactory.Create("6502"), _directory);
@@ -298,12 +298,12 @@ namespace WinASM65.Monitor.Tests
 
             byte[] memory = backend.Read(0xF000, 11);
             Assert.AreEqual(0xAD, memory[0], "lda Table");
-            Assert.AreEqual(0xF0, memory[2], "la table est a $F000");
-            Assert.AreEqual(0xF0, memory[6], "le haut de Routine vaut $F0");
+            Assert.AreEqual(0xF0, memory[2], "the table sits at $F000");
+            Assert.AreEqual(0xF0, memory[6], "the high byte of Routine is $F0");
         }
 
         [TestMethod]
-        public void ChargerLaMemeUniteDeuxEcritDeuxAdresses()
+        public void LoadingTheSameUnitTwiceWritesTwoAddresses()
         {
             FakeMemoryBackend backend = new FakeMemoryBackend();
             ProtocolServer server = new ProtocolServer(backend, CpuFactory.Create("6502"), _directory);
@@ -313,12 +313,12 @@ namespace WinASM65.Monitor.Tests
             StringAssert.StartsWith(server.Handle("LOAD routine $C000"), "OK");
             StringAssert.StartsWith(server.Handle("LOAD routine $F000"), "OK");
 
-            Assert.AreEqual(0xC0, backend.Read(0xC002, 1)[0], "premiere copie a $C000");
-            Assert.AreEqual(0xF0, backend.Read(0xF002, 1)[0], "second copie a $F000");
+            Assert.AreEqual(0xC0, backend.Read(0xC002, 1)[0], "first copy at $C000");
+            Assert.AreEqual(0xF0, backend.Read(0xF002, 1)[0], "second copy at $F000");
         }
 
         [TestMethod]
-        public void ChargerUneUniteInconnueEstRefuseEtDitDeLAssembler()
+        public void LoadingAnUnknownUnitIsRefusedAndSaysToAssembleIt()
         {
             FakeMemoryBackend backend = new FakeMemoryBackend();
             ProtocolServer server = new ProtocolServer(backend, CpuFactory.Create("6502"), _directory);
@@ -331,7 +331,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void UneRelectureQuiDifferaitSeraitRefusee()
+        public void AReadBackThatDifferedWouldBeRefused()
         {
             // The fake backend cannot corrupt itself, so this pins the contract the
             // way it is honoured rather than the way it fails: LOAD compares what the
@@ -350,7 +350,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void UneUniteTropGrandePourUnChargementEstRefuseeAvantDEcrire()
+        public void AUnitTooLargeForALoadIsRefusedBeforeWriting()
         {
             // 16 KiB is the cap: a bigger block in one bridge message freezes the
             // emulator, and the user sees a hang, not a refusal.
@@ -362,18 +362,18 @@ namespace WinASM65.Monitor.Tests
             for (int i = 0; i < MonitorProtocol.MaxLoadLength + 16; i++)
                 filler.Append(".byte $00\n");
             filler.Append("Entree: rts\n        .export Entree\n");
-            WriteSource("gros.asm", filler.ToString());
+            WriteSource("big.asm", filler.ToString());
 
-            StringAssert.StartsWith(server.Handle("ASSEMBLE gros.asm"), "OK");
-            string response = server.Handle("LOAD gros $8000");
+            StringAssert.StartsWith(server.Handle("ASSEMBLE big.asm"), "OK");
+            string response = server.Handle("LOAD big $8000");
 
             StringAssert.StartsWith(response, "ERR");
             StringAssert.Contains(response, "too large");
-            Assert.AreEqual(0, backend.WriteCount, "rien ne doit etre ecrit apres un refus de taille");
+            Assert.AreEqual(0, backend.WriteCount, "nothing must be written after a size refusal");
         }
 
         [TestMethod]
-        public void UnitesListeCeQuiEstAssemble()
+        public void UnitsListsWhatIsAssembled()
         {
             FakeMemoryBackend backend = new FakeMemoryBackend();
             ProtocolServer server = new ProtocolServer(backend, CpuFactory.Create("6502"), _directory);
