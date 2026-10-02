@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Net.Sockets;
+using System.Text.Json;
 using System.Threading;
 using WinASM65.Cpu;
 using WinASM65.Monitor;
@@ -222,24 +223,14 @@ namespace WinASM65.Monitor.Cli
         private static bool EnsureMesen2ScriptSettings(string emulatorPath)
         {
             string settingsPath = Path.Combine(Path.GetDirectoryName(emulatorPath) ?? ".", "settings.json");
-            string[] required = { "AllowIoOsAccess", "AllowNetworkAccess", "ScriptTimeout" };
 
             if (File.Exists(settingsPath))
             {
-                string existing = File.ReadAllText(settingsPath);
-                bool complete = true;
-                foreach (string key in required)
-                {
-                    if (existing.IndexOf(key, StringComparison.Ordinal) < 0)
-                    {
-                        complete = false;
-                        break;
-                    }
-                }
-                if (complete) return true;
+                string problem = DescribeMesen2SettingsProblem(File.ReadAllText(settingsPath));
+                if (problem == null) return true;
 
                 Console.Error.WriteLine(
-                    "[mesen2] " + settingsPath + " is missing the script permissions the bridge needs.");
+                    "[mesen2] " + settingsPath + " does not grant the bridge what it needs: " + problem + ".");
                 Console.Error.WriteLine("[mesen2] Add: \"Debug\": { \"ScriptWindow\": { \"AllowIoOsAccess\": true,"
                     + " \"AllowNetworkAccess\": true, \"ScriptTimeout\": 60 } }");
                 return false;
@@ -264,6 +255,54 @@ namespace WinASM65.Monitor.Cli
             Console.Error.WriteLine("[mesen2] wrote " + settingsPath
                 + " to let the bridge use sockets and to survive a pause.");
             return true;
+        }
+
+        /// <summary>
+        /// Names the first setting that would stop the bridge, or returns null when
+        /// the file already grants everything the bridge needs.
+        ///
+        /// The value matters, not merely the key. A file that spells
+        /// "AllowNetworkAccess" but sets it to false satisfies a substring test and
+        /// still leaves the bridge unable to open a socket, which reaches the user
+        /// as an emulator that starts and then silently ignores the script: the same
+        /// appearance as a crash, and much harder to diagnose.
+        /// </summary>
+        private static string DescribeMesen2SettingsProblem(string json)
+        {
+            JsonElement root;
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(json);
+                root = document.RootElement.Clone();
+            }
+            catch (JsonException)
+            {
+                return "the file is not valid JSON";
+            }
+
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("Debug", out JsonElement debug)
+                || debug.ValueKind != JsonValueKind.Object
+                || !debug.TryGetProperty("ScriptWindow", out JsonElement window)
+                || window.ValueKind != JsonValueKind.Object)
+            {
+                return "it has no Debug.ScriptWindow section";
+            }
+
+            foreach (string key in new[] { "AllowIoOsAccess", "AllowNetworkAccess" })
+            {
+                if (!window.TryGetProperty(key, out JsonElement value) || value.ValueKind != JsonValueKind.True)
+                    return key + " is missing or not true";
+            }
+
+            if (!window.TryGetProperty("ScriptTimeout", out JsonElement timeout)
+                || !timeout.TryGetInt32(out int seconds)
+                || seconds <= 0)
+            {
+                return "ScriptTimeout is missing or not a positive number of seconds";
+            }
+
+            return null;
         }
 
         private static string FindBridgeInSourceTree(string scriptName)
