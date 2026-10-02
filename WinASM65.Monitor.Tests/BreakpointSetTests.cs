@@ -22,7 +22,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void PointDArretPoseEstVisibleEtPoseSurLaMachine()
+        public void PlacedBreakpointIsVisibleAndSetOnTheMachine()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -39,7 +39,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void DoublonNeReenregistrePas()
+        public void DuplicateIsNotRecordedTwice()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -58,7 +58,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void MemeAdresseAutreTypeEstUnPointDArretDistinct()
+        public void SameAddressOtherKindIsADistinctBreakpoint()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -75,7 +75,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void PointDArretRefuseParLEmulateurNeLaissePasDeFantome()
+        public void BreakpointRefusedByTheEmulatorLeavesNoGhost()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -100,7 +100,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void RetraitReposeLesAutresEtLaisseLaMachineConforme()
+        public void RemovingRestoresTheOthersAndLeavesTheMachineConsistent()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -124,7 +124,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void RetraitDUnPointDAbsentEstRefuseEtNeChangeRien()
+        public void RemovingAMissingBreakpointIsRefusedAndChangesNothing()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -138,7 +138,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void EffacementNetoyeLaListeEtLaMachine()
+        public void ClearEmptiesTheListAndTheMachine()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -155,7 +155,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void TypeInconnuEstRefuseAvantLEmulateur()
+        public void UnknownKindIsRefusedBeforeTheEmulator()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -170,7 +170,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void DescriptionEstRejouableTelleQuelle()
+        public void DescriptionCanBeReplayedVerbatim()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -183,7 +183,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void RelectureParLeProtocoleRefleteCeQuiEstPose()
+        public void ReadingBackThroughTheProtocolReflectsWhatIsSet()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -220,7 +220,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void LeTypeEstVerifieApresLAdresse()
+        public void TheKindIsCheckedAfterTheAddress()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
@@ -241,7 +241,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void Adresses16BitsSeulesSontAcceptees()
+        public void Only16BitAddressesAreAccepted()
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {

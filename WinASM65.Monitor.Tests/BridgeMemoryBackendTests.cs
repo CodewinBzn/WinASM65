@@ -31,7 +31,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void LaPoigneeDEtablissementRenseigneLENomEtLaVersionDuHote()
+        public void TheEstablishmentHandleReportsTheHostNameAndVersion()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             using (ProtocolServer server = Serve(machine))
@@ -45,7 +45,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void LectureEcritureAllerRetourATraversDuPont()
+        public void ReadWriteRoundTripAcrossTheBridge()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             using (ProtocolServer server = Serve(machine))
@@ -57,7 +57,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void UneRelectureParLePontVoitCeQuUneAutreVoit()
+        public void AReadBackThroughTheBridgeSeesWhatAnotherSees()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             using (ProtocolServer server = Serve(machine))
@@ -65,12 +65,12 @@ namespace WinASM65.Monitor.Tests
             {
                 machine.Write(0x10, new byte[] { 0x5A });
                 Assert.AreEqual(0x5A, bridge.Read(0x10, 1)[0],
-                    "le pont ne doit pas avoir sa propre copie de la memoire");
+                    "the bridge must not keep its own copy of memory");
             }
         }
 
         [TestMethod]
-        public void LeRefusDuHoteArriveAvecSaRaison()
+        public void TheHostRefusalArrivesWithItsReason()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             using (ProtocolServer server = Serve(machine))
@@ -86,13 +86,13 @@ namespace WinASM65.Monitor.Tests
                 catch (MonitorException ex)
                 {
                     StringAssert.Contains(ex.Message, "refused the breakpoint");
-                    StringAssert.Contains(ex.Message, "BREAK SET", "le refus doit nommer la commande");
+                    StringAssert.Contains(ex.Message, "BREAK SET", "the refusal must name the command");
                 }
             }
         }
 
         [TestMethod]
-        public void UnePlageHorsEspaceEstRefuseeAvantLeTransport()
+        public void ARangeOutsideTheSpaceIsRefusedBeforeTransport()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             using (ProtocolServer server = Serve(machine))
@@ -107,7 +107,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void UneRequeteAuDessusDeLaBorneDuProtocoleEstRefuseeAvantLeTransport()
+        public void ARequestAboveTheProtocolLimitIsRefusedBeforeTransport()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             using (ProtocolServer server = Serve(machine))
@@ -127,7 +127,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void UnInstantaneVaEtRevient()
+        public void ASnapshotRoundTrips()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             using (ProtocolServer server = Serve(machine))
@@ -147,7 +147,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void UneGrandeLectureEstDecoupeeEnBlocsBornes()
+        public void ALargeReadIsSplitIntoBoundedBlocks()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             using (ProtocolServer server = Serve(machine))
@@ -165,13 +165,13 @@ namespace WinASM65.Monitor.Tests
 
                 Assert.AreEqual(4, machine.ReadLengths.Count);
                 foreach (int length in machine.ReadLengths)
-                    Assert.IsTrue(length <= 256, "un bloc de " + length + " octets depasse la borne du pont");
+                    Assert.IsTrue(length <= 256, "a block of " + length + " bytes exceeds the bridge limit");
                 CollectionAssert.AreEqual(expected, read);
             }
         }
 
         [TestMethod]
-        public void UneGrandeEcritureEstDecoupeeEnBlocsBornes()
+        public void ALargeWriteIsSplitIntoBoundedBlocks()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             using (ProtocolServer server = Serve(machine))
@@ -188,7 +188,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void UneReponseTropCourteEstRefuseeEtNonCompleteeParDesZeros()
+        public void ATooShortReplyIsRefusedAndNotPaddedWithZeros()
         {
             // A bridge that answers less than it was asked would shift every
             // following byte. The refusal names it instead of showing zeros that are

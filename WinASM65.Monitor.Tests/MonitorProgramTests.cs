@@ -102,7 +102,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void LeProgrammeAnnonceLHotePuisTraiteLesCommandes()
+        public void TheProgramAnnouncesTheHostThenHandlesCommands()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             using (ProtocolServer server = Serve(machine))
@@ -123,7 +123,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void UneFauteDeFrappeEstRepondueEtLeProgrammeResteUtilisable()
+        public void ATypingMistakeIsAnsweredAndTheProgramStaysUsable()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             using (ProtocolServer server = Serve(machine))
@@ -140,7 +140,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void LaideEstAccessibleSansMachine()
+        public void HelpIsAvailableWithoutAMachine()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             using (ProtocolServer server = Serve(machine))
@@ -154,7 +154,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void UneAssembleePuisUnChargementAtteignentLaMachine()
+        public void AnAssemblyThenALoadReachesTheMachine()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             using (ProtocolServer server = Serve(machine))
@@ -188,7 +188,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void SansPontLeProgrammeEchoueEnDisantLequelIlAttendait()
+        public void WithoutABridgeTheProgramFailsNamingTheOneItExpected()
         {
             // A port just released by a server this test opened, so it is
             // certainly free. Port 1 would do the same job, but it is reserved on
@@ -220,7 +220,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void UneOptionInconnueEstRefuseeAvecLUsage()
+        public void AnUnknownOptionIsRefusedWithTheUsage()
         {
             ProcessStartInfo start = new ProcessStartInfo(Executable)
             {
@@ -244,7 +244,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void MesenSansRomEstRefuseAvantDeLancerQuoiQueCeSoit()
+        public void MesenWithoutARomIsRefusedBeforeLaunchingAnything()
         {
             // Launching the emulator and only then complaining about a missing ROM
             // would leave a MesenCE process running with no way to close it.
@@ -256,7 +256,7 @@ namespace WinASM65.Monitor.Tests
                 CreateNoWindow = true
             };
             start.ArgumentList.Add("--mesen");
-            start.ArgumentList.Add(@"C:\chemin\qui\nexiste\pas\Mesen.exe");
+            start.ArgumentList.Add(@"C:\path\that\does\not\exist\Mesen.exe");
 
             using (Process process = Process.Start(start))
             {
