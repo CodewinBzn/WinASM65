@@ -8,6 +8,7 @@ using System.Threading;
 using WinASM65.Cpu;
 using WinASM65.Monitor;
 using WinASM65.Monitor.Protocol;
+using WinASM65.Monitor.Shell;
 
 namespace WinASM65.Monitor.Cli
 {
@@ -37,6 +38,8 @@ namespace WinASM65.Monitor.Cli
             string mesenPath = null;
             string romPath = null;
             string emulator = MesenCe;
+            string themePath = null;
+            bool? wantShell = null;
 
             try
             {
@@ -55,6 +58,15 @@ namespace WinASM65.Monitor.Cli
                             break;
                         case "--emulator":
                             emulator = args[++i].ToLowerInvariant();
+                            break;
+                        case "--theme":
+                            themePath = args[++i];
+                            break;
+                        case "--tui":
+                            wantShell = true;
+                            break;
+                        case "--repl":
+                            wantShell = false;
                             break;
                         case "--help":
                         case "-h":
@@ -96,16 +108,24 @@ namespace WinASM65.Monitor.Cli
                     // answers all of them, because it has the API to do it.
                     using (BridgeMemoryBackend backend = Connect(port))
                     {
-                        return Run(new MonitorSession(backend, new Cpu6502(), Directory.GetCurrentDirectory()));
+                        MonitorSession session =
+                            new MonitorSession(backend, new Cpu6502(), Directory.GetCurrentDirectory());
+
+                        if (UseShell(wantShell))
+                        {
+                            ShellTheme theme = ShellTheme.Load(themePath);
+                            return ShellRunner.Run(session, theme, ListingSourceFactory.Create(),
+                                Directory.GetCurrentDirectory(), mesen);
+                        }
+
+                        return RunRepl(session);
                     }
                 }
                 finally
                 {
-                    if (mesen != null && !mesen.HasExited)
-                    {
-                        try { mesen.Kill(); }
-                        catch (InvalidOperationException) { }
-                    }
+                    // Runs on every path out of the shell as well as the REPL, so a
+                    // crash inside Terminal.Gui cannot leave Mesen running.
+                    ShellRunner.StopEmulator(mesen);
                 }
             }
             catch (MonitorException ex)
@@ -120,6 +140,26 @@ namespace WinASM65.Monitor.Cli
             }
         }
 
+        /// <summary>
+        /// Whether to draw the TUI rather than read lines.
+        ///
+        /// The TUI owns the console: it puts the terminal into an alternate screen
+        /// and draws over it. On a redirected stdin or stdout there is no terminal
+        /// to own, and a shell started there produces escape sequences in a file
+        /// and never sees the keys that would close it. So redirection selects the
+        /// REPL, which is exactly the case it was built for.
+        ///
+        /// <c>--tui</c> and <c>--repl</c> override the guess, for the user who
+        /// knows better.
+        /// </summary>
+        internal static bool UseShell(bool? requested)
+        {
+            if (requested.HasValue)
+                return requested.Value;
+
+            return !Console.IsInputRedirected && !Console.IsOutputRedirected;
+        }
+
         private static void PrintUsage()
         {
             Console.WriteLine("WinASM65 monitor");
@@ -127,7 +167,11 @@ namespace WinASM65.Monitor.Cli
             Console.WriteLine("  --mesen <exe>    launch this emulator with the bridge");
             Console.WriteLine("  --rom <file>     ROM to load (required with --mesen)");
             Console.WriteLine("  --emulator <id>  " + MesenCe + " (default, memory only) or " + Mesen2 + " (full control)");
+            Console.WriteLine("  --theme <file>   palette to load (default: theme.json beside the executable)");
+            Console.WriteLine("  --tui | --repl   force the terminal shell, or the line prompt");
             Console.WriteLine("With no --mesen, the monitor attaches to an already running bridge.");
+            Console.WriteLine("The shell is chosen automatically: with a real terminal it draws the");
+            Console.WriteLine("panes, and with a redirected stdin or stdout it reads lines instead.");
         }
 
         /// <summary>
@@ -357,7 +401,7 @@ namespace WinASM65.Monitor.Cli
             }
         }
 
-        private static int Run(MonitorSession session)
+        private static int RunRepl(MonitorSession session)
         {
             Console.WriteLine("WinASM65 monitor - " + session.Backend.EmulatorName
                 + " " + session.Backend.EmulatorVersion);
