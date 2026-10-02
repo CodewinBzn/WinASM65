@@ -631,6 +631,101 @@ namespace WinASM65.Tests
             Assert.AreEqual("write $0000-$00FF", cpu.Watchpoints[1].ToString());
         }
 
+        /// <summary>A machine stopped at its own first instruction, vectors in place.</summary>
+        private static Cpu6502Core Waiting(ushort irqVectorTarget, ushort nmiVectorTarget)
+        {
+            Cpu6502Core cpu = Programmed(new byte[]
+            {
+                0xA9, 0x01        // LDA #$01
+            });
+            cpu[0xFFFE] = (byte)(irqVectorTarget & 0xFF);
+            cpu[0xFFFF] = (byte)(irqVectorTarget >> 8);
+            cpu[0xFFFA] = (byte)(nmiVectorTarget & 0xFF);
+            cpu[0xFFFB] = (byte)(nmiVectorTarget >> 8);
+            cpu.InterruptDisable = false;
+            return cpu;
+        }
+
+        [TestMethod]
+        public void AnInterruptIsTakenWhenTheProgramHasNotMaskedIt()
+        {
+            Cpu6502Core cpu = Waiting(0xC000, 0xD000);
+
+            cpu.Interrupt();
+
+            Assert.AreEqual(0xC000, cpu.PC, "the interrupt vector was taken");
+            Assert.IsTrue(cpu.InterruptDisable, "and the processor masked the next one");
+        }
+
+        [TestMethod]
+        public void AnInterruptIsIgnoredWhileTheProgramHasMaskedIt()
+        {
+            // The program turned interrupts off, so the machine must not decide
+            // otherwise. This is the difference between a machine and a mock.
+            Cpu6502Core cpu = Waiting(0xC000, 0xD000);
+            cpu.InterruptDisable = true;
+
+            cpu.Interrupt();
+
+            Assert.AreEqual(0x8000, cpu.PC, "the program is still where it was");
+            Assert.AreEqual(0L, cpu.Cycles, "and nothing was executed");
+        }
+
+        [TestMethod]
+        public void ANonMaskableInterruptIsTakenEvenWhenTheProgramHasMaskedIt()
+        {
+            // The one interrupt a program cannot refuse is the one that lets a
+            // watchdog work, and a core that let the flag hide it would be a
+            // machine able to explain away its own hangs.
+            Cpu6502Core cpu = Waiting(0xC000, 0xD000);
+            cpu.InterruptDisable = true;
+
+            cpu.NonMaskableInterrupt();
+
+            Assert.AreEqual(0xD000, cpu.PC, "the non-maskable vector, not the masked one");
+            Assert.IsTrue(cpu.InterruptDisable);
+        }
+
+        [TestMethod]
+        public void AnInterruptPushesTheNextAddressAndTheFlagsWithoutTheBreakBit()
+        {
+            Cpu6502Core cpu = Waiting(0xC000, 0xD000);
+            cpu.Carry = true;
+            ushort returnAddress = cpu.PC;
+
+            cpu.Interrupt();
+
+            byte flags = cpu.Pull();
+            Assert.AreEqual(returnAddress, cpu.Pull16(), "a handler returns to the next instruction");
+            Assert.IsTrue((flags & 0x01) != 0, "carry was pushed");
+            Assert.AreEqual(0, flags & 0x10, "the break bit is clear, because nothing broke");
+            Assert.AreEqual(0x20, flags & 0x20, "the unused bit is set, as it is on the processor");
+        }
+
+        [TestMethod]
+        public void ASoftwareBreakPushesTheBreakBit()
+        {
+            Cpu6502Core cpu = Waiting(0xC000, 0xD000);
+
+            cpu.Break();
+
+            Assert.AreEqual(0xC000, cpu.PC);
+            Assert.AreEqual(0x10, cpu.Pull() & 0x10, "a break says so on the stack");
+        }
+
+        [TestMethod]
+        public void TakingAnInterruptCostsTheSameCyclesAsABreakInstruction()
+        {
+            // Seven, and not zero: a debugger watching the cycle counter would
+            // otherwise see the machine stop dead and read as a hang.
+            Cpu6502Core cpu = Waiting(0xC000, 0xD000);
+
+            cpu.Interrupt();
+            Assert.AreEqual(7L, cpu.Cycles);
+            Assert.AreEqual(0L, cpu.Instructions, "an interrupt is not an instruction");
+            Assert.AreEqual(7, Cpu6502Core.InterruptCycles);
+            Assert.AreEqual(7, Cpu6502Core.GetBaseCycles(0x00), "and BRK costs the same");
+        }
         [TestMethod]
         public void ClearingTheStopsLeavesTheMachineRunning()
         {

@@ -30,6 +30,13 @@ namespace WinASM65.Execution
     {
         public const ushort IrqVector = 0xFFFE;
         public const ushort ResetVector = 0xFFFC;
+        public const ushort NmiVector = 0xFFFA;
+
+        /// <summary>
+        /// What taking an interrupt costs: seven cycles, the same as the BRK
+        /// instruction, because on the processor they are the same sequence.
+        /// </summary>
+        public const int InterruptCycles = 7;
 
         private readonly ICpuBus _bus;
         private readonly HashSet<ushort> _breakpoints = new HashSet<ushort>();
@@ -257,6 +264,59 @@ namespace WinASM65.Execution
         }
 
         // ------------------------------------------------------------------ running
+
+        /// <summary>
+        /// Raises the interrupt line, which is what a caller pressing IRQ or
+        /// clicking an interrupt request in a user interface means.
+        /// <para>
+        /// The processor masks it while the interrupt disable flag is set, and
+        /// refusing to mask it here would be the emulator deciding something the
+        /// program gets to decide for itself: a program that has turned
+        /// interrupts off would still be interrupted.
+        /// </para>
+        /// </summary>
+        public void Interrupt()
+        {
+            if (InterruptDisable)
+                return;
+            EnterInterrupt(IrqVector, false);
+        }
+
+        /// <summary>
+        /// Raises the non-maskable interrupt line.
+        /// <para>
+        /// Nothing masks this one, which is the entire reason it exists: an
+        /// interrupt a program cannot refuse is the only one a machine can be
+        /// trusted to take, and a core that let the flag hide it would be a
+        /// machine whose crashes it could explain away.
+        /// </para>
+        /// </summary>
+        public void NonMaskableInterrupt()
+        {
+            EnterInterrupt(NmiVector, false);
+        }
+
+        /// <summary>
+        /// Runs the software break sequence: the same one a BRK instruction runs,
+        /// but through the vector rather than from a byte in the program.
+        /// <para>
+        /// The return address pushed is the address of the next instruction, which
+        /// is what a caller that pressed the key expects to come back to.
+        /// </para>
+        /// </summary>
+        public void Break()
+        {
+            EnterInterrupt(IrqVector, true);
+        }
+
+        private void EnterInterrupt(ushort vector, bool withBreak)
+        {
+            Push16(PC);
+            Push(Flags(withBreak));
+            InterruptDisable = true;
+            PC = Peek16(vector);
+            Cycles += InterruptCycles;
+        }
 
         /// <summary>
         /// Runs until the program branches out through a jump to this address,
