@@ -1,13 +1,16 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using WinASM65.Execution;
 
 namespace WinASM65.Tests
 {
     /// <summary>
-    /// The test CPU, checked against known answers.
+    /// The execution core, checked against known answers.
     /// <para>
-    /// Everything T9 and T11 claim rests on this interpreter being right. A test
-    /// fixture that is itself wrong does not fail quietly: it makes the stub
-    /// tests pass for the wrong reason, which is worse than having no stub test.
+    /// Everything T9 and T11 claim rests on this interpreter being right. A core
+    /// that is itself wrong does not fail quietly: it makes the stub tests pass for
+    /// the wrong reason, which is worse than having no stub test. It now lives in
+    /// the library, where a debugger will use it too, so these answers are the only
+    /// thing standing between it and a user.
     /// </para>
     /// </summary>
     [TestClass]
@@ -23,7 +26,7 @@ namespace WinASM65.Tests
             // two would swallow the STA below and land on its operand, which is
             // not an opcode at all: the run stops dead rather than drifting, and
             // the store that was supposed to happen never does.
-            TestCpu6502 cpu = new TestCpu6502();
+            Cpu6502Core cpu = new Cpu6502Core();
             byte[] program =
             {
                 0xA9, 0x50,       // LDA #$50
@@ -43,7 +46,7 @@ namespace WinASM65.Tests
         [TestMethod]
         public void UneSoustractionImmediatePrendUnSeulOctetDOperand()
         {
-            TestCpu6502 cpu = new TestCpu6502();
+            Cpu6502Core cpu = new Cpu6502Core();
             byte[] program =
             {
                 0xA9, 0x50,       // LDA #$50
@@ -67,7 +70,7 @@ namespace WinASM65.Tests
             // carry is about the eight bits, the overflow about the signed
             // range. A stub that confuses them is wrong in a way no byte compare
             // would catch.
-            TestCpu6502 cpu = new TestCpu6502();
+            Cpu6502Core cpu = new Cpu6502Core();
             byte[] program =
             {
                 0xA9, 0x90,       // LDA #$90
@@ -87,7 +90,7 @@ namespace WinASM65.Tests
         [TestMethod]
         public void UneAdditionSansDebordementNeLeMetPas()
         {
-            TestCpu6502 cpu = new TestCpu6502();
+            Cpu6502Core cpu = new Cpu6502Core();
             byte[] program =
             {
                 0xA9, 0x50,       // LDA #$50
@@ -108,7 +111,7 @@ namespace WinASM65.Tests
         public void UneSoustractionEmprunteCommeSurLaMachine()
         {
             // SBC is ADC with the operand inverted, carry included.
-            TestCpu6502 cpu = new TestCpu6502();
+            Cpu6502Core cpu = new Cpu6502Core();
             byte[] program =
             {
                 0xA9, 0x50,       // LDA #$50
@@ -128,7 +131,7 @@ namespace WinASM65.Tests
         {
             // If the operand bytes were read as opcodes, this would not land on
             // the halt and the test would time out rather than fail cleanly.
-            TestCpu6502 cpu = new TestCpu6502();
+            Cpu6502Core cpu = new Cpu6502Core();
             cpu.Load(0x4000, new byte[] { 0x11, 0x22 });
 
             byte[] program =
@@ -147,7 +150,7 @@ namespace WinASM65.Tests
         [TestMethod]
         public void UnIndexageCroisePageNePerdPasLOctetDePoidsFort()
         {
-            TestCpu6502 cpu = new TestCpu6502();
+            Cpu6502Core cpu = new Cpu6502Core();
             cpu.Load(0x40FF, new byte[] { 0x5A });
             cpu.Load(0x4000, new byte[] { 0x00 });
 
@@ -166,7 +169,7 @@ namespace WinASM65.Tests
         [TestMethod]
         public void UnIndexageIndirectSuitLePointeur()
         {
-            TestCpu6502 cpu = new TestCpu6502();
+            Cpu6502Core cpu = new Cpu6502Core();
             // The pointer lives in page zero, which is where (zp),Y looks for
             // it; the data lives where the pointer says.
             cpu[0x0000] = 0x00;
@@ -190,7 +193,7 @@ namespace WinASM65.Tests
         {
             // This is exactly the trick the generated relocator uses to find
             // its own address, so it is tested here before it is relied on.
-            TestCpu6502 cpu = new TestCpu6502();
+            Cpu6502Core cpu = new Cpu6502Core();
             byte[] program =
             {
                 0x20, 0x10, 0x80, // JSR $8010
@@ -210,7 +213,7 @@ namespace WinASM65.Tests
         [TestMethod]
         public void UnDecalageEnPageZeroEcritEnMemoire()
         {
-            TestCpu6502 cpu = new TestCpu6502();
+            Cpu6502Core cpu = new Cpu6502Core();
             cpu[0x40] = 0x81;
 
             byte[] program =
@@ -232,7 +235,7 @@ namespace WinASM65.Tests
             // CMP sets the carry when the register is at least the operand.
             // Getting that backwards turns every unsigned branch into its
             // opposite, and the loop simply never ends.
-            TestCpu6502 cpu = new TestCpu6502();
+            Cpu6502Core cpu = new Cpu6502Core();
             byte[] program =
             {
                 0xA9, 0x10,       // LDA #$10
@@ -252,7 +255,7 @@ namespace WinASM65.Tests
         {
             // A fixture that ignored an unknown opcode would let a broken stub
             // pass. The name of the opcode is the whole point of the message.
-            TestCpu6502 cpu = new TestCpu6502();
+            Cpu6502Core cpu = new Cpu6502Core();
             byte[] program = { 0x02 };  // an illegal NMOS opcode
             cpu.LoadProgram(0x8000, program, Halt);
 
@@ -270,7 +273,7 @@ namespace WinASM65.Tests
         [TestMethod]
         public void LeModeDecimalEstRefuseEtNonApproximé()
         {
-            TestCpu6502 cpu = new TestCpu6502();
+            Cpu6502Core cpu = new Cpu6502Core();
             byte[] program =
             {
                 0xF8,             // SED

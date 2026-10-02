@@ -107,8 +107,8 @@ octets prouverait que le stub n'a pas change, pas qu'il fonctionne.
 
 Il ne se valide donc **pas** sur une machine reelle non plus, faute d'en avoir
 une sous la main. Ce que le depot fait a la place est meilleur qu'un golden :
-`WinASM65.Tests/TestCpu6502.cs` est un 6502 NMOS, et `RuntimeStubTests` **le
-fait tourner**. Le stub est assemble par l'assembleur du depot, le bloc qu'il
+`WinASM65/src/Execution/Cpu6502Core.cs` est un 6502 NMOS, et `RuntimeStubTests`
+**le fait tourner**. Le stub est assemble par l'assembleur du depot, le bloc qu'il
 deplace est une image **reellement liee** — pas un tableau d'octets sorti de
 rien —, et les assertions portent sur ce que la machine a fait : le bloc ecrit,
 la reference decalee, la routine appelee, le retour rendu a l'appelant.
@@ -129,7 +129,7 @@ bonne table, et etre faux de trois facons qui ne se voient qu'a l'execution :
 Aucun de ces trois n'aurait ete vu par une comparaison d'octets, et le second
 serait tombe sur n'importe quelle vraie machine.
 
-Il reste ce que `TestCpu6502` ne fait pas : ni clavier, ni interruptions, ni
+Il reste ce que `Cpu6502Core` ne fait pas : ni clavier, ni interruptions, ni
 lecteur de disque. Le stub ne s'en sert pas, mais une cible ne se declare pas
 validee sur cette seule base.
 
