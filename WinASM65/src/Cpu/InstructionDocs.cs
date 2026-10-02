@@ -78,28 +78,21 @@ namespace WinASM65.Cpu
         private static readonly ConditionalWeakTable<ICpuInstructionSet, IReadOnlyList<InstructionDocumentation>> Cache =
             new ConditionalWeakTable<ICpuInstructionSet, IReadOnlyList<InstructionDocumentation>>();
 
-        private static readonly HashSet<string> MnemonicLookup =
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        static InstructionDocs()
-        {
-            foreach (InstructionDocumentation doc in For6502)
-                MnemonicLookup.Add(doc.Mnemonic);
-
-            foreach (InstructionDocumentation doc in For65C02)
-                MnemonicLookup.Add(doc.Mnemonic);
-        }
+        // One instance per CPU, so that the no-argument forms hand back the same
+        // table every call and a caller is free to hold on to it.
+        private static readonly Cpu6502 DefaultCpu = new Cpu6502();
+        private static readonly Cpu65C02 CmosCpu = new Cpu65C02();
 
         /// <summary>Every NMOS 6502 form the assembler accepts.</summary>
         public static IReadOnlyList<InstructionDocumentation> For6502
         {
-            get { return ForCpu(new Cpu6502()); }
+            get { return ForCpu(DefaultCpu); }
         }
 
         /// <summary>Every 65C02 form, the NMOS ones included.</summary>
         public static IReadOnlyList<InstructionDocumentation> For65C02
         {
-            get { return ForCpu(new Cpu65C02()); }
+            get { return ForCpu(CmosCpu); }
         }
 
         /// <summary>
@@ -140,26 +133,38 @@ namespace WinASM65.Cpu
         }
 
         /// <summary>
-        /// The distinct mnemonics either CPU accepts, upper case and sorted.
-        /// This is the set a highlighter classifies against.
+        /// The distinct mnemonics the NMOS 6502 accepts, upper case and sorted.
+        /// This is what a highlighter classifies against when no CPU is named.
         /// </summary>
         public static IReadOnlyList<string> Mnemonics
         {
-            get
-            {
-                List<string> names = new List<string>(MnemonicLookup);
-                names.Sort(StringComparer.Ordinal);
-                return names;
-            }
+            get { return MnemonicsFor(DefaultCpu); }
+        }
+
+        /// <summary>
+        /// The distinct mnemonics <paramref name="cpu"/> accepts, upper case and
+        /// sorted. Null means the NMOS 6502, which is the CPU
+        /// <see cref="AssemblerEngine"/> assembles for by default.
+        /// </summary>
+        public static IReadOnlyList<string> MnemonicsFor(ICpuInstructionSet cpu)
+        {
+            HashSet<string> names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (InstructionDocumentation doc in ForCpu(cpu ?? DefaultCpu))
+                names.Add(doc.Mnemonic);
+
+            List<string> sorted = new List<string>(names);
+            sorted.Sort(StringComparer.Ordinal);
+            return sorted;
         }
 
         /// <summary>
         /// Whether <paramref name="token"/> is a mnemonic the assembler knows.
-        /// Case-insensitive, as the assembler itself is.
+        /// Case-insensitive, as the assembler itself is. Null for
+        /// <paramref name="cpu"/> asks about the NMOS 6502.
         /// </summary>
-        public static bool IsMnemonic(string token)
+        public static bool IsMnemonic(string token, ICpuInstructionSet cpu = null)
         {
-            return !string.IsNullOrEmpty(token) && MnemonicLookup.Contains(token);
+            return !string.IsNullOrEmpty(token) && new HashSet<string>(MnemonicsFor(cpu), StringComparer.OrdinalIgnoreCase).Contains(token);
         }
 
         /// <summary>
@@ -172,7 +177,7 @@ namespace WinASM65.Cpu
             if (string.IsNullOrEmpty(mnemonic))
                 return found;
 
-            IReadOnlyList<InstructionDocumentation> all = ForCpu(cpu ?? new Cpu6502());
+            IReadOnlyList<InstructionDocumentation> all = ForCpu(cpu ?? DefaultCpu);
             for (int i = 0; i < all.Count; i++)
             {
                 if (string.Equals(all[i].Mnemonic, mnemonic, StringComparison.OrdinalIgnoreCase))
