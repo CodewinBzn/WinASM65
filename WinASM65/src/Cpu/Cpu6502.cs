@@ -101,9 +101,9 @@ namespace WinASM65.Cpu
         }
 
         /// <summary>
-        /// Vue en lecture seule de la table d'opcodes de ce CPU. Exposee pour le
-        /// désassembleur, qui doit connaître le couplage exact mnémonique/mode/opcode,
-        /// y compris les extensions 65C02 absentes de la table NMOS.
+        /// Read-only view of this CPU's opcode table. Exposed for the
+        /// disassembler, which needs the exact mnemonic/mode/opcode coupling,
+        /// including the 65C02 extensions absent from the NMOS table.
         /// </summary>
         public System.Collections.Generic.IReadOnlyDictionary<string, byte[]> InstructionTable
         {

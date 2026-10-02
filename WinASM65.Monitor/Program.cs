@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Net.Sockets;
 using System.Threading;
@@ -26,11 +27,15 @@ namespace WinASM65.Monitor.Cli
         private const int ConnectTimeoutMs = 15000;
         private const int ConnectRetryMs = 250;
 
+        private const string MesenCe = "mesence";
+        private const string Mesen2 = "mesen2";
+
         public static int Main(string[] args)
         {
             int port = DefaultPort;
             string mesenPath = null;
             string romPath = null;
+            string emulator = MesenCe;
 
             try
             {
@@ -47,6 +52,9 @@ namespace WinASM65.Monitor.Cli
                         case "--rom":
                             romPath = args[++i];
                             break;
+                        case "--emulator":
+                            emulator = args[++i].ToLowerInvariant();
+                            break;
                         case "--help":
                         case "-h":
                             PrintUsage();
@@ -58,6 +66,12 @@ namespace WinASM65.Monitor.Cli
                     }
                 }
 
+                if (emulator != MesenCe && emulator != Mesen2)
+                {
+                    Console.Error.WriteLine("Unknown emulator: " + emulator + " (expected " + MesenCe + " or " + Mesen2 + ")");
+                    return 2;
+                }
+
                 if (mesenPath != null && romPath == null)
                 {
                     Console.Error.WriteLine("--mesen requires --rom.");
@@ -67,7 +81,7 @@ namespace WinASM65.Monitor.Cli
                 Process mesen = null;
                 if (mesenPath != null)
                 {
-                    mesen = LaunchMesen(mesenPath, romPath);
+                    mesen = LaunchEmulator(mesenPath, romPath, emulator, port);
                     if (mesen == null)
                         return 3;
                 }
@@ -77,7 +91,8 @@ namespace WinASM65.Monitor.Cli
                     // The session takes the backend, so the shell never holds the
                     // protocol itself. MesenCE refuses PAUSE, STEP, BREAK and RESET
                     // with a named reason, and that reason reaches the user intact
-                    // because the backend re-raises what the bridge said.
+                    // because the backend re-raises what the bridge said. Mesen2
+                    // answers all of them, because it has the API to do it.
                     using (BridgeMemoryBackend backend = Connect(port))
                     {
                         return Run(new MonitorSession(backend, new Cpu6502(), Directory.GetCurrentDirectory()));
@@ -107,21 +122,25 @@ namespace WinASM65.Monitor.Cli
         private static void PrintUsage()
         {
             Console.WriteLine("WinASM65 monitor");
-            Console.WriteLine("  --port <n>    bridge port (default " + DefaultPort + ")");
-            Console.WriteLine("  --mesen <exe> launch this MesenCE with the bridge");
-            Console.WriteLine("  --rom <file>  ROM to load (required with --mesen)");
+            Console.WriteLine("  --port <n>       bridge port (default " + DefaultPort + ")");
+            Console.WriteLine("  --mesen <exe>    launch this emulator with the bridge");
+            Console.WriteLine("  --rom <file>     ROM to load (required with --mesen)");
+            Console.WriteLine("  --emulator <id>  " + MesenCe + " (default, memory only) or " + Mesen2 + " (full control)");
             Console.WriteLine("With no --mesen, the monitor attaches to an already running bridge.");
         }
 
         /// <summary>
-        /// Starts MesenCE headless with the bridge script, the same invocation the
-        /// bridge was proven with.
+        /// Starts an emulator headless with the bridge script, in the invocation its
+        /// own build was proven with. The two supported emulators disagree on almost
+        /// everything: argument order, script naming and whether the script sandbox
+        /// has to be opened before a socket can exist. Guessing would produce a
+        /// bridge that never listens, which looks exactly like a crash.
         /// </summary>
-        private static Process LaunchMesen(string mesenPath, string romPath)
+        private static Process LaunchEmulator(string emulatorPath, string romPath, string emulator, int port)
         {
-            if (!File.Exists(mesenPath))
+            if (!File.Exists(emulatorPath))
             {
-                Console.Error.WriteLine("Mesen not found: " + mesenPath);
+                Console.Error.WriteLine("Emulator not found: " + emulatorPath);
                 return null;
             }
             if (!File.Exists(romPath))
@@ -130,50 +149,129 @@ namespace WinASM65.Monitor.Cli
                 return null;
             }
 
-            string bridgeScript = Path.Combine(AppContext.BaseDirectory, "Bridge", "bridge.lua");
+            string scriptName = emulator == Mesen2 ? "bridge_mesen2.lua" : "bridge.lua";
+            string bridgeScript = Path.Combine(AppContext.BaseDirectory, "Bridge", scriptName);
             if (!File.Exists(bridgeScript))
             {
                 // Fall back to the source tree when running from a build output that
                 // did not copy the script, so the tool works straight from bin.
-                bridgeScript = FindBridgeInSourceTree();
+                bridgeScript = FindBridgeInSourceTree(scriptName);
             }
             if (bridgeScript == null)
             {
-                Console.Error.WriteLine("bridge.lua not found next to the executable or in the source tree.");
+                Console.Error.WriteLine(scriptName + " not found next to the executable or in the source tree.");
                 return null;
             }
 
-            ProcessStartInfo start = new ProcessStartInfo(mesenPath)
+            ProcessStartInfo start = new ProcessStartInfo(emulatorPath)
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             };
-            start.ArgumentList.Add("--testrunner");
-            start.ArgumentList.Add(romPath);
-            start.ArgumentList.Add(bridgeScript);
+
+            if (emulator == Mesen2)
+            {
+                if (!EnsureMesen2ScriptSettings(emulatorPath))
+                    return null;
+
+                start.ArgumentList.Add("--testRunner");
+                start.ArgumentList.Add(bridgeScript);
+                start.ArgumentList.Add(romPath);
+                start.ArgumentList.Add("-novideo");
+                start.ArgumentList.Add("-noaudio");
+                start.ArgumentList.Add("-noinput");
+                start.ArgumentList.Add("-enablestdout");
+                start.ArgumentList.Add("-donotsavesettings");
+            }
+            else
+            {
+                start.ArgumentList.Add("--testrunner");
+                start.ArgumentList.Add(romPath);
+                start.ArgumentList.Add(bridgeScript);
+            }
+
+            // Mesen2 gives a script no way to be told the port, so it is passed the
+            // one way the sandbox does offer once the OS library is enabled.
+            start.Environment["MACHINE_PORT"] = port.ToString(CultureInfo.InvariantCulture);
 
             Process process = Process.Start(start);
             if (process == null)
             {
-                Console.Error.WriteLine("Could not start Mesen.");
+                Console.Error.WriteLine("Could not start " + emulator + ".");
                 return null;
             }
 
-            process.OutputDataReceived += (s, e) => { if (e.Data != null) Console.Error.WriteLine("[mesen] " + e.Data); };
-            process.ErrorDataReceived += (s, e) => { if (e.Data != null) Console.Error.WriteLine("[mesen] " + e.Data); };
+            process.OutputDataReceived += (s, e) => { if (e.Data != null) Console.Error.WriteLine("[" + emulator + "] " + e.Data); };
+            process.ErrorDataReceived += (s, e) => { if (e.Data != null) Console.Error.WriteLine("[" + emulator + "] " + e.Data); };
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
             return process;
         }
 
-        private static string FindBridgeInSourceTree()
+        /// <summary>
+        /// Mesen2 runs every script with io, require and os disabled, and refuses to
+        /// execute a script longer than ScriptTimeout seconds. Without the three
+        /// settings below, a bridge cannot open a socket at all and a long pause
+        /// kills the script mid-command. The flags are written beside the emulator
+        /// and reported, never applied silently: this changes a file outside the
+        /// project, and a tool that rewrites its host's configuration without
+        /// saying so is the behaviour this project refuses everywhere else.
+        /// </summary>
+        private static bool EnsureMesen2ScriptSettings(string emulatorPath)
+        {
+            string settingsPath = Path.Combine(Path.GetDirectoryName(emulatorPath) ?? ".", "settings.json");
+            string[] required = { "AllowIoOsAccess", "AllowNetworkAccess", "ScriptTimeout" };
+
+            if (File.Exists(settingsPath))
+            {
+                string existing = File.ReadAllText(settingsPath);
+                bool complete = true;
+                foreach (string key in required)
+                {
+                    if (existing.IndexOf(key, StringComparison.Ordinal) < 0)
+                    {
+                        complete = false;
+                        break;
+                    }
+                }
+                if (complete) return true;
+
+                Console.Error.WriteLine(
+                    "[mesen2] " + settingsPath + " is missing the script permissions the bridge needs.");
+                Console.Error.WriteLine("[mesen2] Add: \"Debug\": { \"ScriptWindow\": { \"AllowIoOsAccess\": true,"
+                    + " \"AllowNetworkAccess\": true, \"ScriptTimeout\": 60 } }");
+                return false;
+            }
+
+            try
+            {
+                File.WriteAllText(settingsPath,
+                    "{\"Debug\":{\"ScriptWindow\":{\"AllowIoOsAccess\":true,\"AllowNetworkAccess\":true,\"ScriptTimeout\":60}}}");
+            }
+            catch (IOException ex)
+            {
+                Console.Error.WriteLine("[mesen2] cannot write " + settingsPath + ": " + ex.Message);
+                return false;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                Console.Error.WriteLine("[mesen2] cannot write " + settingsPath + ": " + ex.Message);
+                return false;
+            }
+
+            Console.Error.WriteLine("[mesen2] wrote " + settingsPath
+                + " to let the bridge use sockets and to survive a pause.");
+            return true;
+        }
+
+        private static string FindBridgeInSourceTree(string scriptName)
         {
             DirectoryInfo dir = new DirectoryInfo(AppContext.BaseDirectory);
             while (dir != null)
             {
-                string candidate = Path.Combine(dir.FullName, "WinASM65.Monitor", "Bridge", "bridge.lua");
+                string candidate = Path.Combine(dir.FullName, "WinASM65.Monitor", "Bridge", scriptName);
                 if (File.Exists(candidate))
                     return candidate;
                 dir = dir.Parent;

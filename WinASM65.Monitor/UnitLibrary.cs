@@ -69,7 +69,7 @@ namespace WinASM65.Monitor
                 // two fields rather than one spelled with a word and the other without.
                 return MonitorProtocol.OkPrefix + " " + (unit.Name
                     + " $" + unit.NaturalOrigin.ToString("X4")
-                    + " " + unit.Length + " octet(s)");
+                    + " " + unit.Length + " byte(s)");
             }
             catch (MonitorException ex)
             {
@@ -130,7 +130,7 @@ namespace WinASM65.Monitor
             }
 
             return MonitorProtocol.OkPrefix + " " + ("$" + block.Address.ToString("X4")
-                + " " + block.Bytes.Length + " octet(s), " + block.Sites.Count + " site(s)");
+                + " " + block.Bytes.Length + " byte(s), " + block.Sites.Count + " site(s)");
         }
 
         public string Describe()

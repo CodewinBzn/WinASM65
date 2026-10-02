@@ -43,9 +43,9 @@ local function scan(base, length, memtype)
   return nonzero, table.concat(pieces)
 end
 
-print("PROBE depart")
+print("PROBE start")
 sleep_seconds(5)
-print("PROBE 5s ecoules, le jeu a tourne")
+print("PROBE 5s elapsed, the game ran")
 
 for _, t in ipairs({ 8, 264 }) do
   local n, hex = scan(0x0200, 32, t)
@@ -62,5 +62,5 @@ for _, t in ipairs({ 8, 264 }) do
   print(string.format("PROBE rom $8000 type=%d nonZero=%d %s", t, n, hex))
 end
 
-print("PROBE fin")
+print("PROBE end")
 emu.stop(0)

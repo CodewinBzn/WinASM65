@@ -210,7 +210,7 @@ namespace WinASM65.Monitor
 
         public override string ToString()
         {
-            return "$" + Address.ToString("X4") + " " + Bytes.Length + " octets, "
+            return "$" + Address.ToString("X4") + " " + Bytes.Length + " bytes, "
                 + Sites.Count + " site(s)";
         }
     }

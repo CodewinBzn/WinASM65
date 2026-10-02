@@ -208,7 +208,7 @@ namespace WinASM65.Monitor
         {
             _backend.Write(address, bytes);
             return new List<string> { MonitorProtocol.OkPrefix + " $" + address.ToString("X4")
-                + " " + bytes.Length + " octet(s)" };
+                + " " + bytes.Length + " byte(s)" };
         }
 
         private IReadOnlyList<string> Disassemble(int address, int count)

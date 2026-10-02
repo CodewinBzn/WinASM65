@@ -11,6 +11,8 @@
 --   emu.getState / emu.setState / emu.loadSavestate       -> available
 --   emu.stop(code)                                        -> hands control back to the shell
 --
+--   emu.write into PRG ROM                                -> dropped silently, read-only
+--   emu.getCpuState                                       -> does not exist in 2.2.1
 --   emu.addMemoryCallback / emu.addEventCallback          -> UNUSABLE
 --   emu.breakExecution                                    -> "cannot be called outside a callback"
 --   emu.pause                                             -> DOES NOT EXIST
@@ -153,18 +155,34 @@ function handle(socket, line)
     end
     local ok, message = pcall(write_memory, address, bytes)
     if not ok then fail(socket, "write refused by the emulator: " .. tostring(message)); return end
+    -- Verified, not assumed. Measured on MesenCE 2.2.1: a write aimed at PRG ROM
+    -- ($8000 and up) is dropped without an error, so emu.write returns normally
+    -- and an unverified "OK" would report a poke that never landed. Reading the
+    -- bytes back costs one emu.read per byte, the same order as the READ command
+    -- the .NET side already issues in 256 byte chunks.
+    local back = read_memory(address, #bytes)
+    for i = 1, #bytes do
+      if back[i] ~= bytes[i] then
+        fail(socket, string.format(
+          "write not observable at $%04X (offset %d): wrote %02X, read %02X -- read-only space?",
+          address + i - 1, i - 1, bytes[i], back[i]))
+        return
+      end
+    end
     reply(socket, "OK")
     return
   end
 
   if command == "CPU" then
     -- Registers and the cycle counter, so the monitor can tell a cold machine from
-    -- a broken read. MesenCE exposes emu.getCpuState with short keys: pc, a, x, y,
-    -- sp, ps, cycleCount.
+    -- a broken read. Measured on MesenCE 2.2.1: emu.getCpuState does NOT exist in
+    -- this build, so the call raises and the refusal is answered by name rather
+    -- than faked. Kept because it costs one pcall and the next MesenCE may expose
+    -- it.
     --
     -- This matters because the CPU cannot be advanced from a script: no run, no
-    -- execute, no tick exists in the 64 entry emu table. A machine sitting on
-    -- cycleCount 7 with pc at the reset vector is the expected state here, and the
+    -- execute, no tick exists in the 64 entry emu table. A machine sitting on the
+    -- reset vector with a frozen cycle counter is the expected state here, and the
     -- monitor has to be able to say so rather than display empty RAM and let the
     -- user conclude the bridge is broken.
     local ok, state = pcall(emu.getCpuState)
