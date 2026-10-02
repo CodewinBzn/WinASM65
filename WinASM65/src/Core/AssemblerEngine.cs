@@ -1,4 +1,4 @@
-﻿// Abdelghani BOUZIANE / Refactored to Pure OOP
+// Abdelghani BOUZIANE / Refactored to Pure OOP
 // WinASM65 - Assembler Engine (Pure OOP, SOLID, KISS)
 
 using System;
@@ -12,6 +12,7 @@ using WinASM65.Directives;
 using WinASM65.Expressions;
 using WinASM65.Modules;
 using WinASM65.Output;
+using WinASM65.Segments;
 using WinASM65.Symbols;
 
 namespace WinASM65.Core
@@ -266,6 +267,13 @@ namespace WinASM65.Core
         /// exports and no imports. Exports are resolved to a segment and an offset
         /// here, never to an absolute address: the address is the linker's to
         /// decide, and baking one in would defeat the whole point of a module.
+        /// <para>
+        /// One segment per <c>.org</c>. The emitter holds a single flat buffer, so a
+        /// unit with several origins has to be cut back along the offsets recorded
+        /// at each <c>.org</c>. Publishing it as one segment would give every label
+        /// past the second origin an offset relative to the first one -- a wrong
+        /// address rather than a missing one, which is far harder to notice.
+        /// </para>
         /// </summary>
         private ModuleImage BuildModule(string sourceFile)
         {
@@ -278,24 +286,51 @@ namespace WinASM65.Core
                 ? string.Empty
                 : Path.GetFileNameWithoutExtension(sourceFile);
 
-            ModuleSegment segment = new ModuleSegment(
-                string.IsNullOrEmpty(image.ModuleName) ? "code" : image.ModuleName,
-                _emitter.ToArray(), SegmentKind.Ro, 1, 0)
+            // A unit with no .org at all still has one block: the default origin.
+            // Normalising here means the rest of the method deals with one shape.
+            IReadOnlyList<EmitterOrigin> origins = _emitter.Origins;
+            if (origins.Count == 0)
             {
-                OriginAddress = _emitter.OriginAddress
-            };
-            int segmentIndex = image.AddSegment(segment);
+                List<EmitterOrigin> single = new List<EmitterOrigin>();
+                single.Add(new EmitterOrigin(0, _emitter.OriginAddress));
+                origins = single;
+            }
+
+            byte[] buffer = _emitter.ToArray();
+
+            // Segment names follow the source order, not the address order: a .org
+            // may move backwards, and "the segment at $9000" is not a name.
+            List<int> segmentIndexes = new List<int>();
+            for (int s = 0; s < origins.Count; s++)
+            {
+                int from = origins[s].BufferOffset;
+                int to = s + 1 < origins.Count ? origins[s + 1].BufferOffset : buffer.Length;
+                if (to < from)
+                    to = from;
+
+                byte[] data = new byte[to - from];
+                Array.Copy(buffer, from, data, 0, data.Length);
+
+                string name = origins.Count == 1 && !string.IsNullOrEmpty(image.ModuleName)
+                    ? image.ModuleName
+                    : image.ModuleName + "_" + s.ToString(CultureInfo.InvariantCulture);
+
+                segmentIndexes.Add(image.AddSegment(new ModuleSegment(name, data, SegmentKind.Ro, 1, 0)
+                {
+                    OriginAddress = origins[s].Address
+                }));
+            }
 
             for (int i = 0; i < state.Exports.Count; i++)
             {
                 Value address;
                 if (!_scopeManager.TryResolveSymbol(state.Exports[i], out address))
                     continue; // already diagnosed by the directive
-                // Offsets are segment-relative. A module is unplaced, so the
-                // address the symbol currently holds only tells us where it sits
-                // inside this unit's own buffer.
-                int offset = (int)((address.AsInteger - segment.OriginAddress) & 0xFFFF);
-                image.AddExport(new ModuleExport(state.Exports[i], segmentIndex, (uint)offset));
+
+                int placed;
+                uint offset;
+                if (TryPlace(address.AsInteger, origins, buffer.Length, out placed, out offset))
+                    image.AddExport(new ModuleExport(state.Exports[i], placed, offset));
             }
 
             for (int i = 0; i < state.Imports.Count; i++)
@@ -304,28 +339,133 @@ namespace WinASM65.Core
             }
 
             // The labels the unit wrote down, minus the ones it exports, which are
-            // already in the table above. A label outside this segment is left out
-            // rather than clamped: this module carries one segment, and a name that
-            // points elsewhere has no offset to give. That is a real hole for a unit
-            // with several .org, and it is better to leave the label unresolved —
-            // which the linker reports by name — than to place it wrongly.
+            // already in the table above. A label that falls outside every block --
+            // a .org with no bytes between it and the next, say -- is left out
+            // rather than clamped, and the reference fails by name at link time.
             for (int i = 0; i < _sourceLabels.Count; i++)
             {
                 string name = _sourceLabels[i].Name;
                 if (state.Exports.Contains(name))
                     continue;
 
-                long offset = (_sourceLabels[i].Address - segment.OriginAddress) & 0xFFFF;
-                if (offset >= segment.OccupiedSize)
-                    continue;
-
-                image.AddSymbol(new ModuleSymbol(name, segmentIndex, (uint)offset));
+                int placed;
+                uint offset;
+                if (TryPlace(_sourceLabels[i].Address, origins, buffer.Length, out placed, out offset))
+                    image.AddSymbol(new ModuleSymbol(name, placed, offset));
             }
 
+            // A relocation names the segment and the offset inside it. The emitter
+            // only ever had one segment, so every record says segment 0 and carries a
+            // buffer offset. Re-pointed at the block that buffer offset now falls in;
+            // a site that cannot be placed is dropped, because a record pointing at a
+            // segment that does not exist fails the whole link with a message about
+            // a segment index rather than about the source line that caused it.
             for (int i = 0; i < _emitter.Relocations.Count; i++)
-                image.AddRelocation(_emitter.Relocations[i]);
+            {
+                RelocationRecord record = _emitter.Relocations[i];
+
+                int placed;
+                uint offset;
+                if (TryPlaceBufferOffset(record.Offset, origins, buffer.Length, out placed, out offset))
+                {
+                    image.AddRelocation(Repoint(record, segmentIndexes[placed], (int)offset));
+                }
+            }
 
             return image;
+        }
+
+        /// <summary>
+        /// Builds a copy of <paramref name="record"/> pointing at another segment.
+        /// The record carries its own file and line, which is the provenance a
+        /// diagnostic needs and the only way the reader knows where to look.
+        /// </summary>
+        private static RelocationRecord Repoint(RelocationRecord record, int segmentIndex, int offset)
+        {
+            RelocationRecord repointed = new RelocationRecord(segmentIndex, string.Empty, offset,
+                record.Address, record.Width, record.Type, record.Symbols,
+                new SourceLocation(record.SourceFile, record.SourceLine), record.Expression);
+
+            // Resolution state is carried over rather than re-derived. A site the
+            // second pass already filled holds the right value, and losing that
+            // would make the linker re-resolve it -- or, worse, believe it is
+            // still a placeholder and treat the placeholder as an answer.
+            if (record.IsResolved)
+                repointed.MarkResolved(record.Value);
+            return repointed;
+        }
+
+        /// <summary>
+        /// Finds the block an address sits in, and its offset inside that block.
+        /// <para>
+        /// An address lands in a block when it is at or after the origin and before
+        /// the end of the bytes that origin produced. Both halves matter: an address
+        /// past the last origin but inside the buffer is not in a block, and neither
+        /// is one that lands beyond the block it started in.
+        /// </para>
+        /// </summary>
+        private static bool TryPlace(long address, IReadOnlyList<EmitterOrigin> origins, int bufferLength,
+            out int segmentIndex, out uint offset)
+        {
+            segmentIndex = -1;
+            offset = 0;
+
+            long target = address & 0xFFFF;
+
+            for (int s = 0; s < origins.Count; s++)
+            {
+                int from = origins[s].BufferOffset;
+                int to = s + 1 < origins.Count ? origins[s + 1].BufferOffset : bufferLength;
+                if (to < from)
+                    to = from;
+
+                long baseAddress = origins[s].Address;
+                long end = baseAddress + (to - from);
+
+                // The end is exclusive, and inclusive of the last byte only: a block
+                // of one byte at $9000 contains $9000 and nothing else.
+                if (target < baseAddress || target >= end)
+                    continue;
+
+                segmentIndex = s;
+                offset = (uint)(target - baseAddress);
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Same as <see cref="TryPlace"/>, for a site the emitter gave as a buffer
+        /// offset rather than an address. The two differ because an offset is
+        /// relative to the buffer while an address is absolute, and a .org in
+        /// between makes them stop agreeing.
+        /// </summary>
+        private static bool TryPlaceBufferOffset(int bufferOffset, IReadOnlyList<EmitterOrigin> origins,
+            int bufferLength, out int segmentIndex, out uint offset)
+        {
+            segmentIndex = -1;
+            offset = 0;
+
+            if (bufferOffset < 0 || bufferOffset >= bufferLength)
+                return false;
+
+            for (int s = 0; s < origins.Count; s++)
+            {
+                int from = origins[s].BufferOffset;
+                int to = s + 1 < origins.Count ? origins[s + 1].BufferOffset : bufferLength;
+                if (to < from)
+                    to = from;
+
+                if (bufferOffset < from || bufferOffset >= to)
+                    continue;
+
+                segmentIndex = s;
+                offset = (uint)(bufferOffset - from);
+                return true;
+            }
+
+            return false;
         }
 
         private void ApplyDefaultOrigin()
@@ -710,11 +850,22 @@ namespace WinASM65.Core
             if (res.IsResolved)
             {
                 ushort memArea = _scopeManager.CurrentScope.MemArea;
+                int size = res.Value.ToInt32();
+
+                // A .res reserves without emitting, so it is the one place where a
+                // bss region can actually overflow: the region promised free space,
+                // and a reservation larger than it runs into whatever follows --
+                // silently, because the symbol still resolves and the output file is
+                // still byte for byte correct. The label is only recorded when the
+                // reservation holds, so a refused one points at nothing rather than
+                // at space nobody owns.
+                ValidateReservation(memArea, size);
+
                 string err;
                 if (AddSourceSymbol(label, memArea, out err))
                 {
                     _listingService.PrintLine(LineType.RES, memArea);
-                    _scopeManager.CurrentScope.MemArea += res.Value.ToUInt16();
+                    _scopeManager.CurrentScope.MemArea = (ushort)(memArea + (size & 0xFFFF));
                 }
                 else
                 {
@@ -725,6 +876,13 @@ namespace WinASM65.Core
             {
                 _diagnostics.ReportError(CurrentLocation, ErrorCodes.UNDEFINED_SYMBOL);
             }
+        }
+
+        private void ValidateReservation(ushort address, int size)
+        {
+            MemoryMap regions = MemoryMapScope.Current;
+            if (regions != null)
+                regions.ValidateReservation(address, size, CurrentLocation, _diagnostics);
         }
 
         private void HandleInstruction(Match match)
@@ -906,7 +1064,7 @@ namespace WinASM65.Core
         /// byte and a relocation there would be a lie.
         ///
         /// The field is the last <paramref name="width"/> bytes just emitted, so the
-        /// segment offset is the buffer offset â€” not the address made relative to the
+        /// segment offset is the buffer offset — not the address made relative to the
         /// current OriginAddress, which a later <c>.org</c> would move.
         /// </summary>
         private void RecordRelocation(ExpressionResult exprRes, byte width, long value, bool resolved = true)

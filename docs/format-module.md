@@ -262,10 +262,15 @@ se lie donc avec un linker plus ancien, moins les etiquettes locales — et une
 reference a une etiquette locale dans un tel fichier echoue pour une raison
 juste : le nom n'y est pas.
 
-Une limite reste : `BuildModule` ne produit qu'un segment par unite, donc une
-etiquette posee hors de ce segment — une unite avec plusieurs `.org` — n'a pas
-d'offset a donner et n'est pas enregistree. La reference echoue alors en la
-nommant, ce qui vaut mieux qu'une place au hasard.
+`BuildModule` produit desormais **un segment par bloc d'origine**. Une unite
+avec plusieurs `.org` donne plusieurs segments, chacun avec son origine, ses
+octets et ses relocations. Une etiquette exportee est un export et pas une
+etiquette locale, et son `SegmentIndex` est celui du bloc qui la contient :
+c'est ce qui permet a un export du second bloc d'etre resolu par le premier.
+Les blocs vides sont conserves — un `.org` qui ne pose aucun octet ouvre un
+segment de longueur nulle plutot que d'absorber le bloc precedent. Une unite
+sans aucun `.org` est compilee contre l'origine par defaut et donne un unique
+segment, comme avant.
 
 ### Etat de l'implementation apres T1/T2
 
