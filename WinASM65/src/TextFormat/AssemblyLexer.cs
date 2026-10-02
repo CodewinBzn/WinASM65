@@ -21,7 +21,11 @@ namespace WinASM65.TextFormat
         Keyword,
         /// <summary>An instruction the CPU table knows.</summary>
         Mnemonic,
-        /// <summary>A decimal, hexadecimal or binary literal, sign included.</summary>
+        /// <summary>
+        /// A decimal, hexadecimal or binary literal. The sign is not part of it:
+        /// the expression tokenizer reads <c>-1</c> as a minus and a number, and
+        /// the lexer follows, so <c>#-$10</c> colours its sign as an operator.
+        /// </summary>
         Number,
         /// <summary>A quoted string or character.</summary>
         String,
@@ -106,13 +110,15 @@ namespace WinASM65.TextFormat
         /// <summary>
         /// The words the expression tokenizer reads as operators rather than
         /// identifiers. They are keywords for the same reason the arithmetic
-        /// symbols are.
+        /// symbols are. <c>AND</c> is not among them: it is also a mnemonic, and
+        /// a mnemonic wins, because <c>AND #$01</c> is an instruction and
+        /// highlighting it as an operator would be a lie about the code.
         /// </summary>
         private static readonly HashSet<string> ExpressionKeywordLookup =
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "AND", "OR", "TRUE", "FALSE" };
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "OR", "TRUE", "FALSE" };
 
-        private static readonly HashSet<string> DefaultMnemonicLookup = new HashSet<string>(InstructionDocs.Mnemonics,
-            StringComparer.OrdinalIgnoreCase);
+        private static readonly HashSet<string> DefaultMnemonicLookup =
+            new HashSet<string>(InstructionDocs.Mnemonics, StringComparer.OrdinalIgnoreCase);
 
         private readonly HashSet<string> _mnemonics;
         private readonly HashSet<string> _directives;
@@ -142,7 +148,7 @@ namespace WinASM65.TextFormat
         /// </summary>
         public AssemblyLexer(ICpuInstructionSet cpu, ISet<string> directives)
         {
-            _mnemonics = new HashSet<string>(cpu == null ? DefaultMnemonicLookup : MnemonicsOf(cpu),
+            _mnemonics = new HashSet<string>(cpu == null ? DefaultMnemonicLookup : InstructionDocs.MnemonicsFor(cpu),
                 StringComparer.OrdinalIgnoreCase);
 
             _directives = directives == null
@@ -298,17 +304,6 @@ namespace WinASM65.TextFormat
             if (ExpressionKeywordLookup.Contains(word))
                 return SourceTokenKind.Keyword;
             return SourceTokenKind.Plain;
-        }
-
-        private static IReadOnlyList<string> MnemonicsOf(ICpuInstructionSet cpu)
-        {
-            List<string> names = new List<string>();
-            foreach (InstructionDocumentation doc in InstructionDocs.ForCpu(cpu))
-            {
-                if (!names.Contains(doc.Mnemonic))
-                    names.Add(doc.Mnemonic);
-            }
-            return names;
         }
 
         private int ReadString(List<SourceToken> tokens, string line, int start, char quote)

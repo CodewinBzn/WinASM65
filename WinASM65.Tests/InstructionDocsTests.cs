@@ -193,11 +193,17 @@ namespace WinASM65.Tests
             HashSet<string> names = new HashSet<string>(mnemonics, StringComparer.Ordinal);
 
             Assert.IsTrue(names.Contains("LDA"));
-            Assert.IsTrue(names.Contains("STZ"), "a 65C02 mnemonic is in the set an editor highlights with");
+            Assert.IsFalse(names.Contains("STZ"),
+                "the default set is the NMOS one, which is what the assembler uses by default");
             Assert.IsFalse(names.Contains("lda"), "the set is normalised to upper case");
             Assert.IsFalse(names.Contains("NOPE"));
 
+            HashSet<string> cmos = new HashSet<string>(InstructionDocs.MnemonicsFor(new Cpu65C02()), StringComparer.Ordinal);
+            Assert.IsTrue(cmos.Contains("STZ"), "a 65C02 source has mnemonics an NMOS one does not");
+
             Assert.IsTrue(InstructionDocs.IsMnemonic("lda"));
+            Assert.IsTrue(InstructionDocs.IsMnemonic("stz", new Cpu65C02()));
+            Assert.IsFalse(InstructionDocs.IsMnemonic("stz"));
             Assert.IsFalse(InstructionDocs.IsMnemonic("ldax"));
             Assert.IsFalse(InstructionDocs.IsMnemonic(null));
 
