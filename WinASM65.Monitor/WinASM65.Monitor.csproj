@@ -28,9 +28,26 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Terminal.Gui v2. Pinned deliberately: the v2 API moves and the plan
+         forbids opportunistic upgrades.
+         2.0.0 is the pin because it is the only v2 release that carries a net8.0
+         asset. Every later v2 (2.1.0 through 2.5.0, and every 2.0.0-rc / 2.0.0-beta)
+         ships lib/net10.0 only, so on net8.0 restore fails with NU1202. Moving the
+         whole solution to net10.0 is not this task's to decide. Revisit when the
+         solution's target framework moves, and only then, never opportunistically. -->
+    <PackageReference Include="Terminal.Gui" Version="2.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- The bridge travels with the executable so the monitor can start Mesen
          itself instead of depending on a script sitting in the source tree. -->
     <None Include="Bridge\**\*.lua" CopyToOutputDirectory="PreserveNewest" />
+
+    <!-- The palette travels with it, so an edited theme is one file away from the
+         binary and a missing copy still falls back to the built-in palette.
+         Linked to the executable's own directory rather than to Shell\, because
+         that is the first place ShellTheme.Load looks. -->
+    <None Include="Shell\theme.json" Link="theme.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
