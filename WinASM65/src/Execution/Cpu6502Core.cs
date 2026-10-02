@@ -47,6 +47,12 @@ namespace WinASM65.Execution
         private bool _executing;
         private ExecutionStop _watchHit;
 
+        // What the instruction being executed did to the cycle count beyond its
+        // base cost. Both are cleared before every instruction, so a branch cannot
+        // charge a penalty to the instruction after it.
+        private bool _pageCrossed;
+        private bool _branchTaken;
+
         /// <summary>A machine over flat, writable 64K of memory.</summary>
         public Cpu6502Core()
             : this(new RamBus())
@@ -99,12 +105,18 @@ namespace WinASM65.Execution
         public long Instructions { get; private set; }
 
         /// <summary>
-        /// Cycles executed since the last reset, counted at base cost per opcode.
-        /// It is how a caller tells a machine that ran from one that stood still.
+        /// Cycles executed since the last reset: the base cost of each
+        /// instruction, plus a cycle for a branch that was taken and a cycle for
+        /// each page an access crossed. It is how a caller tells a machine that
+        /// ran from one that stood still.
         /// </summary>
         public long Cycles { get; private set; }
 
-        /// <summary>The base cost of an opcode, in cycles.</summary>
+        /// <summary>
+        /// The base cost of an opcode, in cycles, before anything the instruction
+        /// did while running. What a machine actually spent is in
+        /// <see cref="Cycles"/>.
+        /// </summary>
         public static int GetBaseCycles(byte opcode)
         {
             return Cpu6502CycleTable.Base(opcode);
@@ -376,6 +388,8 @@ namespace WinASM65.Execution
         public ExecutionStop Step()
         {
             _watchHit = null;
+            _pageCrossed = false;
+            _branchTaken = false;
             _executing = true;
             try
             {
@@ -383,7 +397,7 @@ namespace WinASM65.Execution
                 PC++;
                 Instructions++;
                 Execute(opcode);
-                Cycles += GetBaseCycles(opcode);
+                Cycles += CostOf(opcode);
             }
             finally
             {
@@ -395,6 +409,26 @@ namespace WinASM65.Execution
             return ExecutionStop.StepComplete(PC);
         }
 
+        /// <summary>
+        /// What an instruction cost: its base count, plus one cycle for a branch
+        /// that was taken, plus one more for the page it crossed.
+        /// <para>
+        /// Both extra costs are real and both are visible, which is what lets a
+        /// program loop be measured rather than guessed at. A caller that only
+        /// wants the base cost of an opcode reads <see cref="GetBaseCycles"/>;
+        /// this is what the machine actually spent.
+        /// </para>
+        /// </summary>
+        private int CostOf(byte opcode)
+        {
+            int cost = GetBaseCycles(opcode);
+            if (_branchTaken)
+                cost++;
+            if (_pageCrossed)
+                cost++;
+            return cost;
+        }
+
         private void Execute(byte op)
         {
             switch (op)
@@ -404,8 +438,8 @@ namespace WinASM65.Execution
                 case 0xA5: A = Read(Zp(Read(PC++))); SetNZ(A); return;
                 case 0xB5: A = Read((ushort)(Zp(Read(PC++)) + X)); SetNZ(A); return;
                 case 0xAD: A = Read(Next16()); SetNZ(A); return;
-                case 0xBD: A = Read((ushort)(Next16() + X)); SetNZ(A); return;
-                case 0xB9: A = Read((ushort)(Next16() + Y)); SetNZ(A); return;
+                case 0xBD: A = Read(Indexed(Next16(), X)); SetNZ(A); return;
+                case 0xB9: A = Read(Indexed(Next16(), Y)); SetNZ(A); return;
                 case 0xA1: A = Read((ushort)(ZpIndexedX(Read(PC++)))); SetNZ(A); return;
                 case 0xB1: A = Read(IndirectY(Read(PC++))); SetNZ(A); return;
 
@@ -413,21 +447,21 @@ namespace WinASM65.Execution
                 case 0xA6: X = Read(Zp(Read(PC++))); SetNZ(X); return;
                 case 0xB6: X = Read((ushort)(Zp(Read(PC++)) + Y)); SetNZ(X); return;
                 case 0xAE: X = Read(Next16()); SetNZ(X); return;
-                case 0xBE: X = Read((ushort)(Next16() + Y)); SetNZ(X); return;
+                case 0xBE: X = Read(Indexed(Next16(), Y)); SetNZ(X); return;
 
                 case 0xA0: Y = Read(PC++); SetNZ(Y); return;
                 case 0xA4: Y = Read(Zp(Read(PC++))); SetNZ(Y); return;
                 case 0xB4: Y = Read((ushort)(Zp(Read(PC++)) + X)); SetNZ(Y); return;
                 case 0xAC: Y = Read(Next16()); SetNZ(Y); return;
-                case 0xBC: Y = Read((ushort)(Next16() + X)); SetNZ(Y); return;
+                case 0xBC: Y = Read(Indexed(Next16(), X)); SetNZ(Y); return;
 
                 case 0x85: Write(Zp(Read(PC++)), A); return;
                 case 0x95: Write((ushort)(Zp(Read(PC++)) + X), A); return;
                 case 0x8D: Write(Next16(), A); return;
-                case 0x9D: Write((ushort)(Next16() + X), A); return;
-                case 0x99: Write((ushort)(Next16() + Y), A); return;
+                case 0x9D: Write(IndexedStore(Next16(), X), A); return;
+                case 0x99: Write(IndexedStore(Next16(), Y), A); return;
                 case 0x81: Write(ZpIndexedX(Read(PC++)), A); return;
-                case 0x91: Write(IndirectY(Read(PC++)), A); return;
+                case 0x91: Write(IndirectYStore(Read(PC++)), A); return;
 
                 case 0x86: Write(Zp(Read(PC++)), X); return;
                 case 0x96: Write((ushort)(Zp(Read(PC++)) + Y), X); return;
@@ -455,8 +489,8 @@ namespace WinASM65.Execution
                 case 0x25: A &= Read(Zp(Read(PC++))); SetNZ(A); return;
                 case 0x35: A &= Read((ushort)(Zp(Read(PC++)) + X)); SetNZ(A); return;
                 case 0x2D: A &= Read(Next16()); SetNZ(A); return;
-                case 0x3D: A &= Read((ushort)(Next16() + X)); SetNZ(A); return;
-                case 0x39: A &= Read((ushort)(Next16() + Y)); SetNZ(A); return;
+                case 0x3D: A &= Read(Indexed(Next16(), X)); SetNZ(A); return;
+                case 0x39: A &= Read(Indexed(Next16(), Y)); SetNZ(A); return;
                 case 0x21: A &= Read(ZpIndexedX(Read(PC++))); SetNZ(A); return;
                 case 0x31: A &= Read(IndirectY(Read(PC++))); SetNZ(A); return;
 
@@ -464,8 +498,8 @@ namespace WinASM65.Execution
                 case 0x05: A |= Read(Zp(Read(PC++))); SetNZ(A); return;
                 case 0x15: A |= Read((ushort)(Zp(Read(PC++)) + X)); SetNZ(A); return;
                 case 0x0D: A |= Read(Next16()); SetNZ(A); return;
-                case 0x1D: A |= Read((ushort)(Next16() + X)); SetNZ(A); return;
-                case 0x19: A |= Read((ushort)(Next16() + Y)); SetNZ(A); return;
+                case 0x1D: A |= Read(Indexed(Next16(), X)); SetNZ(A); return;
+                case 0x19: A |= Read(Indexed(Next16(), Y)); SetNZ(A); return;
                 case 0x01: A |= Read(ZpIndexedX(Read(PC++))); SetNZ(A); return;
                 case 0x11: A |= Read(IndirectY(Read(PC++))); SetNZ(A); return;
 
@@ -473,8 +507,8 @@ namespace WinASM65.Execution
                 case 0x45: A ^= Read(Zp(Read(PC++))); SetNZ(A); return;
                 case 0x55: A ^= Read((ushort)(Zp(Read(PC++)) + X)); SetNZ(A); return;
                 case 0x4D: A ^= Read(Next16()); SetNZ(A); return;
-                case 0x5D: A ^= Read((ushort)(Next16() + X)); SetNZ(A); return;
-                case 0x59: A ^= Read((ushort)(Next16() + Y)); SetNZ(A); return;
+                case 0x5D: A ^= Read(Indexed(Next16(), X)); SetNZ(A); return;
+                case 0x59: A ^= Read(Indexed(Next16(), Y)); SetNZ(A); return;
                 case 0x41: A ^= Read(ZpIndexedX(Read(PC++))); SetNZ(A); return;
                 case 0x51: A ^= Read(IndirectY(Read(PC++))); SetNZ(A); return;
 
@@ -486,8 +520,8 @@ namespace WinASM65.Execution
                 case 0x65: Adc(Read(Zp(Read(PC++)))); return;
                 case 0x75: Adc(Read((ushort)(Zp(Read(PC++)) + X))); return;
                 case 0x6D: Adc(Read(Next16())); return;
-                case 0x7D: Adc(Read((ushort)(Next16() + X))); return;
-                case 0x79: Adc(Read((ushort)(Next16() + Y))); return;
+                case 0x7D: Adc(Read(Indexed(Next16(), X))); return;
+                case 0x79: Adc(Read(Indexed(Next16(), Y))); return;
                 case 0x61: Adc(Read(ZpIndexedX(Read(PC++)))); return;
                 case 0x71: Adc(Read(IndirectY(Read(PC++)))); return;
 
@@ -495,8 +529,8 @@ namespace WinASM65.Execution
                 case 0xE5: Sbc(Read(Zp(Read(PC++)))); return;
                 case 0xF5: Sbc(Read((ushort)(Zp(Read(PC++)) + X))); return;
                 case 0xED: Sbc(Read(Next16())); return;
-                case 0xFD: Sbc(Read((ushort)(Next16() + X))); return;
-                case 0xF9: Sbc(Read((ushort)(Next16() + Y))); return;
+                case 0xFD: Sbc(Read(Indexed(Next16(), X))); return;
+                case 0xF9: Sbc(Read(Indexed(Next16(), Y))); return;
                 case 0xE1: Sbc(Read(ZpIndexedX(Read(PC++)))); return;
                 case 0xF1: Sbc(Read(IndirectY(Read(PC++)))); return;
 
@@ -504,8 +538,8 @@ namespace WinASM65.Execution
                 case 0xC5: Compare(A, Read(Zp(Read(PC++)))); return;
                 case 0xD5: Compare(A, Read((ushort)(Zp(Read(PC++)) + X))); return;
                 case 0xCD: Compare(A, Read(Next16())); return;
-                case 0xDD: Compare(A, Read((ushort)(Next16() + X))); return;
-                case 0xD9: Compare(A, Read((ushort)(Next16() + Y))); return;
+                case 0xDD: Compare(A, Read(Indexed(Next16(), X))); return;
+                case 0xD9: Compare(A, Read(Indexed(Next16(), Y))); return;
                 case 0xC1: Compare(A, Read(ZpIndexedX(Read(PC++)))); return;
                 case 0xD1: Compare(A, Read(IndirectY(Read(PC++)))); return;
 
@@ -521,11 +555,11 @@ namespace WinASM65.Execution
                 case 0xE6: Inc8(Zp(Read(PC++))); return;
                 case 0xF6: Inc8((ushort)(Zp(Read(PC++) ) + X)); return;
                 case 0xEE: Inc8(Next16()); return;
-                case 0xFE: Inc8((ushort)(Next16() + X)); return;
+                case 0xFE: Inc8(Indexed(Next16(), X)); return;
                 case 0xC6: Dec8(Zp(Read(PC++))); return;
                 case 0xD6: Dec8((ushort)(Zp(Read(PC++)) + X)); return;
                 case 0xCE: Dec8(Next16()); return;
-                case 0xDE: Dec8((ushort)(Next16() + X)); return;
+                case 0xDE: Dec8(Indexed(Next16(), X)); return;
 
                 case 0xE8: X++; SetNZ(X); return;
                 case 0xCA: X--; SetNZ(X); return;
@@ -537,25 +571,25 @@ namespace WinASM65.Execution
                 case 0x06: ShiftMemory(Shl, Zp(Read(PC++)), true); return;
                 case 0x16: ShiftMemory(Shl, (ushort)(Zp(Read(PC++)) + X), true); return;
                 case 0x0E: ShiftMemory(Shl, Next16(), true); return;
-                case 0x1E: ShiftMemory(Shl, (ushort)(Next16() + X), true); return;
+                case 0x1E: ShiftMemory(Shl, Indexed(Next16(), X), true); return;
 
                 case 0x4A: A = Shr(A); return;
                 case 0x46: ShiftMemory(Shr, Zp(Read(PC++)), true); return;
                 case 0x56: ShiftMemory(Shr, (ushort)(Zp(Read(PC++)) + X), true); return;
                 case 0x4E: ShiftMemory(Shr, Next16(), true); return;
-                case 0x5E: ShiftMemory(Shr, (ushort)(Next16() + X), true); return;
+                case 0x5E: ShiftMemory(Shr, Indexed(Next16(), X), true); return;
 
                 case 0x2A: A = Rol(A); return;
                 case 0x26: ShiftMemory(Rol, Zp(Read(PC++)), true); return;
                 case 0x36: ShiftMemory(Rol, (ushort)(Zp(Read(PC++)) + X), true); return;
                 case 0x2E: ShiftMemory(Rol, Next16(), true); return;
-                case 0x3E: ShiftMemory(Rol, (ushort)(Next16() + X), true); return;
+                case 0x3E: ShiftMemory(Rol, Indexed(Next16(), X), true); return;
 
                 case 0x6A: A = Ror(A); return;
                 case 0x66: ShiftMemory(Ror, Zp(Read(PC++)), true); return;
                 case 0x76: ShiftMemory(Ror, (ushort)(Zp(Read(PC++)) + X), true); return;
                 case 0x6E: ShiftMemory(Ror, Next16(), true); return;
-                case 0x7E: ShiftMemory(Ror, (ushort)(Next16() + X), true); return;
+                case 0x7E: ShiftMemory(Ror, Indexed(Next16(), X), true); return;
 
                 // ---- jumps and calls
                 case 0x4C: PC = Next16(); return;
@@ -704,6 +738,45 @@ namespace WinASM65.Execution
             return value;
         }
 
+        /// <summary>
+        /// The address an indexed access reaches, charging one extra cycle when it
+        /// crosses a page.
+        /// <para>
+        /// A read has to go and get the byte, and on the processor the high byte
+        /// of the address is corrected while the low byte is fetched. Leaving the
+        /// crossing out would make every indexed access cost the same whether the
+        /// index stayed on the page or walked off it, which is the difference
+        /// between a cycle count and a rough figure that happens to be close.
+        /// </para>
+        /// </summary>
+        private ushort Indexed(ushort baseAddress, byte index)
+        {
+            ushort address = AddIndex(baseAddress, index);
+            if ((address & 0xFF00) != (baseAddress & 0xFF00))
+                _pageCrossed = true;
+            return address;
+        }
+
+        /// <summary>
+        /// The address an indexed store reaches, which never costs the crossing:
+        /// the processor has no byte to fetch on the way, so it pays nothing for
+        /// the page it did not have to look at.
+        /// <para>
+        /// This is why a store and a load that address the same byte can cost
+        /// different amounts of time, and why a count that charged both alike
+        /// would be wrong every time a program stored past the end of a page.
+        /// </para>
+        /// </summary>
+        private static ushort IndexedStore(ushort baseAddress, byte index)
+        {
+            return AddIndex(baseAddress, index);
+        }
+
+        private static ushort AddIndex(ushort baseAddress, byte index)
+        {
+            return (ushort)(baseAddress + index);
+        }
+
         private ushort ZpIndexedX(byte zp)
         {
             byte basePointer = (byte)(zp + X);
@@ -712,8 +785,17 @@ namespace WinASM65.Execution
 
         private ushort IndirectY(byte zp)
         {
-            ushort pointer = Peek16(zp);
-            return (ushort)(pointer + Y);
+            return Indexed(Peek16(zp), Y);
+        }
+
+        /// <summary>
+        /// The address an indirect store reaches. Page zero has no crossing to
+        /// make and the pointer itself is never indexed, so this is the plain
+        /// addition: STA ($nn),Y is a six cycle instruction whatever it writes.
+        /// </summary>
+        private ushort IndirectYStore(byte zp)
+        {
+            return IndexedStore(Peek16(zp), Y);
         }
 
         private void SetNZ(byte value)
@@ -820,8 +902,20 @@ namespace WinASM65.Execution
         private void Branch(bool taken)
         {
             sbyte offset = (sbyte)Read(PC++);
-            if (taken)
-                PC = (ushort)(PC + offset);
+            if (!taken)
+                return;
+
+            ushort from = PC;
+            PC = (ushort)(PC + offset);
+
+            // A branch that is taken costs one cycle more than one that is not,
+            // and one more again when it lands in another page: the processor
+            // re-fetches the high byte through the same increment. Counting it
+            // here rather than in the table is what makes the cost depend on what
+            // the branch did, which a fixed number per opcode cannot.
+            _branchTaken = true;
+            if ((PC & 0xFF00) != (from & 0xFF00))
+                _pageCrossed = true;
         }
 
         private byte Flags(bool withBreak)
