@@ -1,46 +1,64 @@
 -- Bridge for Mesen2 (github.com/SourMesen/Mesen2), the modern Mesen.
 --
--- Measured on Mesen2 2.1.1, Windows x64, against a WinASM65-built homebrew ROM:
+-- Measured on Mesen2 2.1.1, Windows x64, against a WinASM65-built homebrew ROM.
+-- Everything below was established by probing this build, because the details
+-- decide the whole architecture of the script.
 --
 --   headless        Mesen.exe --testRunner <script> <rom> -novideo -noaudio
---                   -noinput -enablestdout -donotsavesettings
---                   Boots the cartridge, so the reference workload is NES native.
+--                   -noinput -enablestdout -donotsavesettings. Boots the
+--                   cartridge, so the reference workload is NES native.
 --
---   memory          emu.read / emu.write on emu.memType.nesDebug, side effect free
+--   memory          emu.read / emu.write on emu.memType.nesDebug: side effect free
 --                   and covering PRG ROM, RAM and the register mirrors.
 --
 --   cpu state       emu.getState() returns a FLAT table keyed "cpu.pc", "cpu.a",
 --                   "cpu.x", "cpu.y", "cpu.sp", "cpu.ps", "cpu.cycleCount",
 --                   alongside PPU, APU and mapper state.
 --
---   breakpoints     emu.addMemoryCallback with callbackType.exec / .read / .write.
+--   execution       emu.breakExecution, emu.resume and emu.step exist, and all
+--                   three refuse to be called from the script body: "This
+--                   function cannot be called outside a callback". All three work
+--                   inside an event callback, so every command here is served
+--                   from one.
 --
---   execution       emu.breakExecution / emu.resume / emu.step exist but refuse
---                   to be called from the script body: "This function cannot be
---                   called outside a callback". All three work inside an
---                   event callback. Every command below is therefore served from
---                   inside one, which is why nothing here blocks while the machine
---                   is running.
+--   breakpoints     emu.addMemoryCallback with callbackType.exec, .read or .write.
+--                   The memory type must be a CPU memory type: passing a Debug
+--                   type raises "invalid memory type". Debug types belong to
+--                   emu.read and emu.write, where the point is to avoid side
+--                   effects.
 --
--- Two consequences shape the whole file.
+-- Four consequences shape this file, and each of them was measured rather than
+-- assumed.
 --
--- First: inputPolled only fires while the machine runs. Once execution is broken
--- no further callback arrives, so a bridge that paused and waited for the next
--- tick would wait forever. Pause is therefore served inside the very tick that
--- pauses: break, answer, then block in the receive loop until RESUME. Blocking
--- there is not the MesenCE mistake the header warns about, because the machine
--- is frozen and nothing is being starved.
+-- 1. inputPolled only fires while the machine runs. Once execution is broken no
+--    callback arrives, so a bridge that paused and waited for the next tick would
+--    wait forever. A stopped machine is therefore served from inside the callback
+--    that stopped it.
 --
--- Second: ScriptingContext::ExecutionCountHook aborts a script whose pass runs
--- longer than Debug.ScriptWindow.ScriptTimeout seconds, 1 by default, so a long
--- pause needs that setting raised. The launcher writes a settings.json with
--- AllowIoOsAccess, AllowNetworkAccess and ScriptTimeout beside Mesen.exe; io,
--- require and os are nil otherwise and no socket can be opened at all.
+-- 2. emu.step cannot be called while the machine is already broken in the same
+--    callback invocation: it waits for an instruction to execute, and execution
+--    only advances after the callback returns. A step is therefore issued while
+--    running and completed later.
+--
+-- 3. eventType.codeBreak fires "when code execution breaks (e.g breakpoint, step,
+--    etc.)". That is the single place where a stopped machine is served, for both
+--    a step and a breakpoint, and it is why this file needs no second mechanism.
+--
+-- 4. A breakpoint set on the address the machine is stopped at does not fire
+--    until the CPU comes back to it: Mesen2 treats the instruction as already
+--    reached. Break there after a step, not before one.
+--
+-- Two host settings are required and are written beside Mesen.exe by the
+-- launcher, which reports having written them: ScriptingContext::ExecutionCountHook
+-- aborts a script whose pass runs longer than Debug.ScriptWindow.ScriptTimeout,
+-- 1 second by default, and io, require and os are nil until AllowIoOsAccess and
+-- AllowNetworkAccess are set. With the default timeout a long pause kills the
+-- script mid-command, and without network access no socket can be opened at all.
 --
 -- The protocol is the monitor's existing one, so this is a second backend rather
--- than a second protocol. Where MesenCE refused by name because the API was
+-- than a second protocol. Where MesenCE refuses by name because the API is
 -- missing, nothing is refused here except what is genuinely impossible: a write
--- into read-only space, which is detected by reading the bytes back.
+-- into read-only space, which is caught by reading the bytes back.
 
 local NAME = "Mesen2"
 local VERSION = "2.1.1"
@@ -54,15 +72,14 @@ local MAX_READ = 4096
 local MAX_WRITE = 4096
 local MAX_STATE = 131072
 
--- Commands drained per tick while the machine runs. One tick is about 16 ms, and
+-- Commands drained per tick while the machine runs. One tick is about 16 ms and
 -- every command in the drain freezes the machine for the act, so the drain is
 -- bounded: a 4 KiB read arrives as 16 chunks and must not hold the machine for
 -- longer than it takes to answer it.
 local MAX_DRAIN = 64
 
--- Seconds between progress notes while paused, so a pause that is not a hang is
--- visible in the log.
-local PAUSE_REPORT_SECONDS = 8
+-- Seconds between notes while stopped, so a pause that is not a hang is visible.
+local STOP_REPORT_SECONDS = 8
 
 local ADDRESS_MAX = 0xFFFF
 
@@ -88,9 +105,15 @@ local function to_hex(bytes)
   return table.concat(out)
 end
 
-local function from_hex(text)
+-- Bounded before it allocates, not after. Every caller checks the length it got
+-- back, but a check that runs after the table is built is no defence against a
+-- client that sends one enormous line: the allocation would already have happened.
+-- The cap is the largest legal payload in the protocol, so nothing legitimate is
+-- refused.
+local function from_hex(text, max_bytes)
   local cleaned = text:gsub("%s", "")
   if #cleaned % 2 ~= 0 or #cleaned == 0 then return nil end
+  if #cleaned > max_bytes * 2 then return nil end
   local bytes = {}
   for i = 1, #cleaned, 2 do
     local value = tonumber(cleaned:sub(i, i + 1), 16)
@@ -108,8 +131,7 @@ local function parse_address(text)
   local value = text
   local first = value:sub(1, 1)
   if first == "$" then
-    value = value:sub(2)
-    return tonumber(value, 16)
+    return tonumber(value:sub(2), 16)
   end
   if value:sub(1, 2):lower() == "0x" then
     return tonumber(value:sub(3), 16)
@@ -169,8 +191,8 @@ local function state_to_bytes()
         rendered = "n" .. string.format("%.17g", value)
       end
     elseif type(value) == "string" then
-      -- Escaped because the separator is a newline and a key is free text.
-      rendered = "s" .. value:gsub("\\", "\\\\"):gsub("\n", "\\n"):gsub(";", "\\;")
+      -- Escaped because the separator is a semicolon and a key is free text.
+      rendered = "s" .. value:gsub("\\", "\\\\"):gsub(";", "\\;"):gsub("\n", "\\n")
     else
       return nil, "state value for " .. key .. " is a " .. type(value)
     end
@@ -184,12 +206,16 @@ local function state_to_bytes()
 end
 
 local function bytes_to_state(bytes)
-  local text = {}
-  for i = 1, #bytes do text[i] = string.char(bytes[i]) end
-  local joined = table.concat(text)
+  local characters = {}
+  for i = 1, #bytes do characters[i] = string.char(bytes[i]) end
+  local joined = table.concat(characters)
 
   local state = {}
-  for _, entry in ipairs(joined:gmatch("[^;]+")) do
+  -- Driven by the iterator directly, never through ipairs: on this host gmatch
+  -- yields a single closure rather than Lua's (iterator, state, control) triple, so
+  -- ipairs would be handed a function and indexing it would raise "attempt to
+  -- index a function value".
+  for entry in joined:gmatch("[^;]+") do
     local equals = entry:find("=", 1, true)
     if equals == nil then return nil, "malformed state entry: " .. entry end
     local key = entry:sub(1, equals - 1)
@@ -201,7 +227,7 @@ local function bytes_to_state(bytes)
     elseif kind == "n" then
       state[key] = tonumber(body)
     elseif kind == "s" then
-      state[key] = body:gsub("\\;", ";"):gsub("\\n", "\n"):gsub("\\\\", "\\")
+      state[key] = body:gsub("\\n", "\n"):gsub("\\;", ";"):gsub("\\\\", "\\")
     else
       return nil, "unknown state value kind: " .. kind
     end
@@ -212,39 +238,93 @@ end
 -------------------------------------------------------------- breakpoints
 
 local KINDS = {
-  exec = { id = emu.callbackType.exec, action = "SET" },
-  read = { id = emu.callbackType.read, action = "READ" },
-  write = { id = emu.callbackType.write, action = "WRITE" },
+  exec = emu.callbackType.exec,
+  read = emu.callbackType.read,
+  write = emu.callbackType.write,
 }
 
--- address -> kind -> callback id. Two kinds on one address are two callbacks, and
+-- address -> kind -> callback id. Two kinds on one address are two callbacks and
 -- both fire: an exec breakpoint on an address that is also written to is not a
 -- contradiction, it is two things the user asked for.
 local breakpoints = {}
 
+-- Why the machine was stopped, set when a stop is asked for and consumed by the
+-- codeBreak handler. Nil means "nothing to serve", which is what a break taken to
+-- answer a command looks like from the event's point of view.
+--
+-- Only an exec breakpoint sets this. The machine cannot execute while a command is
+-- being answered, so no other source can raise a stop from inside a command.
+local stop_requested = nil
+
+local serve_blocked, serve_stopped
+
+-- One step, from a running machine, then broken again. The resume comes first:
+-- emu.step waits for an instruction to execute, and instructions only execute
+-- after the current callback returns.
+local function step_once()
+  emu.resume()
+  stop_requested = "step"
+  local ok, message = pcall(function() emu.step(1, emu.stepType.step, emu.cpuType.nes) end)
+  if not ok then
+    log("step refused: " .. tostring(message))
+    -- Cleared, or a later break would consume this as a step the user never asked
+    -- for and stop the machine for no reason.
+    stop_requested = nil
+    emu.resume()
+  end
+end
+
+-- Same rule for a reset: it needs a running machine, so it is issued from the
+-- owner rather than from dispatch.
+local function reset_now()
+  emu.resume()
+  local ok, message = pcall(function() emu.reset() end)
+  if not ok then log("reset refused: " .. tostring(message)) end
+end
+
+-- The single owner of "what does a finished serve_blocked mean". Every caller goes
+-- through here, so a new outcome cannot be handled at one call site and forgotten
+-- at the other.
+local function act_on_outcome(outcome)
+  if outcome == "resume" then
+    emu.resume()
+  elseif outcome == "step" then
+    step_once()
+  elseif outcome == "reset" then
+    reset_now()
+  else
+    -- "closed": the monitor is gone, so there is nothing left to serve.
+    emu.stop(0)
+  end
+end
+
 local function install_breakpoint(address, kind)
-  local definition = KINDS[kind]
-  if definition == nil then return nil, "unknown kind: " .. kind end
+  local callback_type = KINDS[kind]
+  if callback_type == nil then return nil, "unknown kind: " .. kind end
 
-  local id = emu.addMemoryCallback(function(accessed, value)
-    if definition.action == "SET" then
-      pcall(function() emu.breakExecution() end)
-      log(string.format("breakpoint hit: %s $%04X", kind, accessed))
-      local outcome = serve_blocked("breakpoint " .. kind .. " $" .. string.format("%04X", accessed))
-      if outcome == "resume" then
-        emu.resume()
-      else
-        emu.stop(0)
+  local ok, id = pcall(function()
+    return emu.addMemoryCallback(function(accessed, value)
+      if kind ~= "exec" then
+        -- A watchpoint answers by refusing to let the access change anything:
+        -- returning a value from the callback replaces the result of the read or
+        -- write, so the original value goes back untouched. Nothing is stopped,
+        -- so nothing needs serving.
+        log(string.format("watchpoint %s $%04X", kind, accessed))
+        return value
       end
-    else
-      -- A watchpoint answers by refusing to let the access change anything:
-      -- returning a value from the callback replaces the result of the
-      -- read or write, so the original value goes back untouched.
-      return value
-    end
-  end, definition.id, address, address, emu.cpuType.nes, emu.memType.nesDebug)
 
-  if id == nil then return nil, "the emulator refused the breakpoint" end
+      -- Recorded and stopped, never served from here: this callback fires while
+      -- the machine runs, and the codeBreak event is the one place that owns a
+      -- stopped machine.
+      stop_requested = string.format("breakpoint exec $%04X", accessed)
+      log("hit: " .. stop_requested)
+      emu.breakExecution()
+    end, callback_type, address, address, emu.cpuType.nes, emu.memType.nesMemory)
+  end)
+
+  if not ok then return nil, "the emulator refused the breakpoint: " .. tostring(id) end
+  if id == nil then return nil, "the emulator registered no callback" end
+
   breakpoints[address] = breakpoints[address] or {}
   breakpoints[address][kind] = id
   return id
@@ -252,10 +332,8 @@ end
 
 local function remove_breakpoint(address, kind)
   local byKind = breakpoints[address]
-  if byKind == nil or byKind[kind] == nil then
-    return false
-  end
-  emu.removeMemoryCallback(byKind[kind])
+  if byKind == nil or byKind[kind] == nil then return false end
+  pcall(function() emu.removeMemoryCallback(byKind[kind]) end)
   byKind[kind] = nil
   if next(byKind) == nil then breakpoints[address] = nil end
   return true
@@ -281,15 +359,17 @@ end
 
 --------------------------------------------------------------- commands
 
--- Each handler returns the response line. Handlers may set the two flags below
--- to change what happens to the machine after the answer.
-local paused_requested = false
+-- Set by PAUSE and by STEP, read by the caller that owns the machine. Neither is
+-- acted on inside the handler: both need a decision only the owner can make.
+local pause_requested = false
+local step_requested = false
+local reset_requested = false
 
 local function cpu_line()
   local state = emu.getState()
-  if type(state) ~= "table" then return fail("the emulator returned no state table") end
-  local cpu = state["cpu.pc"] and state or nil
-  if cpu == nil then return fail("the emulator returned no cpu state") end
+  if type(state) ~= "table" or state["cpu.pc"] == nil then
+    return fail("the emulator returned no cpu state")
+  end
   return string.format("OK pc=$%04X a=%02X x=%02X y=%02X sp=%02X ps=%02X cycles=%d",
     state["cpu.pc"] or 0, state["cpu.a"] or 0, state["cpu.x"] or 0,
     state["cpu.y"] or 0, state["cpu.sp"] or 0, state["cpu.ps"] or 0,
@@ -298,9 +378,7 @@ end
 
 local function rom_line()
   local info = emu.getRomInfo()
-  if type(info) ~= "table" then
-    return fail("the emulator described no cartridge")
-  end
+  if type(info) ~= "table" then return fail("the emulator described no cartridge") end
   local keys = {}
   for key in pairs(info) do keys[#keys + 1] = tostring(key) end
   table.sort(keys)
@@ -315,6 +393,9 @@ local function rom_line()
   return "OK " .. table.concat(parts, " ")
 end
 
+-- Answers one command. Wrapped by every caller: a host API that raises where this
+-- build did not expect it must become a named refusal, never a dead socket, and a
+-- dead socket looks exactly like a crashed monitor.
 local function dispatch(line)
   local tokens = {}
   for token in line:gmatch("%S+") do tokens[#tokens + 1] = token end
@@ -329,8 +410,8 @@ local function dispatch(line)
   if command == "READ" then
     if #tokens ~= 3 then return fail("READ expects <address> <length>") end
     local address = parse_address(tokens[2])
-    local length = tonumber(tokens[3], 10)
     if address == nil then return fail("invalid address: " .. tokens[2]) end
+    local length = tonumber(tokens[3], 10)
     if length == nil then return fail("invalid length: " .. tokens[3]) end
     if length < 0 or length > MAX_READ then
       return fail("length out of bounds (0.." .. MAX_READ .. "): " .. length)
@@ -345,11 +426,13 @@ local function dispatch(line)
     if #tokens ~= 3 then return fail("WRITE expects <address> <hex>") end
     local address = parse_address(tokens[2])
     if address == nil then return fail("invalid address: " .. tokens[2]) end
-    local bytes = from_hex(tokens[3])
-    if bytes == nil then return fail("invalid hex") end
-    if #bytes > MAX_WRITE then
-      return fail("write out of bounds (max " .. MAX_WRITE .. "): " .. #bytes)
+    -- Checked before decoding so the refusal names the real reason, and again inside
+    -- from_hex so the bound holds no matter which caller is reached.
+    if #(tokens[3]:gsub("%s", "")) > MAX_WRITE * 2 then
+      return fail("write out of bounds (max " .. MAX_WRITE .. " bytes)")
     end
+    local bytes = from_hex(tokens[3], MAX_WRITE)
+    if bytes == nil then return fail("invalid hex") end
     if not in_range(address, #bytes) then
       return fail(string.format("range $%04X+%d exceeds the address space", address, #bytes))
     end
@@ -380,25 +463,24 @@ local function dispatch(line)
   end
 
   if command == "PAUSE" then
-    paused_requested = true
+    pause_requested = true
     return "OK"
   end
 
-  if command == "RESUME" then
-    return "OK" -- answered by the blocked loop, which owns the machine
-  end
-
   if command == "STEP" then
-    -- One instruction, then broken again: a step is a pause of one instruction.
-    local ok, message = pcall(function() emu.step(1, emu.stepType.step, emu.cpuType.nes) end)
-    if not ok then return fail("step refused by the emulator: " .. tostring(message)) end
+    -- Not executed here: a step needs a running machine, and the machine cannot
+    -- run while this callback is on the stack. The owner resumes and steps.
+    step_requested = true
     return "OK"
   end
 
   if command == "RESET" then
-    local ok, message = pcall(function() emu.reset() end)
-    if not ok then return fail("reset refused by the emulator: " .. tostring(message)) end
+    reset_requested = true
     return "OK"
+  end
+
+  if command == "RESUME" then
+    return "OK" -- answered by the loop that owns the stopped machine
   end
 
   if command == "BREAK" then
@@ -408,7 +490,7 @@ local function dispatch(line)
     if action == "CLEAR" then
       for address, byKind in pairs(breakpoints) do
         for kind, id in pairs(byKind) do
-          emu.removeMemoryCallback(id)
+          pcall(function() emu.removeMemoryCallback(id) end)
           byKind[kind] = nil
         end
         breakpoints[address] = nil
@@ -455,9 +537,11 @@ local function dispatch(line)
     end
 
     if #tokens == 3 and tokens[2]:upper() == "LOAD" then
-      local bytes = from_hex(tokens[3])
+      if #(tokens[3]:gsub("%s", "")) > MAX_STATE * 2 then
+        return fail("snapshot too large (max " .. MAX_STATE .. " bytes)")
+      end
+      local bytes = from_hex(tokens[3], MAX_STATE)
       if bytes == nil then return fail("invalid hex") end
-      if #bytes > MAX_STATE then return fail("snapshot too large: " .. #bytes) end
       local state, reason = bytes_to_state(bytes)
       if state == nil then return fail(reason) end
       local ok, message = pcall(function() emu.setState(state) end)
@@ -471,24 +555,36 @@ local function dispatch(line)
   return fail("unknown command: " .. command)
 end
 
+-- The single entry point every caller uses, so no caller can forget the guard.
+local function answer(line)
+  local ok, response = pcall(dispatch, line)
+  if not ok then
+    log("command failed: " .. tostring(line) .. " -> " .. tostring(response))
+    return fail("the emulator refused this command: " .. tostring(response))
+  end
+  return response
+end
+
 ------------------------------------------------------------------ serving
 
 local client = nil
 local server = nil
-local stopped = false
 
--- Served while the machine is broken, which is where a debugger spends its life.
--- Blocking here is deliberate and safe: the emulator is frozen, so nothing is
--- being starved, and this is the only way commands reach a paused machine,
--- because no event callback fires while execution is broken.
+-- Serves a stopped machine. Called from a callback, so blocking here is not the
+-- MesenCE mistake: the emulator is frozen, nothing is being starved, and this is
+-- the only route commands can take while stopped, because no callback fires.
 --
--- The receive timeout is bookkeeping only. A timeout is not a reason to give up,
--- so the loop keeps waiting until RESUME or the client goes away.
-local function serve_blocked(reason)
+-- The receive timeout is bookkeeping. A timeout is not a reason to give up.
+--
+-- Returns "resume" when the machine should run again, "closed" when the monitor
+-- is gone, and "step" or "reset" when the user asked for one of those and the
+-- owner has to carry it out, because the machine cannot run while this is on the
+-- stack.
+function serve_blocked(reason)
   client:settimeout(0.5)
   local waited = 0.0
   local reported = 0.0
-  log("paused (" .. tostring(reason) .. "), waiting for RESUME")
+  log("stopped (" .. tostring(reason) .. "), waiting for RESUME")
 
   while true do
     local line, err = client:receive("*l")
@@ -500,35 +596,51 @@ local function serve_blocked(reason)
         client:settimeout(0)
         return "resume"
       end
-      if upper == "QUIT" then
-        client:send("OK\n")
+
+      -- All three, not just the two this loop acts on: a PAUSE arriving while the
+      -- machine is already stopped is a no-op, and leaving its flag set would stop
+      -- the machine later over a command that never asked for it.
+      pause_requested = false
+      step_requested = false
+      reset_requested = false
+      local response = answer(line)
+      local sent = client:send(response .. "\n")
+      if not sent then
+        log("send failed while the machine was stopped")
+        client:settimeout(0)
         return "closed"
       end
-
-      paused_requested = false
-      local response = dispatch(line)
-      if paused_requested then paused_requested = false end
-      client:send(response .. "\n")
+      if step_requested then client:settimeout(0) return "step" end
+      if reset_requested then client:settimeout(0) return "reset" end
       waited = 0.0
       reported = 0.0
     elseif err == "timeout" then
       waited = waited + 0.5
-      if waited - reported >= PAUSE_REPORT_SECONDS then
+      if waited - reported >= STOP_REPORT_SECONDS then
         reported = waited
-        log(string.format("still paused after %.0fs", waited))
+        log(string.format("still stopped after %.0fs", waited))
       end
     else
-      log("client gone while paused")
+      log("monitor gone while the machine was stopped")
       return "closed"
     end
   end
 end
 
--- One tick of the running machine. Anything received is answered with the machine
--- frozen: freeze first, act second, so no read races the program under it.
-local function on_tick()
-  if stopped then return end
+-- Fires after a step or a breakpoint. This is the only owner of a stopped
+-- machine, so a stop never needs a second mechanism to be noticed.
+function serve_stopped()
+  if stop_requested == nil then return end
+  local reason = stop_requested
+  stop_requested = nil
 
+  local outcome = serve_blocked(reason)
+  act_on_outcome(outcome)
+end
+
+-- One tick of the running machine. A command is answered with the machine frozen:
+-- freeze first, act second, so no read races the program underneath it.
+local function on_tick()
   if client == nil then
     local candidate = server:accept()
     if candidate == nil then return end
@@ -541,28 +653,72 @@ local function on_tick()
   local line = client:receive("*l")
   if line == nil then return end
 
-  pcall(function() emu.breakExecution() end)
+  -- A step has to be issued from a running machine, so the break that the drain
+  -- normally takes first is skipped for it.
+  if line:upper() == "STEP" then
+    local response = answer(line)
+    -- Cleared here because this branch returns without entering the drain, which
+    -- is the only other place the flags are reset. A flag left set would be read
+    -- against the next unrelated command and stop the machine for no reason.
+    pause_requested = false
+    step_requested = false
+    reset_requested = false
+    if not client:send(response .. "\n") then
+      log("send failed on step")
+      emu.resume()
+      return
+    end
+    step_once()
+    return
+  end
+
+  emu.breakExecution()
 
   local handled = 0
   local pause = false
+  local step = false
+  local reset = false
+  local connected = true
   repeat
-    local response = dispatch(line)
-    if paused_requested then pause = true end
-    paused_requested = false
-    pcall(function() client:send(response .. "\n") end)
+    -- Cleared before the answer, read after it: clearing first drops whatever
+  -- the previous command left behind, and reading after catches only what this
+  -- command asked for, so a command never inherits another one's intent.
+    pause_requested = false
+    step_requested = false
+    reset_requested = false
+    local response = answer(line)
+    if pause_requested then pause = true end
+    if step_requested then step = true end
+    if reset_requested then reset = true end
+    -- Guarded: the machine is already broken, so a send failure that escaped here
+    -- would skip every resume below and leave the emulator frozen with no log.
+    if not client:send(response .. "\n") then
+      log("send failed while the machine was broken")
+      connected = false
+      break
+    end
     handled = handled + 1
     line = (handled < MAX_DRAIN) and client:receive("*l") or nil
-  until line == nil or line == "timeout"
+  until line == nil
+
+  if not connected then
+    emu.resume()
+    return
+  end
 
   if pause then
-    -- PAUSE arrived while running: answer, then keep serving from here, because
-    -- the next tick will never come.
-    local outcome = serve_blocked("PAUSE")
-    if outcome == "resume" then
-      emu.resume()
-    else
-      emu.stop(0)
-    end
+    -- Answered, and now serving: the next tick will never come.
+    act_on_outcome(serve_blocked("PAUSE"))
+    return
+  end
+
+  if step then
+    step_once()
+    return
+  end
+
+  if reset then
+    reset_now()
     return
   end
 
@@ -599,6 +755,7 @@ local function start()
   end
 
   emu.addEventCallback(on_tick, emu.eventType.inputPolled)
+  emu.addEventCallback(serve_stopped, emu.eventType.codeBreak)
   log(NAME .. " " .. VERSION .. " bridge listening on 127.0.0.1:" .. port)
 end
 
