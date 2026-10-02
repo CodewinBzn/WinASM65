@@ -31,6 +31,14 @@ namespace WinASM65.Output
         /// <summary>Name of the segment currently being emitted. Empty in direct-burn mode.</summary>
         string SegmentName { get; set; }
 
+        /// <summary>
+        /// Where each <c>.org</c> landed, as (buffer offset, address) pairs in emission
+        /// order. Direct-burn mode ignores this entirely; it exists so a unit with
+        /// several <c>.org</c> can be cut back into one segment per origin instead of
+        /// being published as a single buffer with a single, wrong, origin.
+        /// </summary>
+        IReadOnlyList<EmitterOrigin> Origins { get; }
+
         /// <summary>Records a site whose emitted value depends on a symbol.</summary>
         void RecordRelocation(RelocationRecord record);
 
@@ -41,13 +49,58 @@ namespace WinASM65.Output
         void ResolveRelocation(int segmentIndex, int offset, long value);
     }
 
+    /// <summary>
+    /// Where a <c>.org</c> put the emission cursor: the buffer offset it started from,
+    /// and the address it set. Kept as a pair because neither half is enough -- the
+    /// offset says which bytes belong to that origin, the address says what they are
+    /// addresses of.
+    /// </summary>
+    public struct EmitterOrigin
+    {
+        public int BufferOffset { get; private set; }
+        public ushort Address { get; private set; }
+
+        public EmitterOrigin(int bufferOffset, ushort address)
+        {
+            BufferOffset = bufferOffset;
+            Address = address;
+        }
+    }
+
     public class BinaryEmitter : IBinaryEmitter
     {
         private readonly List<byte> _buffer = new List<byte>();
         private readonly List<RelocationRecord> _relocations = new List<RelocationRecord>();
+        private readonly List<EmitterOrigin> _origins = new List<EmitterOrigin>();
 
-        public ushort CurrentAddress { get; set; }
-        public ushort OriginAddress { get; set; }
+        private ushort _currentAddress;
+        private ushort _originAddress;
+
+        public ushort CurrentAddress
+        {
+            get { return _currentAddress; }
+            set { _currentAddress = value; }
+        }
+
+        /// <summary>
+        /// Setting the origin opens a new block. Recording it here rather than in the
+        /// <c>.org</c> directive means every path that moves the origin is recorded,
+        /// including the default origin applied before the first line.
+        /// </summary>
+        public ushort OriginAddress
+        {
+            get { return _originAddress; }
+            set
+            {
+                _originAddress = value;
+                _origins.Add(new EmitterOrigin(_buffer.Count, value));
+            }
+        }
+
+        public IReadOnlyList<EmitterOrigin> Origins
+        {
+            get { return _origins; }
+        }
 
         public int SegmentIndex { get; set; }
         public string SegmentName { get; set; }
@@ -128,8 +181,9 @@ namespace WinASM65.Output
         {
             _buffer.Clear();
             _relocations.Clear();
+            _origins.Clear();
             CurrentAddress = 0;
-            OriginAddress = 0;
+            _originAddress = 0;
             SegmentIndex = 0;
             SegmentName = string.Empty;
         }
