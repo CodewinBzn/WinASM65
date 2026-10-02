@@ -464,6 +464,67 @@ Deux précisions de périmètre, pour que la limite soit nette :
 parallélisation ». Sans worktree isolé, un agent peut supprimer les artefacts
 d'un autre.
 
+## Ce qui reste à faire
+
+État au 2 octobre 2026, après `3aadc4f` poussé sur `master`.
+
+### T9 — la validation VICE n'est pas faite
+
+Le code est livré et poussé ; le critère du plan (« l'application se charge
+dans VICE depuis un fichier non pré-positionné et s'exécute correctement ») reste
+non satisfait. Ce n'est pas un défaut du produit : c'est un blocage de cette
+build de VICE, mesuré, dont il faut trouver le contournement avant de pouvoir
+conclure.
+
+Trois faits établis, pour ne pas les re-mesurer :
+
+1. `-autostart` tape toujours `LOAD"…",8,1` puis `RUN`, que le fichier soit un
+   PRG nu ou le premier fichier d'un disque. Le fichier est chargé aux bonnes
+   adresses — vérifié octet par octet en RAM — mais `RUN` n'exécute rien : une
+   sonde `10 $FF` (jeton invalide, donc « ?SYNTAX ERROR IN 10 » attendu) ne
+   produit aucun message. Ce n'est pas un jeton faux, c'est l'absence de
+   programme du point de vue du BASIC.
+2. Le moniteur binaire **arrête le CPU à la connexion**. L'horloge du CIA 1
+   (`$DC00`) reste à `$7FFF` entre deux lectures espacées de 2 s. Un programme
+   ne peut donc pas être observé en cours d'exécution ; on ne peut lire que ce
+   qu'il a laissé. Corollaire : la frappe au tampon clavier (`$C6F`) est
+   impossible, la machine ne vidant jamais le tampon.
+3. Le seul témoin possible est donc l'image, ce qui suppose que le programme
+   démarre — et il ne démarre pas.
+
+Harnais écrit et réutilisable, dans `%TEMP%\kilo\vicerun\` (hors dépôt) :
+`Probe.ps1` (sonde : BASIC ou machine nue, lecture de l'écran BASIC depuis la
+RAM vidéo), `T9Shot.ps1` (témoin par la couleur du bord, vert si la table est
+appliquée, rouge sinon, avec une image de contrôle qui doit peindre en rouge),
+`T9.ps1` (lecture RAM par le moniteur, utile pour l'agencement mais pas pour
+l'exécution). Les jetons BASIC V2 sont résolus : `LOAD` = `$93`, `SYS` = `$9E`,
+`STOP` = `$90`, le numéro de ligne est petit-boutiste.
+
+### Trou trouvé au passage, hors dépôt
+
+`ExtractRecord.ps1` lisait le record GEOS comme une suite d'octets continue. Un
+secteur de D64 n'en porte que 254, donc au-delà de 256 octets la fin du record
+était remplacée par les octets de chaînage du secteur suivant — qui ressemblent à
+`00 FF` et se lisaient comme des données plausibles. Corrigé en suivant la
+chaîne. Le produit n'était pas en cause.
+
+### Prérequis acquis
+
+VICE 3.10 GTK3 dans `%TEMP%\kilo\vice\gh\GTK3VICE-3.10-win64\bin`, image GEOS
+2.0r dans `%TEMP%\kilo\geos\geos.d64` (SHA-256
+`1BABD118E2F68604DDA10561A68909B552F4960C586E7588A411BBC4E65A9A01`).
+`c1541 -format <nom,id> <type> <image>` crée un disque ; `c1541` refuse un D64 au
+format GEOS (« Empty image »), donc il ne peut pas servir de vérificateur de
+contenu sur ces images.
+
+### Non commit, à ne pas confondre avec T9
+
+`WinASM65.Monitor/Bridge/bridge_mesen2.lua`,
+`WinASM65.Monitor.Tests/MameCapabilityTests.cs`, `WinASM65.Monitor/Bridge/probe_mame.lua`
+et le plan du moniteur : autre chantier, désormais commité par la session du
+moniteur. `WinASM65.Monitor/Program.cs` appartient également au chantier du
+moniteur (validation de `settings.json` pour Mesen2), pas à T9.
+
 ## Ordre de grandeur
 
 L'ensemble représente environ 16 tâches, dont cinq (P0, T1, T2, T3, T4) sont
