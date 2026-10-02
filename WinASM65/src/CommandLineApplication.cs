@@ -381,6 +381,37 @@ namespace WinASM65
                 return 1;
             }
 
+            // The entry the program itself is started at: -start, or the first
+            // byte of the code when that was not said.
+            ushort entry = start >= 0 ? (ushort)start : image.OriginAddress;
+
+            // The table names the places to correct, and the stub walks it. Both
+            // go at the head of the one record the kernal loads, followed by the
+            // code, so the stub, the table and the program are all in RAM
+            // together and the stub reaches the table without touching the disk.
+            GeosRelocationTable table = GeosRelocationTable.Build(image, entry);
+            List<Diagnostic> problems = new List<Diagnostic>();
+            byte[] stub = GeosStub.Assemble(image.OriginAddress, table.Data.Length, problems);
+            if (stub == null)
+            {
+                DisplayDiagnostics(problems);
+                return 1;
+            }
+
+            // The code must land exactly where it was assembled, so the record is
+            // loaded that much lower: the stub and the table sit in front of it.
+            int tableOffset = stub.Length;
+            int codeOffset = tableOffset + table.Data.Length;
+            int load = (int)image.OriginAddress - codeOffset;
+            if (load < 0)
+            {
+                _console.WriteError(
+                    "The program is assembled too low to hold its own stub and table in front of it:");
+                _console.WriteError("  origin $" + image.OriginAddress.ToString("X4") + " needs "
+                    + codeOffset + " bytes of room, which would load the record below $0000.");
+                return 1;
+            }
+
             GeosApplication application = new GeosApplication();
             application.Name = appName;
             application.Author = author;
@@ -389,33 +420,25 @@ namespace WinASM65
             // file list. The library keeps 1900-01-01 so that a test building a
             // disk twice gets the same bytes.
             application.Timestamp = DateTime.Today;
-            application.LoadAddress = image.OriginAddress;
-
-            // Placed order, which is origin order, so record 0 is the one GEOS
-            // loads first and it is the start of the program.
-            for (int i = 0; i < image.Segments.Count; i++)
-            {
-                PlacedSegment segment = image.Segments[i];
-                application.Records.Add(new GeosRecord(new byte[segment.Size]));
-                byte[] record = application.Records[application.Records.Count - 1].Data;
-                for (int b = 0; b < segment.Size; b++)
-                {
-                    int at = segment.Address + b - image.OriginAddress;
-                    record[b] = at >= 0 && at < image.Data.Length ? image.Data[at] : (byte)0x00;
-                }
-            }
-
-            // The relocation table goes after the code, in its own record, and the
-            // information sector says where it is. The application is started at
-            // -start, or at the first byte of the code when that was not said.
-            ushort entry = start >= 0 ? (ushort)start : image.OriginAddress;
-            GeosRelocationTable table = GeosRelocationTable.Build(image, entry);
-            application.StartAddress = entry;
+            application.LoadAddress = (ushort)load;
+            // The kernal jumps to the start address, which is the head of the
+            // record: the stub. The stub then jumps to the real entry, moved by
+            // the bias it has just applied.
+            application.StartAddress = (ushort)load;
             application.EndAddress = (ushort)(image.OriginAddress + image.Data.Length);
             application.BaseAddress = table.BaseAddress;
-            application.TableAddress = (ushort)(image.OriginAddress + image.Data.Length);
+            application.TableAddress = (ushort)(load + tableOffset);
             application.TableEntryCount = (ushort)table.Entries.Count;
-            application.Records.Add(new GeosRecord(table.Data));
+
+            // One record: the stub, the table, then the code exactly as it was
+            // linked. The references in the code stay correct for the address it
+            // was assembled at, and the stub corrects them if the kernal loads
+            // the record anywhere else.
+            byte[] record = new byte[stub.Length + table.Data.Length + image.Data.Length];
+            Buffer.BlockCopy(stub, 0, record, 0, stub.Length);
+            Buffer.BlockCopy(table.Data, 0, record, tableOffset, table.Data.Length);
+            Buffer.BlockCopy(image.Data, 0, record, codeOffset, image.Data.Length);
+            application.Records.Add(new GeosRecord(record));
 
             D64Builder disk = new D64Builder();
             disk.DiskName = diskName;
@@ -431,13 +454,16 @@ namespace WinASM65
 
             _console.WriteLine(string.Format("Linked {0} segment(s) into a GEOS application -> {1}",
                 image.Segments.Count, output));
-            _console.WriteLine("  " + appName + " load $" + image.OriginAddress.ToString("X4")
-                + " start $" + entry.ToString("X4")
+            _console.WriteLine("  " + appName + " load $" + application.LoadAddress.ToString("X4")
+                + " start $" + application.StartAddress.ToString("X4")
                 + " end $" + application.EndAddress.ToString("X4")
-                + ", " + (image.Segments.Count + 1) + " record(s)");
-            _console.WriteLine("  relocation table at $" + application.TableAddress.ToString("X4")
+                + ", 1 record(s)");
+            _console.WriteLine("  stub " + stub.Length + " bytes, relocation table at $"
+                + application.TableAddress.ToString("X4")
                 + ", " + table.Entries.Count + " reference(s) for base $"
                 + table.BaseAddress.ToString("X4"));
+            _console.WriteLine("  the stub runs first and enters the program at $"
+                + entry.ToString("X4"));
             return 0;
         }
 

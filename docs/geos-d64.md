@@ -106,7 +106,20 @@ quels. Une application qui n'est pas chargée à l'adresse pour laquelle elle a
 été assemblée doit donc se corriger elle-même, et le travail de WinASM65
 consiste à lui fournir la liste des endroits à corriger.
 
-C'est ce que produit `WinASM65 geos`, dans un record VLIR placé après le code :
+Le premier record est le programme entier, et il commence par le stub qui le
+deplace, puis la table, puis le code :
+
+```
+record 0 :  [ stub ][ table ][ code ... ]
+adresse de chargement : ^
+```
+
+Le kernal saute a l'adresse de chargement, qui est donc le stub ; le stub
+corrige le code puis saute au vrai point d'entree. Tout ce dont l'application a
+besoin est ainsi dans le seul record que le kernal charge, et une application
+deplacee n'a besoin d'aucun installeur.
+
+La table a l'interieur du record est :
 
 ```
 $00-$03  "R65A", pour que la zone ne se confonde pas avec du remplissage
@@ -116,8 +129,8 @@ $08-$09  le point d'entree du programme
 $0A-     entrees : adresse basse, adresse haute, largeur
 ```
 
-Le bloc INFO pointe sur cette table dans sa zone libre, $89-$9F, qui appartient
-a l'application :
+Le bloc INFO resume la table dans sa zone libre, $89-$9F, qui appartient a
+l'application :
 
 ```
 $89-$8C  "R65A"
@@ -126,8 +139,19 @@ $8F-$90  adresse de la table
 $91-$92  nombre d'entrees
 ```
 
-Le magic est ce qui rend l'extension inoffensive : un kernal qui ignore cette
-zone charge le fichier exactement comme avant.
+Le resume est une description de la table, pas la table : ce que le stub lit est
+la table elle-meme, celle du record. Le magic est ce qui rend l'extension
+inoffensive : un kernal qui ignore cette zone charge le fichier exactement comme
+avant, et le stub, lui, fait ce que le kernal ne fait pas.
+
+Le stub (`src/Targets/geos-stub.asm`) ne contient aucune adresse. Il lit
+l'adresse de chargement que le kernal laisse en $886C-$886D, et atteint la table
+et le code par cette adresse plus un decalage fixe, ce qui revient a dire qu'il
+se deplace avec le programme. Il n'utilise que des branches relatives : un
+`JMP` vers une de ses propres etiquettes, ou une branche absolue, le fixerait a
+la seule adresse pour laquelle il a ete assemble. Il utilise $70-$7F, la page
+zero reservee a l'application sous GEOS, et il rend la main au programme avant
+que celui-ci ne demarre.
 
 Seules les references absolues figurent dans la table. Une branche relative est
 deja correcte ou que le code bouge ou non, la page zero est la page zero a toute
