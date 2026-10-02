@@ -14,6 +14,7 @@ namespace WinASM65.Cpu
         bool IsRelativeBranch(string mnemonic);
         bool IsAccumulatorInstruction(string mnemonic);
         bool TryGetOpcode(string mnemonic, AddressingMode mode, out byte opcode);
+        IReadOnlyDictionary<string, byte[]> InstructionTable { get; }
         InstructionInfo ParseOperand(string mnemonic, string operand);
         bool TryOptimizeZeroPage(string mnemonic, AddressingMode currentMode, long value, out AddressingMode optimizedMode, out byte opcode, out byte length);
         bool TryCalculateRelativeOffset(long targetAddress, long instructionAddress, out byte offset, out string error);
@@ -97,6 +98,16 @@ namespace WinASM65.Cpu
         protected virtual Dictionary<string, byte[]> OpcodeTable
         {
             get { return NmosOpcodeTable; }
+        }
+
+        /// <summary>
+        /// Vue en lecture seule de la table d'opcodes de ce CPU. Exposee pour le
+        /// désassembleur, qui doit connaître le couplage exact mnémonique/mode/opcode,
+        /// y compris les extensions 65C02 absentes de la table NMOS.
+        /// </summary>
+        public System.Collections.Generic.IReadOnlyDictionary<string, byte[]> InstructionTable
+        {
+            get { return OpcodeTable; }
         }
 
         protected virtual HashSet<string> RelativeBranchMnemonics
