@@ -134,6 +134,76 @@ namespace WinASM65.Tests
         }
 
         [TestMethod]
+        public void UnSelecteurDOctetEstDecritParLaTableOuRefuse()
+        {
+            // "lda #<label" holds the low byte of an address, and a low byte moves
+            // when the image does: adding a bias modulo 256 is exact, and addition
+            // commutes with reduction. So the site is describable, and it is
+            // described -- the entry carries width 1.
+            //
+            // The property that matters: either the site is described, or the link is
+            // refused. There is no third outcome, because a site silently left out
+            // relocates to a wrong address with nothing to show for it.
+            ModuleImage module = new ModuleImage();
+            module.ModuleName = "low";
+            module.AddSegment(new ModuleSegment("CODE", new byte[] { 0xA9, 0x40, 0x60 },
+                SegmentKind.Ro, 1, 0) { OriginAddress = Origin });
+            module.AddExport(new ModuleExport("Routine", 0, 0));
+            module.AddRelocation(Reloc(0, 1, 0x4001, 1, RelocationType.LowByte, "Routine"));
+
+            LinkedImage image;
+            OperationResult linked = new Linker().Link(new List<ModuleImage> { module }, out image);
+            Assert.IsTrue(linked.Success,
+                linked.Diagnostics.Count > 0 ? linked.Diagnostics[0].ToString() : "echec");
+
+            GeosRelocationTable table = GeosRelocationTable.Build(image, Origin);
+            Assert.AreEqual(1, table.Entries.Count,
+                "le bas d'une adresse se deplace : le site doit etre dans la table");
+            Assert.AreEqual(1, table.Entries[0].Width);
+
+            // The strongest statement available: relocating gives exactly what a
+            // link at the load address would have given.
+            byte[] relocated = (byte[])image.Data.Clone();
+            table.Apply(relocated, 0, 0x5010);
+
+            // The bias is $1010, so the low byte of $4000 becomes $10 -- not $50.
+            // Stating it as a hex address would hide the arithmetic that makes the
+            // case work at all: only addition modulo 256 commutes like this.
+            Assert.AreEqual(0x10, relocated[1], "le bas de l'adresse doit suivre l'image");
+        }
+
+        [TestMethod]
+        public void UnSelecteurDOctetEstRefuseALaConstructionDeLaTableQuandIlEstLeHaut()
+        {
+            // "lda #>label" is the other half, and it is not describable. The new high
+            // byte is a function of the whole address plus the carry out of the low
+            // byte; the table carries the bias and the site address, not the value, so
+            // it cannot know that carry.
+            //
+            // An entry claiming to describe it would relocate the program to an address
+            // one page off, and nothing anywhere would say so. A refusal naming the
+            // site is the only honest output.
+            ModuleImage module = new ModuleImage();
+            module.ModuleName = "high";
+            module.AddSegment(new ModuleSegment("CODE", new byte[] { 0xA9, 0x40, 0x60 },
+                SegmentKind.Ro, 1, 0) { OriginAddress = Origin });
+            module.AddExport(new ModuleExport("Routine", 0, 0));
+            module.AddRelocation(Reloc(0, 1, 0x4001, 1, RelocationType.HighByte, "Routine"));
+
+            LinkedImage image;
+            OperationResult linked = new Linker().Link(new List<ModuleImage> { module }, out image);
+            Assert.IsTrue(linked.Success,
+                linked.Diagnostics.Count > 0 ? linked.Diagnostics[0].ToString() : "echec");
+
+            InvalidOperationException refusal =
+                Assert.ThrowsException<InvalidOperationException>(
+                    () => GeosRelocationTable.Build(image, Origin)) as InvalidOperationException;
+            Assert.IsNotNull(refusal);
+            StringAssert.Contains(refusal.Message, "4001");
+            StringAssert.Contains(refusal.Message, "carry");
+        }
+
+        [TestMethod]
         public void UneImageChargeeAElsePartDonneLaMemeImageQuUnLienALAdresse()
         {
             int[] loads = new int[] { 0x0400, 0x0810, 0x2000, 0x3F00, 0x8000, 0xC000 };

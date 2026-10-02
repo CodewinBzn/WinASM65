@@ -364,6 +364,166 @@ namespace WinASM65.Tests
 
         #endregion
 
+        #region Le depassement d'une region est nomme
+
+        /// <summary>
+        /// Une reservation qui deborde de sa region. <c>VARS_START</c> vaut $0300 et la
+        /// region fait $80 octets, donc <c>vars .res $0100</c> demande $100 octets la
+        /// ou il n'y a que $80.
+        /// </summary>
+        private const string OverflowingConfig = @"{
+  ""Target"": { ""System"": ""nes"", ""Regions"": [
+    { ""Name"": ""PRG0"", ""Address"": ""$8000"", ""Size"": ""$4000"", ""Type"": ""ro"" },
+    { ""Name"": ""VARS"", ""Address"": ""$0300"", ""Size"": ""$0080"", ""Type"": ""bss"" }
+  ] }
+}";
+
+        [TestMethod]
+        public void ReservationQuiDepasse_EstRefuseeEnNommantLaRegionEtLesBornes()
+        {
+            MemoryMap map = Build(OverflowingConfig);
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                Dictionary<string, long> injected = new Dictionary<string, long>(
+                    map.BuildPredefinedSymbols());
+                string source = temp.File("over.asm");
+                File.WriteAllText(source,
+                    ".memarea VARS_START\nvars .res $0100\n.org $8000\nlda vars\nrts\n");
+
+                AssemblyResult result;
+                using (MemoryMapScope.Activate(map))
+                    result = new AssemblerEngine(predefinedSymbols: injected).Assemble(source, temp.File("over.o"));
+
+                // Sans ce diagnostic, la reservation passe : $80 octets sont reserves,
+                // $100 demandes, et les $20 octets debordants se perdent dans la
+                // following region en silence. Un symbole qui pointe la, c'est une
+                // variable ecrasee au demarrage, sans le moindre signe.
+                Assert.IsFalse(result.Success, "une reservation plus grande que sa region doit etre refusee");
+                string text = Describe(result.Diagnostics);
+                StringAssert.Contains(text, "VARS");
+                // The size is named in decimal, and the overflow in bytes, because
+                // those are the two numbers the reader has to compare against the
+                // region window printed next to them.
+                StringAssert.Contains(text, "256 byte(s)");
+                StringAssert.Contains(text, "$037F");
+                StringAssert.Contains(text, "128 byte(s) fall outside");
+            }
+        }
+
+        [TestMethod]
+        public void ReservationExactementEgaleALaRegion_EstAcceptée()
+        {
+            MemoryMap map = Build(OverflowingConfig);
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                Dictionary<string, long> injected = new Dictionary<string, long>(
+                    map.BuildPredefinedSymbols());
+                string source = temp.File("exact.asm");
+                File.WriteAllText(source,
+                    ".memarea VARS_START\nvars .res VARS_SIZE\n.org $8000\nlda vars\nrts\n");
+
+                AssemblyResult result;
+                using (MemoryMapScope.Activate(map))
+                    result = new AssemblerEngine(predefinedSymbols: injected).Assemble(source, temp.File("exact.o"));
+
+                // Au juste : $0300 + $80 = $0380, qui est la premiere adresse hors
+                // region. Refuser ici serait refuser une reservation valide.
+                Assert.IsTrue(result.Success, Describe(result.Diagnostics));
+                CollectionAssert.AreEqual(new byte[] { 0xAD, 0x00, 0x03, 0x60 }, result.OutputBytes);
+            }
+        }
+
+        [TestMethod]
+        public void ReservationHorsDeTouteRegionNEstPasRefusee()
+        {
+            // Une reservation n'est pas un .org : elle ne place rien et n'emet rien,
+            // donc une zone declaree comme Roh ou Ram n'a pas a la contenir. Seule une
+            // region bss peut deborder, parce que seule une bss promettait de l'espace
+            // que la reservation consomme.
+            MemoryMap map = Build(NesConfig);
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string source = temp.File("raw.asm");
+                File.WriteAllText(source, ".memarea $0300\nvars .res $40\n.org $8000\nlda vars\nrts\n");
+                AssemblyResult result;
+                using (MemoryMapScope.Activate(map))
+                    result = new AssemblerEngine().Assemble(source, temp.File("raw.o"));
+
+                Assert.IsTrue(result.Success, Describe(result.Diagnostics));
+            }
+        }
+
+        [TestMethod]
+        public void SansRegionsDeclareesLeDebordementNEstPasVu()
+        {
+            // Le mode direct est le contrat : une carte vide ne valide rien, donc un
+            // .res qui deborde d'une zone non declaree continue de passer comme avant.
+            MemoryMap map = Build(ConfigWithoutRegions);
+            Assert.IsTrue(map.IsEmpty);
+
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string source = temp.File("plain.asm");
+                File.WriteAllText(source, ".memarea $0300\nvars .res $FFFF\n.org $8000\nlda vars\nrts\n");
+                AssemblyResult result;
+                using (MemoryMapScope.Activate(map))
+                    result = new AssemblerEngine().Assemble(source, temp.File("plain.o"));
+
+                Assert.IsTrue(result.Success, Describe(result.Diagnostics));
+            }
+        }
+
+        [TestMethod]
+        public void LeDebordementEstVuAChaqueReservationPasSeulementALaPremiere()
+        {
+            // Une carte qui ne verrait que la premiere reservation laisserait passer la
+            // troisieme. C'est la situation reelle : $0300 + $30 + $30 + $30 = $0390,
+            // alors que la region finit a $0380. Les deux premieres reservation tiennent,
+            // seule la troisieme deborde, et c'est elle qui doit etre vue.
+            MemoryMap map = Build(OverflowingConfig);
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string source = temp.File("chain.asm");
+                File.WriteAllText(source,
+                    ".memarea $0300\n" +
+                    "a .res $30\n" +
+                    "b .res $30\n" +
+                    "c .res $30\n" +
+                    ".org $8000\nlda a\nrts\n");
+
+                AssemblyResult result;
+                using (MemoryMapScope.Activate(map))
+                    result = new AssemblerEngine().Assemble(source, temp.File("chain.o"));
+
+                Assert.IsFalse(result.Success, "la reservation 'c' deborde de $0380");
+                StringAssert.Contains(Describe(result.Diagnostics), "Line 4");
+            }
+        }
+
+        [TestMethod]
+        public void UneReservationQuiCommenceHorsDeLaRegionBssNEstPasVueCommeDebordement()
+        {
+            // $0380 est la premiere adresse hors de la region VARS. Une reservation
+            // qui y commence n'empiete sur rien : elle ne deborde pas, elle est ailleurs.
+            // La confondre avec un debordement refusait des sources legitimes, et le
+            // remede -- la rendre refusable -- n'existerait pas.
+            MemoryMap map = Build(OverflowingConfig);
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string source = temp.File("after.asm");
+                File.WriteAllText(source,
+                    ".memarea $0380\nvars .res $40\n.org $8000\nlda vars\nrts\n");
+
+                AssemblyResult result;
+                using (MemoryMapScope.Activate(map))
+                    result = new AssemblerEngine().Assemble(source, temp.File("after.o"));
+
+                Assert.IsTrue(result.Success, Describe(result.Diagnostics));
+            }
+        }
+
+        #endregion
+
         private static ConfigFile ReadConfig(string json)
         {
             string path = Path.Combine(Path.GetTempPath(), "WinASM65Regions_" + Guid.NewGuid().ToString("N") + ".json");

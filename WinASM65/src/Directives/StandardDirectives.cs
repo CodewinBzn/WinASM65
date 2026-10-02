@@ -85,7 +85,18 @@ namespace WinASM65.Directives
             ExpressionResult res = context.ResolveExpression(argument);
             if (res.IsResolved)
             {
-                context.ScopeManager.CurrentScope.MemArea = res.Value.ToUInt16();
+                ushort addr = res.Value.ToUInt16();
+
+                // A .memarea selects where the following .res start. It places
+                // nothing and emits nothing, so only the overflow check applies --
+                // unlike .org, which ValidateOrigin refuses outright inside a bss
+                // region, because code there would produce file bytes in space the
+                // target declared as holding none.
+                MemoryMap regions = MemoryMapScope.Current;
+                if (regions != null)
+                    regions.ValidateReservation(addr, 0, context.CurrentLocation, context.Diagnostics);
+
+                context.ScopeManager.CurrentScope.MemArea = addr;
             }
             else
             {

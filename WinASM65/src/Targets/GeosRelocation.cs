@@ -36,6 +36,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using WinASM65.Expressions;
 using WinASM65.Linking;
 
 namespace WinASM65.Targets
@@ -51,6 +53,15 @@ namespace WinASM65.Targets
 
         public const int HeaderSize = 10;
         public const int EntrySize = 3;
+
+        /// <summary>
+        /// Why a high byte cannot go in a table of this shape, said once so the
+        /// refusal and the documentation cannot drift apart.
+        /// </summary>
+        public const string UNREPRESENTABLE_REFERENCE =
+            "Relocation site ${0:X4} holds the high byte of an address, and this table cannot move it: " +
+            "the new high byte depends on the carry out of the low byte, which the table does not carry. " +
+            "Keep the whole address ('lda label') instead of a half ('lda #>label') if the image must be relocatable.";
 
         /// <summary>The address the image was assembled for.</summary>
         public ushort BaseAddress { get; internal set; }
@@ -82,6 +93,23 @@ namespace WinASM65.Targets
         {
             if (image == null)
                 throw new ArgumentNullException("image");
+
+            // Refused before anything is written, and by name. A high byte cannot be
+            // moved by adding a bias to the byte in memory: it is a function of the
+            // whole address plus the carry out of the low byte, and the table cannot
+            // know that carry. An entry that claimed to describe one would relocate
+            // the program to an address one page off, with no sign anywhere.
+            //
+            // The check lives here rather than in the linker because the linker does
+            // not know whether the image will ever move. A program that stays where
+            // it was assembled is correct with a high byte in it, so refusing at link
+            // time would reject good code on behalf of a target nobody chose yet.
+            for (int r = 0; r < image.References.Count; r++)
+            {
+                if (image.References[r].Selector == ByteSelector.High)
+                    throw new InvalidOperationException(string.Format(CultureInfo.InvariantCulture,
+                        UNREPRESENTABLE_REFERENCE, image.References[r].Address));
+            }
 
             GeosRelocationTable table = new GeosRelocationTable();
             table.BaseAddress = image.OriginAddress;
@@ -158,6 +186,12 @@ namespace WinASM65.Targets
         /// that refused to describe an address past $FFFF would be a table that
         /// could not describe a program that ends at $FFFF.
         /// </para>
+        /// <para>
+        /// A low byte is the same operation truncated to one octet, and that is
+        /// exact: <c>(v + bias) &amp; $FF == (v &amp; $FF) + bias</c> modulo 256,
+        /// because addition commutes with reduction. A high byte is not -- see
+        /// <see cref="UnrepresentableReference"/>.
+        /// </para>
         /// </summary>
         public void Apply(byte[] image, int offsetInImage, ushort loadAddress)
         {
@@ -167,6 +201,14 @@ namespace WinASM65.Targets
             int bias = (int)loadAddress - BaseAddress;
             for (int e = 0; e < Entries.Count; e++)
             {
+                // Refused here as well as in Build, because a table can be read back
+                // from a file and handed to Apply without ever going through Build.
+                // Silently biasing a high byte would produce an address one page off,
+                // which is the exact failure the refusal exists to prevent.
+                if (Entries[e].Selector == ByteSelector.High)
+                    throw new InvalidOperationException(string.Format(CultureInfo.InvariantCulture,
+                        UNREPRESENTABLE_REFERENCE, Entries[e].Address));
+
                 int site = Entries[e].Address - BaseAddress + offsetInImage;
                 if (site < 0 || site + Entries[e].Width > image.Length)
                 {

@@ -129,19 +129,33 @@ $91-$92  nombre d'entrees
 Le magic est ce qui rend l'extension inoffensive : un kernal qui ignore cette
 zone charge le fichier exactement comme avant.
 
-Seules les references absolues de deux octets figurent dans la table. Une
-branche relative est deja correcte ou que le code bouge ou non, la page zero est
-la page zero a toute adresse de chargement, et une valeur immediate n'est pas
-une adresse.
+Seules les references absolues figurent dans la table. Une branche relative est
+deja correcte ou que le code bouge ou non, la page zero est la page zero a toute
+adresse de chargement, et une valeur immediate n'est pas une adresse.
 
-Un site d'un octet choisi par `<` ou `>` n'y figure pas non plus, et c'est une
-limite a nommer : le linker ecrit bien le bon octet a la bonne adresse de
-chargement, mais le kernal ne saura pas le corriger si l'application est chargee
-ailleurs, parce que rien dans la table ne lui dit qu'il existe. `lda #>Table`
-dans une application GEOS est donc un code correct au lien et faux au
-relocalisation. La parade est de poser la table en RAM par une reference de deux
-octets — c'est ce que fait le stub runtime de T11 — et de ne garder que des
-references 16 bits dans le code relocalisable.
+**`<` et `>` ne se valent pas.** Les deux designent une adresse, mais un seul est
+deplacable par cette table :
+
+- **bas** (`lda #<Table`) : l'entree le decrit, avec une largeur de 1. Ajouter le
+  biais a un octet bas est une addition modulo 256, et l'addition commute avec la
+  reduction : `(v + b) & $FF == (v & $FF) + b`. Le resultat est exact, donc la
+  table le decrit et `Apply` le corrige.
+
+- **haut** (`lda #>Table`) : `Build` **refuse**, en nommant le site. Le haut de
+  `v + b` depend de la retenue sortie du bas, et la table ne transporte ni la
+  valeur ni son bas — elle ne peut donc pas connaitre cette retenue. Une entree
+  qui pretendait le decrire deplacerait le programme a une adresse decalee d'une
+  page, sans qu'aucune trace ne le dise.
+
+Le refus est dans `Build` et dans `Apply`, pas dans le linker : un programme qui
+ne bougera jamais est parfaitement correct avec un `lda #>Table`, et le linker ne
+sait pas si l'image bougera. C'est la cible qui le sait, donc c'est elle qui
+refuse.
+
+La parade reste la meme qu'avant : poser la table en RAM par une reference de deux
+octets — c'est ce que fait le stub runtime de T11 — et ne garder que des references
+16 bits dans le code relocalisable. Avec le refus en place, cet oubli devient un
+diagnostic nomme au lieu d'un defaut silencieux.
 
 **Pas de stub auto-positionne.** Un 6502 ne peut pas lire son propre compteur de
 programme sans un `JSR` dont la cible est une adresse d'execution, et une
