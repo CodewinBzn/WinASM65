@@ -1,4 +1,4 @@
-
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.31019.35
@@ -6,6 +6,10 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinASM65", "WinASM65\WinASM65.csproj", "{BC489159-4B32-4EEE-9D0A-A1113126F3BC}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinASM65.Tests", "WinASM65.Tests\WinASM65.Tests.csproj", "{70D8C43C-07CA-42F3-BB3C-9840CA931FC2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinASM65.Monitor", "WinASM65.Monitor\WinASM65.Monitor.csproj", "{29128834-600A-4A5A-90F7-4BD114BB1F24}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinASM65.Monitor.Tests", "WinASM65.Monitor.Tests\WinASM65.Monitor.Tests.csproj", "{84925184-F7C0-4AF6-A60F-D734C1926AE8}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +25,14 @@ Global
 		{70D8C43C-07CA-42F3-BB3C-9840CA931FC2}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{70D8C43C-07CA-42F3-BB3C-9840CA931FC2}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{70D8C43C-07CA-42F3-BB3C-9840CA931FC2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{29128834-600A-4A5A-90F7-4BD114BB1F24}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{29128834-600A-4A5A-90F7-4BD114BB1F24}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{29128834-600A-4A5A-90F7-4BD114BB1F24}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{29128834-600A-4A5A-90F7-4BD114BB1F24}.Release|Any CPU.Build.0 = Release|Any CPU
+		{84925184-F7C0-4AF6-A60F-D734C1926AE8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{84925184-F7C0-4AF6-A60F-D734C1926AE8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{84925184-F7C0-4AF6-A60F-D734C1926AE8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{84925184-F7C0-4AF6-A60F-D734C1926AE8}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
