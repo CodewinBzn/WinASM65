@@ -295,14 +295,19 @@ private IReadOnlyList<string> Cpu()
 
             if (_lastCycleCount.HasValue && _lastCycleCount.Value == snapshot.CycleCount)
             {
-                lines.Add("the cycle counter has not moved since the last CPU command: "
-                    + "the emulated CPU is not running. MesenCE 2.2.1 exposes no way to"
-                    + " advance it from a script, so RAM stays as loaded and zeroed.");
+                // Stated without naming a host: the same reading means the machine is
+                // paused on Mesen2 and that the host cannot advance the CPU at all on
+                // MesenCE. Naming one of them here would be wrong for the other, and
+                // the user has a session banner that says which host they are on.
+                lines.Add("the cycle counter has not moved since the last CPU command:"
+                    + " the machine is paused, or this host cannot advance the CPU from a"
+                    + " script. RAM stays as it was left either way.");
             }
             else if (snapshot.LooksPoweredDown)
             {
                 lines.Add("the machine is at its reset vector: it has not executed a single"
-                    + " instruction. This is expected on this host, not a fault.");
+                    + " instruction. Expected on a machine that has not run yet, or on a host"
+                    + " that cannot advance the CPU, not a fault.");
             }
 
             _lastCycleCount = snapshot.CycleCount;
