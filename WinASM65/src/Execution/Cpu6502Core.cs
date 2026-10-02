@@ -1,6 +1,7 @@
 using System;
+using System.Collections.Generic;
 
-namespace WinASM65.Tests
+namespace WinASM65.Execution
 {
     /// <summary>
     /// A small NMOS 6502, used to run the code the toolchain generates.
@@ -12,17 +13,57 @@ namespace WinASM65.Tests
     /// produced" and "this code relocates the image".
     /// </para>
     /// <para>
-    /// It is a test fixture, not a product: it implements the documented
-    /// instruction set and refuses anything else, and decimal mode is refused
-    /// rather than faked, because no generated stub uses it.
+    /// It started as a test fixture and is now the toolchain's own deterministic
+    /// machine: a debugger can be pointed at it without an emulator being
+    /// installed, and it answers the same questions an emulator answers — the
+    /// registers, the memory, why it stopped. What it still refuses is what no
+    /// generated code uses: the documented instruction set and nothing else, and
+    /// decimal mode refused rather than faked.
+    /// </para>
+    /// <para>
+    /// It executes the processor and nothing else. There is no video, no timing
+    /// and no hardware, so a capability that a user interface can switch on has to
+    /// be answered by the type that owns the machine, not by this one.
     /// </para>
     /// </summary>
-    internal sealed class TestCpu6502
+    public sealed class Cpu6502Core
     {
         public const ushort IrqVector = 0xFFFE;
         public const ushort ResetVector = 0xFFFC;
 
-        private readonly byte[] _ram = new byte[0x10000];
+        private readonly ICpuBus _bus;
+        private readonly HashSet<ushort> _breakpoints = new HashSet<ushort>();
+        private readonly WatchpointSet _watchpoints = new WatchpointSet();
+
+        // Set only while an instruction is executing, so a debugger reading memory
+        // through the bus is never reported as an access the processor made.
+        private bool _executing;
+        private ExecutionStop _watchHit;
+
+        /// <summary>A machine over flat, writable 64K of memory.</summary>
+        public Cpu6502Core()
+            : this(new RamBus())
+        {
+        }
+
+        /// <summary>A machine over a bus the caller supplies.</summary>
+        public Cpu6502Core(ICpuBus bus)
+        {
+            if (bus == null)
+                throw new ArgumentNullException("bus");
+            _bus = bus;
+            Reset();
+        }
+
+        /// <summary>
+        /// The memory this machine runs on. A debugger reads and writes through it
+        /// directly; doing so is not an access the processor made, so it never
+        /// triggers a watchpoint.
+        /// </summary>
+        public ICpuBus Bus
+        {
+            get { return _bus; }
+        }
 
         public ushort PC { get; set; }
         public byte A { get; set; }
@@ -37,13 +78,53 @@ namespace WinASM65.Tests
         public bool Overflow { get; set; }
         public bool Negative { get; set; }
 
-        public long Instructions { get; private set; }
-
-        public TestCpu6502()
+        /// <summary>
+        /// The status register as one byte: the unused bit set, the break bit
+        /// clear. A caller setting it sets the six flags and ignores both of those,
+        /// which is what the processor does with a byte it pulls.
+        /// </summary>
+        public byte Status
         {
-            Reset();
+            get { return Flags(false); }
+            set { SetFlags(value); }
         }
 
+        public long Instructions { get; private set; }
+
+        /// <summary>
+        /// Cycles executed since the last reset, counted at base cost per opcode.
+        /// It is how a caller tells a machine that ran from one that stood still.
+        /// </summary>
+        public long Cycles { get; private set; }
+
+        /// <summary>The base cost of an opcode, in cycles.</summary>
+        public static int GetBaseCycles(byte opcode)
+        {
+            return Cpu6502CycleTable.Base(opcode);
+        }
+
+        /// <summary>
+        /// Everything a debugger panel shows, read at one instant.
+        /// <para>
+        /// Taken before a run rather than after: a caller that renders a machine
+        /// which is moving wants the state it can show now, and the reason it
+        /// stopped says which instruction the next read should be about.
+        /// </para>
+        /// </summary>
+        public ProcessorState CaptureState()
+        {
+            return new ProcessorState(PC, A, X, Y, SP, Status, Cycles, Instructions);
+        }
+
+        /// <summary>
+        /// Puts the processor back at the reset vector with empty registers.
+        /// <para>
+        /// What the debugger asked to be told about survives: the machine is in a
+        /// new state, but the breakpoints and watchpoints belong to the user, and
+        /// losing them because a program jumped to its own entry point would be
+        /// the machine deciding what the user asked for.
+        /// </para>
+        /// </summary>
         public void Reset()
         {
             SP = 0xFD;
@@ -57,13 +138,14 @@ namespace WinASM65.Tests
             X = 0;
             Y = 0;
             Instructions = 0;
+            Cycles = 0;
             PC = Peek16(ResetVector);
         }
 
         public byte this[ushort address]
         {
-            get { return _ram[address]; }
-            set { _ram[address] = value; }
+            get { return _bus.Read(address); }
+            set { _bus.Write(address, value); }
         }
 
         public void Load(ushort address, byte[] data)
@@ -71,7 +153,7 @@ namespace WinASM65.Tests
             if (data == null)
                 return;
             for (int i = 0; i < data.Length; i++)
-                _ram[(ushort)(address + i)] = data[i];
+                _bus.Write((ushort)(address + i), data[i]);
         }
 
         public ushort Peek16(ushort address)
@@ -79,29 +161,29 @@ namespace WinASM65.Tests
             // The 6501 bug wrapped the pointer inside page zero. Nothing
             // generated here needs it, and reproducing it silently would make a
             // passing test mean something slightly weaker than it looks.
-            return (ushort)(_ram[address] | (_ram[(ushort)(address + 1)] << 8));
+            return (ushort)(_bus.Read(address) | (_bus.Read((ushort)(address + 1)) << 8));
         }
 
         /// <summary>Places a routine and its end address, the way a machine would.</summary>
         public void LoadProgram(ushort address, byte[] code, ushort returnAddress)
         {
             Load(address, code);
-            _ram[ResetVector] = (byte)(address & 0xFF);
-            _ram[(ushort)(ResetVector + 1)] = (byte)(address >> 8);
+            _bus.Write(ResetVector, (byte)(address & 0xFF));
+            _bus.Write((ushort)(ResetVector + 1), (byte)(address >> 8));
             Push16(returnAddress);
             PC = address;
         }
 
         public void Push(byte value)
         {
-            _ram[SP] = value;
+            _bus.Write(SP, value);
             SP--;
         }
 
         public byte Pull()
         {
             SP++;
-            return _ram[SP];
+            return _bus.Read(SP);
         }
 
         public void Push16(ushort value)
@@ -117,11 +199,70 @@ namespace WinASM65.Tests
             return (ushort)(low | (high << 8));
         }
 
+        // ------------------------------------------------------------------ stops
+
+        /// <summary>
+        /// Stops execution at the next address whose execution the debugger asked
+        /// to be told about. False when the address was already being watched:
+        /// that is a state already reached, not a failure.
+        /// </summary>
+        public bool AddBreakpoint(ushort address)
+        {
+            return _breakpoints.Add(address);
+        }
+
+        public bool RemoveBreakpoint(ushort address)
+        {
+            return _breakpoints.Remove(address);
+        }
+
+        public void ClearBreakpoints()
+        {
+            _breakpoints.Clear();
+        }
+
+        public bool HasBreakpoint(ushort address)
+        {
+            return _breakpoints.Contains(address);
+        }
+
+        public int BreakpointCount
+        {
+            get { return _breakpoints.Count; }
+        }
+
+        /// <summary>
+        /// Adds a watchpoint over a straight range of addresses. False when a
+        /// watchpoint of the same kind already covers the range.
+        /// </summary>
+        public bool AddWatchpoint(WatchpointKind kind, ushort start, ushort end)
+        {
+            return _watchpoints.Add(new Watchpoint(kind, start, end));
+        }
+
+        public bool RemoveWatchpoint(WatchpointKind kind, ushort start, ushort end)
+        {
+            return _watchpoints.Remove(kind, start, end);
+        }
+
+        public void ClearWatchpoints()
+        {
+            _watchpoints.Clear();
+        }
+
+        /// <summary>The watchpoints in effect, in the order they were added.</summary>
+        public IList<Watchpoint> Watchpoints
+        {
+            get { return _watchpoints.Items; }
+        }
+
+        // ------------------------------------------------------------------ running
+
         /// <summary>
         /// Runs until the program branches out through a jump to this address,
         /// or until the step budget runs out.
         /// </summary>
-        public void Run(ushort stopAt, long maxSteps = 200000)
+        public void Run(ushort stopAt, long maxSteps = ExecutionOptions.DefaultMaxSteps)
         {
             for (long i = 0; i < maxSteps; i++)
             {
@@ -134,12 +275,64 @@ namespace WinASM65.Tests
                 + " within " + maxSteps + " instructions; it is at $" + PC.ToString("X4") + ".");
         }
 
-        public void Step()
+        /// <summary>
+        /// Runs until a stop condition is met, and says which one.
+        /// <para>
+        /// The run stops at an instruction boundary. A watchpoint is noticed while
+        /// the instruction that caused it is executing, and the machine is allowed
+        /// to finish that instruction before it stops: reporting a watchpoint with
+        /// the program counter half way through the instruction that set it would
+        /// hand the user a state no machine is ever in, and the address to
+        /// disassemble would be the middle of an operand.
+        /// </para>
+        /// </summary>
+        public ExecutionStop Run(ExecutionOptions options)
         {
-            byte opcode = Read(PC);
-            PC++;
-            Instructions++;
-            Execute(opcode);
+            if (options == null)
+                throw new ArgumentNullException("options");
+
+            for (long i = 0; i < options.MaxSteps; i++)
+            {
+                if (options.CheckBreakpoints && _breakpoints.Contains(PC))
+                    return ExecutionStop.BreakpointReached(PC);
+
+                ExecutionStop stop = Step();
+                if (stop.Reason != ExecutionStopReason.StepComplete)
+                    return stop;
+            }
+
+            return ExecutionStop.BudgetExhausted(PC);
+        }
+
+        /// <summary>
+        /// Executes one instruction and says why it stopped.
+        /// <para>
+        /// A single step is not a resume, so breakpoints are not consulted: the
+        /// caller has already said which instruction comes next. A watchpoint is
+        /// still reported, because the instruction the user asked for is the
+        /// instruction that touched the address they are watching.
+        /// </para>
+        /// </summary>
+        public ExecutionStop Step()
+        {
+            _watchHit = null;
+            _executing = true;
+            try
+            {
+                byte opcode = Read(PC);
+                PC++;
+                Instructions++;
+                Execute(opcode);
+                Cycles += GetBaseCycles(opcode);
+            }
+            finally
+            {
+                _executing = false;
+            }
+
+            if (_watchHit != null)
+                return _watchHit;
+            return ExecutionStop.StepComplete(PC);
         }
 
         private void Execute(byte op)
@@ -397,12 +590,35 @@ namespace WinASM65.Tests
 
         private byte Read(ushort address)
         {
-            return _ram[address];
+            byte value = _bus.Read(address);
+            WatchpointHit(WatchpointKind.Read, address);
+            return value;
         }
 
         private void Write(ushort address, byte value)
         {
-            _ram[address] = value;
+            _bus.Write(address, value);
+            WatchpointHit(WatchpointKind.Write, address);
+        }
+
+        /// <summary>
+        /// Records the first watched address the processor touches during an
+        /// instruction, and reports nothing when it is not executing one.
+        /// <para>
+        /// The first match wins, in the order the watchpoints were added, so the
+        /// address a stop reports does not depend on how a set happened to
+        /// enumerate. The access itself has already happened by then: a debugger
+        /// that stops on a write still sees the byte written, which is the whole
+        /// reason to watch a range.
+        /// </para>
+        /// </summary>
+        private void WatchpointHit(WatchpointKind kind, ushort address)
+        {
+            if (!_executing || _watchHit != null)
+                return;
+
+            if (_watchpoints.Match(kind, address) != null)
+                _watchHit = ExecutionStop.WatchpointHit(kind, address);
         }
 
         private ushort Read16(ushort at)
