@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using WinASM65.Core;
+using WinASM65.Expressions;
 using WinASM65.Modules;
 using WinASM65.Output;
 
@@ -38,6 +39,14 @@ namespace WinASM65.Linking
 
         /// <summary>1 for a single byte reference, 2 for a word.</summary>
         public int Width { get; internal set; }
+
+        /// <summary>
+        /// Which half of an address the stored byte is. It matters because only one
+        /// of the two can be moved by adding a bias: a low byte moves with
+        /// arithmetic modulo 256, and a high byte does not -- see
+        /// <see cref="Targets.GeosRelocationTable.UnrepresentableReference"/>.
+        /// </summary>
+        public ByteSelector Selector { get; internal set; }
 
         public override string ToString()
         {
@@ -437,13 +446,28 @@ namespace WinASM65.Linking
                     // zero page wherever the program is loaded, and Imm8 and
                     // Data8 carry a value rather than an address; biasing any of
                     // them would corrupt something that is already right.
-                    if (record.Type == RelocationType.Abs16 || record.Type == RelocationType.Data16)
+                    //
+                    // A low byte qualifies: adding a bias to it is addition modulo
+                    // 256, which is exact.
+                    //
+                    // A high byte is recorded but marked, and never biased here. The
+                    // new high byte depends on the carry out of the low byte, which
+                    // this pass cannot see. Recording it is what lets a target that
+                    // intends to move the image refuse by name instead of shipping
+                    // a program that lands one page off with nothing to show for it.
+                    if (record.Type == RelocationType.Abs16 || record.Type == RelocationType.Data16
+                        || record.Type == RelocationType.LowByte || record.Type == RelocationType.HighByte)
                     {
                         if (!Holds(references, (ushort)site, record.Width))
                             references.Add(new LinkedReference
                             {
                                 Address = (ushort)site,
-                                Width = record.Width == 1 ? 1 : 2
+                                Width = record.Width == 1 ? 1 : 2,
+                                Selector = record.Type == RelocationType.LowByte
+                                    ? ByteSelector.Low
+                                    : record.Type == RelocationType.HighByte
+                                        ? ByteSelector.High
+                                        : ByteSelector.None
                             });
                     }
                 }

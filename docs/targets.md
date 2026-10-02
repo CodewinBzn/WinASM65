@@ -371,13 +371,48 @@ vars .res VARS_SIZE
 sans ecrire l'adresse en dur. Ces symboles s'ajoutent aux symboles materiels
 et n'existent que si des regions sont declarees.
 
-### Ce que T6 ne fait pas
+### Le debordement d'une region `bss` par un `.res`
 
-- **Le depassement d'une region.** Seul le `.org` est verifie. Detecter qu'une
-  emission *deborde* la fin d'une region demanderait un point d'observation
-  dans l'emetteur : c'est `Core/AssemblerEngine.cs` et
-  `Output/BinaryEmitter.cs`, les deux fichiers que T1/T2 ont le plus modifies,
-  reserves ici.
+Seul le `.org` etait verifie avant, et c'etait la limite annoncee. Elle est levee :
+`MemoryMap.ValidateReservation` verifie maintenant chaque `.res` contre la region
+dans laquelle il commence.
+
+**Seule une region `bss` peut deborder**, et c'est toute la regle. Un `.res`
+reserve sans poser et sans emettre : l'espace qu'il revendique appartient a celui
+qui l'a declare, et seule une region `bss` a jamais promis de l'espace libre. Une
+region `ro` ou `rw` *contient* des octets au lieu d'en promettre, donc une
+reservation qui s'y trouve ne revendique rien d'elle.
+
+```
+Line 2 - File over.asm - Type Reservation of 256 byte(s) at $0300 overflows
+region 'VARS', which ends at $037F. 128 byte(s) fall outside every declared region.
+```
+
+Sans ce diagnostic, la reservation passait : la region reserve $80, la source en
+demande $100, et le surplus part dans ce qui suit. Le symbole resolvait quand meme,
+le fichier de sortie etait exact octet pour octet, et le programme ecrivait par
+dessus quelque chose au demarrage sans le moindre signe.
+
+Trois limites, et elles sont intentionnelles :
+
+- **Une reservation qui commence hors de la region n'est pas un debordement.**
+  $0380 est la premiere adresse hors de `VARS` ; une reservation qui y commence
+  n'empiete sur rien. Confondre les deux refuserait des sources legitimes, sans
+  remede puisque ce serait alors une erreur de lecture.
+- **Le point de controle est chaque reservation, pas seulement la premiere.** Trois
+  `.res $30` a la suite depuis $0300 finissent a $0390 alors que la region finit a
+  $0380 ; seules les deux premieres tiennent, et c'est la troisieme qui doit etre
+  vue.
+- **Une carte vide ne valide rien.** Une configuration sans `Regions` se comporte
+  exactement comme avant : c'est le mode direct, et c'est son contrat.
+
+### Ce que T6 ne fait toujours pas
+
+- **Le depassement par une emission.** Le `.res` est verifie parce qu'il ne pose
+  rien. Une instruction qui *ecrit* au-dela de la fin de sa region demande un
+  point d'observation dans l'emetteur — `Output/BinaryEmitter.cs`, ou
+  l'avancement de l'adresse dans `Core/AssemblerEngine.cs`. Ce n'est pas fait, et
+  le `.res` verifie ne pretendra pas le couvrir.
 - **Le catalogue.** `SystemCatalog` ne porte pas encore de regions par
   preset : `TargetResolver` et `ResolvedTarget` sont reserves a T3/T14, donc
   une region ne se declare que dans le JSON, jamais dans un preset de cible.

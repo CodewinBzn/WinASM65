@@ -163,6 +163,12 @@ namespace WinASM65.Segments
         public const string INSIDE_BSS_REGION =
             "{0} lands in region '{1}', declared 'bss': that space is reserved and contributes no file bytes, so no code can be placed there.";
 
+        public const string RESERVATION_OVERFLOWS_REGION =
+            "Reservation of {0} byte(s) at {1} overflows region '{2}', which ends at {3}. {4} byte(s) fall outside every declared region.";
+
+        public const string RESERVATION_OUTSIDE_ADDRESS_SPACE =
+            "Reservation of {0} byte(s) at {1} runs past the end of the address space.";
+
         private readonly List<MemoryRegion> _regions;
         private readonly List<MemoryRegion> _byStart;
 
@@ -248,7 +254,70 @@ namespace WinASM65.Segments
             return expected;
         }
 
-        /// <summary>Number of bytes reserved at an address, which is non-zero only inside a bss region.</summary>
+        /// <summary>
+        /// Cross-validates a <c>.res</c> against the declared regions.
+        /// <para>
+        /// Only a <b>bss</b> region can overflow, and that is the whole rule. A
+        /// <c>.res</c> reserves memory without placing and without emitting, so the
+        /// space it claims belongs to whoever declared it -- and only a bss region
+        /// ever promised space. A ro or rw region <i>contains</i> bytes rather than
+        /// promising free ones, so a reservation there is not a claim about it.
+        /// </para>
+        /// <para>
+        /// This check is what makes the bss type mean something. Without it, a
+        /// <c>.res</c> larger than its region passes silently: the region reserves
+        /// $80, the source asks for $100, and the surplus lands in whatever follows.
+        /// The symbol still resolves, the output file is byte for byte correct, and
+        /// the program overwrites something at startup with no sign of why.
+        /// </para>
+        /// <para>
+        /// An empty map validates nothing, which keeps every configuration written
+        /// before regions existed behaving exactly as it did.
+        /// </para>
+        /// </summary>
+        public void ValidateReservation(long address, long length, SourceLocation location,
+            IDiagnosticReporter diagnostics)
+        {
+            if (IsEmpty || diagnostics == null)
+                return;
+
+            if (address < 0 || address > AddressSpaceSize - 1)
+            {
+                diagnostics.ReportError(location, string.Format(CultureInfo.InvariantCulture,
+                    RESERVATION_OUTSIDE_ADDRESS_SPACE, length, MemoryRegion.FormatAddress(address)));
+                return;
+            }
+
+            // The reservation spans [address, address + length). It has to end at or
+            // before the address space, not merely start inside it: 65535 bytes
+            // reserved at $8000 is 16 KiB too many, and letting that through would
+            // make the next region look like the one that overflowed.
+            if (address + length > AddressSpaceSize)
+            {
+                diagnostics.ReportError(location, string.Format(CultureInfo.InvariantCulture,
+                    RESERVATION_OUTSIDE_ADDRESS_SPACE, length, MemoryRegion.FormatAddress(address)));
+                return;
+            }
+
+            MemoryRegion region;
+            if (!TryFind(address, out region) || !region.IsBss || !region.HasSize)
+                return;
+
+            if (address + length <= region.End)
+                return;
+
+            diagnostics.ReportError(location, string.Format(CultureInfo.InvariantCulture,
+                RESERVATION_OVERFLOWS_REGION,
+                length,
+                MemoryRegion.FormatAddress(address),
+                region.Name,
+                MemoryRegion.FormatAddress(region.End - 1),
+                address + length - region.End));
+        }
+
+        /// <summary>
+        /// Number of bytes reserved at an address, which is non-zero only inside a bss region.
+        /// </summary>
         public long ReservedAt(long address)
         {
             MemoryRegion region;
