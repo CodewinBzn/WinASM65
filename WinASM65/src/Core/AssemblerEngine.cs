@@ -60,11 +60,29 @@ namespace WinASM65.Core
         IListingService ListingService { get; }
         IDiagnosticReporter Diagnostics { get; }
         AssemblyResult Assemble(string sourceFile, string outputFile);
+
+        /// <summary>
+        /// Assembles source text held in memory. Same pipeline as
+        /// <see cref="Assemble"/>, with the source arriving as text instead of
+        /// as a path, so a user interface can assemble what it is holding
+        /// without writing it to a file first.
+        /// <para>
+        /// <paramref name="outputFile"/> may be null or empty, in which case no
+        /// object file is written; <paramref name="sourceName"/> is what
+        /// diagnostics and <c>.include</c> resolve against, and nothing is read
+        /// from or written to it.
+        /// </para>
+        /// </summary>
+        AssemblyResult AssembleSource(string sourceText, string outputFile, string sourceName = null);
+
         void ResolvePendingSymbols();
     }
 
     public class AssemblerEngine : IAssembler, IAssemblyContext
     {
+        /// <summary>The name reported for source assembled from memory with no name given.</summary>
+        public const string DefaultSourceName = "source";
+
         private readonly ICpuInstructionSet _cpu;
         private readonly ITokenizer _tokenizer;
         private readonly IExpressionEvaluator _evaluator;
@@ -213,6 +231,31 @@ namespace WinASM65.Core
             return dispatcher;
         }
 
+        /// <summary>
+        /// The directive names this engine dispatches, dots included, on an
+        /// engine with the default dispatcher.
+        /// <para>
+        /// <c>.res</c> is absent from the list because it is not a directive
+        /// handler: it is a pattern the line dispatch matches before any handler
+        /// is consulted.
+        /// </para>
+        /// <para>
+        /// This exists so that anything enumerating directives for a user
+        /// interface or a reference page can be checked against the engine
+        /// instead of against a list someone typed out.
+        /// </para>
+        /// </summary>
+        public static IReadOnlyList<string> DefaultDirectiveNames
+        {
+            get
+            {
+                DirectiveDispatcher dispatcher = (DirectiveDispatcher)CreateDefaultDispatcher();
+                List<string> names = new List<string>(dispatcher.HandlerNames);
+                names.Sort(StringComparer.Ordinal);
+                return names;
+            }
+        }
+
         public AssemblyResult Assemble(string sourceFile, string outputFile)
         {
             Reset();
@@ -239,9 +282,43 @@ namespace WinASM65.Core
 
             _listingService.Start(sourceFile);
 
-            PushSourceFile(sourceFile);
+            PushSourceLines(File.ReadAllLines(sourceFile), sourceFile);
             ProcessFileStack();
 
+            return Complete(outputFile, sourceFile, true);
+        }
+
+        public AssemblyResult AssembleSource(string sourceText, string outputFile, string sourceName = null)
+        {
+            Reset();
+            ApplyDefaultOrigin();
+            ApplyPredefinedSymbols();
+
+            string name = string.IsNullOrEmpty(sourceName) ? DefaultSourceName : sourceName;
+
+            if (sourceText == null)
+            {
+                _diagnostics.ReportError(new SourceLocation(name, 0), "undefined Source file");
+                return new AssemblyResult(false, null, _diagnostics.Diagnostics);
+            }
+
+            _listingService.Start(name);
+
+            PushSourceLines(SplitLines(sourceText), name);
+            ProcessFileStack();
+
+            return Complete(outputFile, name, false);
+        }
+
+        /// <summary>
+        /// The tail every assembly shares, once the source lines are in the
+        /// stack. <paramref name="fromFile"/> says whether a symbol export is
+        /// owed: text assembled from memory has no path to write next to, and
+        /// dropping three files into whatever directory the process happens to
+        /// be in is not what a caller listing a buffer asked for.
+        /// </summary>
+        private AssemblyResult Complete(string outputFile, string sourceName, bool fromFile)
+        {
             ResolvePendingSymbols();
 
             // A name nobody ever defined leaves a placeholder in the buffer, and
@@ -256,10 +333,28 @@ namespace WinASM65.Core
             _emitter.SaveToFile(outputFile);
             _listingService.Finish(_emitter.ToArray());
 
-            ExportSymbolFiles(sourceFile);
+            if (fromFile)
+                ExportSymbolFiles(sourceName);
 
             return new AssemblyResult(!_diagnostics.HasErrors, _emitter.ToArray(), _diagnostics.Diagnostics,
-                _emitter.OriginAddress, _emitter.Relocations, BuildModule(sourceFile));
+                _emitter.OriginAddress, _emitter.Relocations, BuildModule(sourceName));
+        }
+
+        private static string[] SplitLines(string sourceText)
+        {
+            string[] lines = sourceText.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+
+            // A source that ends with a newline has no last line, which is what
+            // reading the same text from a file would say. Without this, text and
+            // file would differ by one blank listing row.
+            if (lines.Length > 1 && lines[lines.Length - 1].Length == 0)
+            {
+                string[] trimmed = new string[lines.Length - 1];
+                Array.Copy(lines, trimmed, lines.Length - 1);
+                return trimmed;
+            }
+
+            return lines;
         }
 
         /// <summary>
@@ -631,6 +726,20 @@ namespace WinASM65.Core
             _currentFile = new SourceFileState(filePath);
         }
 
+        /// <summary>
+        /// Opens the lines of a source already held in memory. The name is what
+        /// diagnostics and <c>.include</c> resolve against; for a source read
+        /// from disk it is that path, for a buffer it is whatever the caller
+        /// named the buffer.
+        /// </summary>
+        private void PushSourceLines(IReadOnlyList<string> lines, string name)
+        {
+            if (_currentFile != null)
+                _fileStack.Push(_currentFile);
+
+            _currentFile = new SourceFileState(name, lines);
+        }
+
         public void StopAssembling()
         {
             _stopAssembling = true;
@@ -638,12 +747,21 @@ namespace WinASM65.Core
 
         private void ProcessFileStack()
         {
+            ISourceLineAwareListingService lineAware = _listingService as ISourceLineAwareListingService;
+
             while (_currentFile != null && !_stopAssembling)
             {
                 string rawLine;
                 while (!_stopAssembling && (rawLine = _currentFile.ReadLine()) != null)
                 {
                     string originalLine = rawLine;
+
+                    // A listing that tracks source lines has to be told where the
+                    // line it is about to receive starts; one that only renders
+                    // never asks, so nothing is paid for it here.
+                    if (lineAware != null)
+                        lineAware.StartLine(_currentFile.CurrentLineNumber + 1);
+
                     _listingService.PrintLine(originalLine);
 
                     string trimmed = rawLine.Trim();
@@ -1226,7 +1344,10 @@ namespace WinASM65.Core
         {
             public string FilePath { get; private set; }
             public int CurrentLineNumber { get; set; }
+
             private readonly StreamReader _reader;
+            private readonly IReadOnlyList<string> _lines;
+            private int _lineIndex;
 
             public SourceFileState(string filePath)
             {
@@ -1235,14 +1356,26 @@ namespace WinASM65.Core
                 _reader = new StreamReader(filePath);
             }
 
+            public SourceFileState(string name, IReadOnlyList<string> lines)
+            {
+                FilePath = name;
+                CurrentLineNumber = 0;
+                _lines = lines ?? new string[0];
+                _lineIndex = 0;
+            }
+
             public string ReadLine()
             {
-                return _reader.ReadLine();
+                if (_reader != null)
+                    return _reader.ReadLine();
+
+                return _lineIndex < _lines.Count ? _lines[_lineIndex++] : null;
             }
 
             public void Close()
             {
-                _reader.Close();
+                if (_reader != null)
+                    _reader.Close();
             }
         }
     }

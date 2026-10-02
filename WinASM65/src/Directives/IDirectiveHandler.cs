@@ -127,6 +127,12 @@ namespace WinASM65.Directives
         private readonly Dictionary<string, IDirectiveHandler> _handlers =
             new Dictionary<string, IDirectiveHandler>(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>The registered names, as the handlers spell them.</summary>
+        public IReadOnlyList<string> HandlerNames
+        {
+            get { return new List<string>(_handlers.Keys); }
+        }
+
         public void Register(IDirectiveHandler handler)
         {
             if (handler == null)
