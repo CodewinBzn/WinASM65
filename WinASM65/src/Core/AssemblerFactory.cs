@@ -12,6 +12,14 @@ namespace WinASM65.Core
         public ushort? DefaultOrigin { get; set; }
 
         /// <summary>
+        /// Where the listing goes. Left null it is a <c>.lst</c> beside the
+        /// source, driven by <see cref="EnableListing"/>; hand it an
+        /// <see cref="InMemoryListingService"/> and nothing touches the disk,
+        /// which is what a user interface assembling a buffer needs.
+        /// </summary>
+        public IListingService ListingService { get; set; }
+
+        /// <summary>
         /// Refuse a name that no file of the run ever defines.
         /// <para>
         /// Off by default, and it has to be: the same engine assembles a file on
@@ -44,7 +52,8 @@ namespace WinASM65.Core
             options = options ?? new AssemblerOptions();
             return new AssemblerEngine(
                 cpu: options.Cpu,
-                listingService: new ListingService { IsEnabled = options.EnableListing },
+                listingService: options.ListingService
+                    ?? new ListingService { IsEnabled = options.EnableListing },
                 predefinedSymbols: options.PredefinedSymbols,
                 defaultOrigin: options.DefaultOrigin,
                 reportUndefinedSymbols: options.ReportUndefinedSymbols);

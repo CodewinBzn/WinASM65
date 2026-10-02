@@ -2,6 +2,7 @@
 // WinASM65 - Listing Service (Pure OOP, SOLID)
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace WinASM65.Output
@@ -85,87 +86,12 @@ namespace WinASM65.Output
             if (!File.Exists(_tempFilePath))
                 return;
 
-            string[] stringSeparators = new string[] { LineDelimiter };
-            ushort currentAddr = 0;
-            ushort memoryIndex = 0;
-            byte[] memory = memoryBytes ?? new byte[0];
+            List<ListingRow> rows = ListingRowBuilder.Build(ReadTempFile(), memoryBytes);
 
-            using (StreamReader sr = new StreamReader(_tempFilePath))
+            using (StreamWriter sw = new StreamWriter(_listingFilePath))
             {
-                using (StreamWriter sw = new StreamWriter(_listingFilePath))
-                {
-                    string line;
-                    while ((line = sr.ReadLine()) != null)
-                    {
-                        string[] lineValues = line.Split(stringSeparators, StringSplitOptions.None);
-
-                        switch (lineValues.Length)
-                        {
-                            case 1:
-                                sw.WriteLine("".PadLeft(18) + lineValues[0]);
-                                break;
-
-                            case 3:
-                                LineType lineType = (LineType)Enum.Parse(typeof(LineType), lineValues[1]);
-                                switch (lineType)
-                                {
-                                    case LineType.ORG:
-                                        currentAddr = ushort.Parse(lineValues[2]);
-                                        sw.WriteLine(string.Format("{0:X4}", currentAddr) + "".PadLeft(14) + lineValues[0]);
-                                        break;
-
-                                    case LineType.INST:
-                                        int nbrBytes = int.Parse(lineValues[2]);
-                                        int bytesWritten = 0;
-                                        sw.Write(string.Format("{0:X4} ", currentAddr));
-                                        bool lineWritten = false;
-                                        while (nbrBytes > 0)
-                                        {
-                                            bytesWritten++;
-                                            byte b = memoryIndex < memory.Length ? memory[memoryIndex] : (byte)0;
-                                            sw.Write(string.Format("{0:X2} ", b));
-                                            memoryIndex++;
-                                            currentAddr++;
-                                            nbrBytes--;
-                                            if (bytesWritten == 4)
-                                            {
-                                                if (!lineWritten)
-                                                {
-                                                    lineWritten = true;
-                                                    sw.Write(string.Format(" {0}", lineValues[0]));
-                                                }
-                                                if (nbrBytes > 0)
-                                                {
-                                                    sw.Write(string.Format("\n{0:X4} ", currentAddr));
-                                                }
-                                                bytesWritten = 0;
-                                            }
-                                        }
-                                        if (!lineWritten && bytesWritten < 4)
-                                        {
-                                            int left = 4 - bytesWritten;
-                                            int leftSpace = (left - 1) > 0 ? left - 1 : 0;
-                                            leftSpace = leftSpace + (left * 2);
-                                            sw.Write("".PadLeft(leftSpace) + string.Format(" {0}", lineValues[0]));
-                                        }
-                                        sw.Write("\n");
-                                        break;
-
-                                    case LineType.LABEL:
-                                        ushort addr = ushort.Parse(lineValues[2]);
-                                        sw.WriteLine(string.Format("{0:X4}", addr) + "".PadLeft(14) + lineValues[0]);
-                                        break;
-
-                                    case LineType.RES:
-                                    case LineType.CONST:
-                                        int val = int.Parse(lineValues[2]);
-                                        sw.WriteLine(string.Format("{0:X} =   ", val).PadLeft(18) + lineValues[0]);
-                                        break;
-                                }
-                                break;
-                        }
-                    }
-                }
+                foreach (ListingRow row in rows)
+                    sw.WriteLine(row.Render());
             }
 
             try
@@ -176,6 +102,42 @@ namespace WinASM65.Output
             {
                 // Ignore temp file deletion failure
             }
+        }
+
+        /// <summary>
+        /// Reads the intermediate stream back, one entry per listing line.
+        /// The row builder is the same one the in-memory sink uses, so the file
+        /// and the in-memory listing are one implementation rather than two.
+        /// </summary>
+        private List<IReadOnlyList<ListingFragment>> ReadTempFile()
+        {
+            string[] separators = new string[] { LineDelimiter };
+            List<IReadOnlyList<ListingFragment>> lines = new List<IReadOnlyList<ListingFragment>>();
+
+            using (StreamReader sr = new StreamReader(_tempFilePath))
+            {
+                string line;
+                while ((line = sr.ReadLine()) != null)
+                {
+                    string[] values = line.Split(separators, StringSplitOptions.None);
+                    List<ListingFragment> fragments = new List<ListingFragment>();
+
+                    if (values.Length == 1)
+                    {
+                        fragments.Add(new ListingFragment(values[0]));
+                    }
+                    else if (values.Length == 3)
+                    {
+                        fragments.Add(new ListingFragment(values[0]));
+                        fragments.Add(new ListingFragment(
+                            (LineType)Enum.Parse(typeof(LineType), values[1]), int.Parse(values[2])));
+                    }
+
+                    lines.Add(fragments);
+                }
+            }
+
+            return lines;
         }
     }
 }
