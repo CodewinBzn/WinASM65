@@ -52,10 +52,10 @@ namespace WinASM65.Monitor.Tests
         [TestMethod]
         public void AKeyThatIsNotInThisBuildStillSaysSo()
         {
-            // F7 needs StateCommands, which another milestone owns and which is not in
-            // this build. The key is listed, unbound, rather than silently absent: a
-            // user reading the plan's table should learn here that it is not here.
-            AssertBound("F7", false);
+            // F12 needs a renderer the shell does not have and Ctrl+A needs the
+            // provider contract. Each is listed, unbound, rather than silently absent:
+            // a user reading the plan's table should learn here that it is not here.
+            // F7 is no longer one of them: StateCommands landed, so it is bound.
             AssertBound("F12", false);
             AssertBound("Ctrl+A", false);
         }
@@ -77,7 +77,8 @@ namespace WinASM65.Monitor.Tests
                 Assert.IsTrue(HasShortcut(window, Key.F8), "F8 has no shortcut");
                 Assert.IsTrue(HasShortcut(window, Key.F9), "F9 has no shortcut");
                 Assert.IsTrue(HasShortcut(window, Key.F10), "F10 has no shortcut");
-                Assert.IsFalse(HasShortcut(window, Key.F7), "F7 is not in this build");
+                Assert.IsTrue(HasShortcut(window, Key.F7), "F7 is bound in the key table and must have a shortcut");
+                Assert.IsFalse(HasShortcut(window, Key.F12), "F12 is not in this build and must have no shortcut");
 
                 // One shortcut per key the table claims, and not one more: an extra
                 // shortcut would be an action the help screen does not mention.
