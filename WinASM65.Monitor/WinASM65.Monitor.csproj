@@ -25,6 +25,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\WinASM65\WinASM65.csproj" />
+
+    <!-- The host <-> plugin contract. Referenced, never redefined: the host asks
+         IExecutionAdapter for what a backend can do, and a second copy of that
+         interface here would be a second type identity, which is the failure the
+         assembly exists to prevent. -->
+    <ProjectReference Include="..\WinASM65.Monitor.Abstractions\WinASM65.Monitor.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>

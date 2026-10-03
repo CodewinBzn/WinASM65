@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using WinASM65.Monitor.Abstractions;
 using WinASM65.Monitor.Protocol;
 
 namespace WinASM65.Monitor
@@ -17,9 +19,15 @@ namespace WinASM65.Monitor
     /// backend that swallowed it would turn "this host has no emu.pause" into a
     /// generic failure, which is the one thing the protocol forbids.
     /// </summary>
-    public sealed class BridgeMemoryBackend : IMemoryBackend, ICpuStateSource, IRomInfoSource
+    public sealed class BridgeMemoryBackend : IMemoryBackend, ICpuStateSource, IRomInfoSource, IExecutionAdapter
     {
         private readonly ProtocolClient _client;
+
+        // What this host was measured able to do, and the address space it exposes.
+        // Both are decided in the constructor from the handshake, because both are
+        // facts about the build on the other end rather than about this process.
+        private readonly ExecutionCapability _capabilities;
+        private readonly IReadOnlyList<MemoryRegion> _regions;
 
         // Reads the registers through the bridge's CPU command.
 //
@@ -109,6 +117,25 @@ public CpuSnapshot ReadCpuState()
                 EmulatorVersion = parts[1];
             if (parts.Length == 0)
                 throw new MonitorException("the bridge sent an empty handshake: '" + banner + "'");
+
+            // The answer to PING is the only statement this side has about what the
+            // host can do, and it is enough: the three builds the host has measured
+            // are named exactly here, and anything else declares nothing. Reading
+            // it is not probing — nothing is sent to find out, so no capability is
+            // learned by making the user wait for a refusal.
+            _capabilities = ExecutionCapabilities.For(EmulatorName, EmulatorVersion);
+
+            // One flat region, because that is what the bridge exposes and what the
+            // monitor already speaks: a 64 KiB CPU space addressed by a single
+            // number. Splitting it into RAM and PRG would be inventing a region map
+            // this protocol has never had, and the one asymmetry inside the flat
+            // space — MesenCE drops a write into PRG ROM — is enforced by the
+            // bridge's read-back rather than by a boundary here.
+            _regions = new List<MemoryRegion>
+            {
+                new MemoryRegion(FlatRegionName, 0x0000, FlatRegionLength,
+                    _capabilities.HasFlag(ExecutionCapability.MemoryWrite), false, 1)
+            };
         }
 
         /// <summary>Connects to a bridge listening on 127.0.0.1.</summary>
@@ -116,6 +143,15 @@ public CpuSnapshot ReadCpuState()
         {
             return new BridgeMemoryBackend(ProtocolClient.Connect(port, timeoutMs));
         }
+
+        /// <summary>
+        /// The one region the contract's <see cref="Regions"/> exposes, named for
+        /// what it is rather than for a machine it does not describe: this bridge
+        /// speaks a flat 64 KiB CPU space and has no region or bank of its own.
+        /// </summary>
+        private const string FlatRegionName = "flat";
+
+        private const int FlatRegionLength = 0x10000;
 
         public string EmulatorName { get; private set; }
         public string EmulatorVersion { get; private set; }
@@ -277,6 +313,183 @@ public CpuSnapshot ReadCpuState()
         public void Dispose()
         {
             _client.Dispose();
+        }
+
+        // ---------------------------------------------------------------- the contract
+        //
+        // The host <-> plugin contract, on the same object the session already holds.
+        //
+        // One adapter rather than two backends on purpose: the session, the RAM
+        // pane, the status line and the key bindings all talk to this object
+        // already, and an adapter beside it would be a second answer to "what can
+        // this machine do", free to disagree with the first.
+        //
+        // The two interfaces genuinely overlap, so the contract's members are
+        // implemented explicitly. Read(RegionAddress, int) and Read(int, int) are
+        // different questions — one names a region and a bank, the other is the flat
+        // address this protocol has always used — and silently widening one into the
+        // other would let a caller pass a bank this bridge has no notion of.
+
+        /// <summary>Name and version of the host, as its handshake spelled them.</summary>
+        public string DisplayName
+        {
+            get { return EmulatorName + " " + EmulatorVersion; }
+        }
+
+        /// <summary>
+        /// What this build was measured able to do. Never widened: a host outside
+        /// <see cref="ExecutionCapabilities"/> declares nothing at all.
+        /// </summary>
+        public ExecutionCapability Capabilities
+        {
+            get { return _capabilities; }
+        }
+
+        public IReadOnlyList<MemoryRegion> Regions
+        {
+            get { return _regions; }
+        }
+
+        byte[] IExecutionAdapter.Read(RegionAddress where, int length)
+        {
+            return Read(Flatten(where), length);
+        }
+
+        void IExecutionAdapter.Write(RegionAddress where, byte[] bytes)
+        {
+            if (bytes == null)
+                throw new ArgumentNullException("bytes");
+
+            Write(Flatten(where), bytes);
+        }
+
+        /// <summary>
+        /// The registers, as the contract's type. A named refusal rather than zeros
+        /// when the bit is clear: a frozen machine and a CPU that cannot be observed
+        /// produce the same empty reading, and only one of them is a fault.
+        /// </summary>
+        CpuState IExecutionAdapter.ReadCpuState()
+        {
+            Require(ExecutionCapability.CpuState, "report the registers");
+
+            CpuSnapshot snapshot = ReadCpuState();
+            return new CpuState(snapshot.Pc, snapshot.A, snapshot.X, snapshot.Y,
+                snapshot.Sp, snapshot.Ps, snapshot.CycleCount);
+        }
+
+        void IExecutionAdapter.Pause()
+        {
+            Require(ExecutionCapability.Pause, "pause");
+            Pause();
+        }
+
+        void IExecutionAdapter.Resume()
+        {
+            Require(ExecutionCapability.Resume, "resume");
+            Resume();
+        }
+
+        void IExecutionAdapter.Reset()
+        {
+            Require(ExecutionCapability.Reset, "reset");
+            Reset();
+        }
+
+        void IExecutionAdapter.Step()
+        {
+            Require(ExecutionCapability.StepInstruction, "step");
+            Step();
+        }
+
+        void IExecutionAdapter.SetBreakpoint(int address)
+        {
+            Require(ExecutionCapability.BreakpointExecution, "break on an address");
+            AddBreakpoint(address, BreakpointKind.Exec);
+        }
+
+        void IExecutionAdapter.ClearBreakpoints()
+        {
+            Require(ExecutionCapability.BreakpointExecution, "release a breakpoint");
+            ClearBreakpoints();
+        }
+
+        void IExecutionAdapter.SetWatchpoint(RegionAddress where, MemoryAccessKind kind)
+        {
+            int address = Flatten(where);
+
+            // Two callbacks, not one combined: the bridge registers a named callback
+            // type per kind and has no combined form, so ReadWrite is exactly the
+            // case the contract says means the machine cannot separate them — and
+            // watching both is still watching without changing anything.
+            if (kind == MemoryAccessKind.Read || kind == MemoryAccessKind.ReadWrite)
+            {
+                Require(ExecutionCapability.WatchpointRead, "watch a read");
+                AddBreakpoint(address, BreakpointKind.Read);
+            }
+
+            if (kind == MemoryAccessKind.Write || kind == MemoryAccessKind.ReadWrite)
+            {
+                Require(ExecutionCapability.WatchpointWrite, "watch a write");
+                AddBreakpoint(address, BreakpointKind.Write);
+            }
+        }
+
+        void IExecutionAdapter.ClearWatchpoints()
+        {
+            Require(ExecutionCapability.WatchpointRead | ExecutionCapability.WatchpointWrite,
+                "release a watchpoint");
+            ClearBreakpoints();
+        }
+
+        byte[] IExecutionAdapter.SaveState()
+        {
+            Require(ExecutionCapability.StateSaveLoad, "save or restore a snapshot");
+            return SaveState();
+        }
+
+        void IExecutionAdapter.LoadState(byte[] state)
+        {
+            Require(ExecutionCapability.StateSaveLoad, "save or restore a snapshot");
+            LoadState(state);
+        }
+
+        /// <summary>
+        /// The refusal a bit the host has not been given produces.
+        ///
+        /// Reached only when a caller ignores <see cref="Capabilities"/>, which is
+        /// why the host gates first and this is second: the contract says an adapter
+        /// must not make a missing capability something the user learns by pressing
+        /// a key, and it cannot be, because the shell greys the key out. What is
+        /// left here is the backstop, and it names the host, the action and the
+        /// measurement — never a bare <see cref="NotSupportedException"/>, which
+        /// would tell the user nothing at all.
+        /// </summary>
+        private void Require(ExecutionCapability capability, string action)
+        {
+            if (_capabilities.HasFlag(capability))
+                return;
+
+            throw new MonitorException(DisplayName + " cannot " + action
+                + ": " + ExecutionCapabilities.Measurement(capability));
+        }
+
+        /// <summary>
+        /// A contract address as the flat address this bridge speaks.
+        ///
+        /// Only one region and one bank exist, and an address naming anything else
+        /// is refused rather than folded into the nearest thing that exists: a
+        /// request for bank 3 of a region this machine does not have is a wrong
+        /// request, and answering it from bank 0 would show false data.
+        /// </summary>
+        private static int Flatten(RegionAddress where)
+        {
+            if (where.Region != 0)
+                throw new MonitorException("no region " + where.Region + ": this host exposes one flat region");
+
+            if (where.Bank != 0)
+                throw new MonitorException("no bank " + where.Bank + ": this host's space is not banked");
+
+            return where.Offset;
         }
     }
 }
