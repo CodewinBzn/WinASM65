@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using WinASM65.Cpu;
 
 namespace WinASM65.Monitor.Shell
 {
@@ -49,6 +51,15 @@ namespace WinASM65.Monitor.Shell
 
         /// <summary>A <see cref="ThemeRole"/> name.</summary>
         public string Role { get; }
+
+        /// <summary>
+        /// The column in the row's source text where this run begins.
+        ///
+        /// Kept because a lexer emits no whitespace tokens: a pane that laid the runs
+        /// end to end would close every gap in the source and draw
+        /// <c>lda #$5A</c> as <c>lda#$5A</c>. Zero for a token built by hand.
+        /// </summary>
+        public int Start { get; internal set; }
     }
 
     /// <summary>
@@ -102,26 +113,26 @@ namespace WinASM65.Monitor.Shell
     /// The one thing the editor and listing panes ask for, and the entire surface
     /// they know about.
     ///
-    /// This is a consumption seam, not the listing API. The library's
-    /// <c>IListingService</c>, <c>InstructionDocs</c> and highlighting lexer are
-    /// being written by another session, and their final shape is not fixed yet.
-    /// Guessing it here would create a second definition of "a listing line" that
-    /// has to be deleted later. So the shell states its own minimum need in terms
-    /// it fully controls — role-tagged text and bytes per row — and one adapter
-    /// class translates the library's types into it when they exist.
+    /// This is a consumption seam, not the listing API. The shell states its own
+    /// minimum need in terms it fully controls — role-tagged text and bytes per row —
+    /// and one adapter class translates the library's types into it. Keeping it this
+    /// narrow is what stops a second definition of "a listing line" growing up here:
+    /// the panes were written against three words and changed none of them when the
+    /// library arrived.
     ///
-    /// Wiring it needs exactly three things from the library:
+    /// The seam needs exactly three things from the library, and
+    /// <see cref="AssemblerListingSource"/> is the one class that reads all three:
     ///
-    /// 1. Given a source path and an origin, the emitted bytes and the address of
-    ///    every row, which is what <c>IListingService</c> answers.
+    /// 1. Given a source path, the emitted bytes and the address of every row, which
+    ///    is what <c>SourceListingService</c> answers.
     /// 2. The documented cycle count and instruction length for an opcode, which is
     ///    what <c>InstructionDocs</c> answers.
-    /// 3. A tokeniser over one source line returning text runs tagged with the
-    ///    <see cref="ThemeRole"/> names above.
+    /// 3. A tokeniser over one source line returning classified runs, which is what
+    ///    <c>AssemblyLexer</c> answers, mapped onto <see cref="ThemeRole"/> names by
+    ///    <see cref="AssemblerListingSource.RoleFor"/>.
     ///
-    /// Implement this interface over those three and replace the one line in
-    /// <see cref="ListingSourceFactory"/> that returns
-    /// <see cref="UnavailableListingSource"/>. Nothing else in the shell changes.
+    /// <see cref="ListingSourceFactory"/> is where the adapter is chosen, so the seam
+    /// can be re-pointed without the panes changing.
     /// </summary>
     public interface IListingSource
     {
@@ -144,12 +155,15 @@ namespace WinASM65.Monitor.Shell
     }
 
     /// <summary>
-    /// The listing seam before the library side exists.
+    /// A listing source that has nothing, and says so.
     ///
-    /// It produces no rows and says why. This is the honest placeholder: the
-    /// alternative, a pane full of made-up opcodes, is precisely the fiction this
-    /// project refuses everywhere else — a monitor showing a listing that was
-    /// never assembled looks exactly like a monitor that assembled something.
+    /// Kept, and still honest, because a caller may genuinely have no CPU to list for:
+    /// <see cref="AssemblerListingSource"/> reports exactly this situation. It is no
+    /// longer what the factory hands out. It produces no rows and says why, which is
+    /// the honest answer: the alternative, a pane full of made-up opcodes, is
+    /// precisely the fiction this project refuses everywhere else — a monitor showing
+    /// a listing that was never assembled looks exactly like a monitor that assembled
+    /// something.
     /// </summary>
     public sealed class UnavailableListingSource : IListingSource
     {
@@ -178,20 +192,36 @@ namespace WinASM65.Monitor.Shell
     /// <summary>
     /// Where the shell gets its listing from.
     ///
-    /// One method, so that wiring the real API later is a one-line change in one
-    /// place rather than a search for every construction site.
+    /// One method, so that wiring the real API is a one-line change in one place
+    /// rather than a search for every construction site. This is that one line.
     /// </summary>
     public static class ListingSourceFactory
     {
         /// <summary>
-        /// The listing source the shell runs with today.
+        /// The listing source the shell runs with.
         ///
-        /// NOT YET WIRED. When the library side lands, this returns an adapter over
-        /// it; nothing else in the shell needs to change.
+        /// The real API, through <see cref="AssemblerListingSource"/>. Nothing above
+        /// this line knows which of the two it is holding.
         /// </summary>
         public static IListingSource Create()
         {
-            return new UnavailableListingSource();
+            return Create(CpuFactory.Create("6502"), Directory.GetCurrentDirectory());
+        }
+
+        /// <summary>
+        /// The listing source for the CPU a session is attached to, resolving relative
+        /// source paths against <paramref name="directory"/>.
+        ///
+        /// The CPU is an argument rather than a constant inside the adapter because the
+        /// listing reports what that CPU accepts: its mnemonics, the length of each
+        /// form and its documented cycles all come from its opcode table. A listing
+        /// built against a different CPU than the session's would highlight a 65C02
+        /// source as if it were an NMOS one, and no test of the shell would catch it.
+        /// Pass the same instance the session was built with.
+        /// </summary>
+        public static IListingSource Create(ICpuInstructionSet cpu, string directory)
+        {
+            return new AssemblerListingSource(cpu, directory);
         }
     }
 }

@@ -6,15 +6,15 @@ using WinASM65.Monitor.Shell;
 namespace WinASM65.Monitor.Tests
 {
     /// <summary>
-    /// The listing seam, while the library side of it does not exist.
+    /// The listing seam, with the library side of it now wired.
     ///
     /// The contract these tests hold is the one the panes are written against: an
-    /// unavailable source produces no rows, says why, and cannot throw. That is what
-    /// lets A3 and A1 land in either order — the panes are finished now and will
-    /// not change when the real source arrives.
+    /// unavailable source produces no rows, says why, and cannot throw. The panes were
+    /// finished before the library arrived and changed nothing when it did, which is
+    /// what the seam was for.
     ///
-    /// The tests also pin the shape a new implementation has to produce, because
-    /// that shape is the instruction the other session is working to: bytes per row,
+    /// The tests also pin the shape the adapter has to produce, because that shape is
+    /// what <c>AssemblerListingSource</c> is built to give the panes: bytes per row,
     /// an address that is absent rather than zero, and role-tagged text rather than
     /// colours.
     /// </summary>
@@ -37,12 +37,19 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void TheFactoryHandsOverSomethingThatIsHonestAboutBeingEmpty()
+        public void TheFactoryNowHandsOverTheRealAdapter()
         {
+            // What A3a changed and why: the factory used to return the placeholder,
+            // because there was no library to talk to. Now there is, and the one line
+            // that was designed to be the wiring point is the one that changed. Nothing
+            // above it can tell the two apart except by this flag.
             IListingSource source = ListingSourceFactory.Create();
 
-            Assert.IsNotNull(source);
-            Assert.IsFalse(source.IsAvailable, "the library side is not in this build, so nothing is available");
+            Assert.IsInstanceOfType(source, typeof(AssemblerListingSource));
+            Assert.IsTrue(source.IsAvailable,
+                "the listing API is in this build, so a listing can be produced");
+            Assert.AreEqual(string.Empty, source.UnavailableReason,
+                "an available source has no reason to give");
         }
 
         [TestMethod]

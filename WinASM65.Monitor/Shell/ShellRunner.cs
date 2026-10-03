@@ -47,6 +47,12 @@ namespace WinASM65.Monitor.Shell
         ///
         /// <paramref name="emulator"/> may be null, which is the ordinary case when
         /// the monitor attached to a bridge somebody else started.
+        ///
+        /// <paramref name="listing"/> is the seam the pane draws from, and null gets the
+        /// factory's own: the listing for the default CPU, which is all a caller with no
+        /// CPU of its own to offer can honestly be given. The program's own path passes
+        /// the CPU the session was built with, so the two cannot disagree about what a
+        /// mnemonic is.
         /// </summary>
         public static int Run(MonitorSession session, ShellTheme theme, IListingSource listing,
             string directory, Process emulator)
