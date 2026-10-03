@@ -40,6 +40,7 @@ namespace WinASM65.Tests
             "Routine: lda Table\n" +
             "        rts\n" +
             "        .byte $DE, $AD\n" +
+            ".import Table\n" +
             "        .export Routine\n";
 
         private const string MainSource =
