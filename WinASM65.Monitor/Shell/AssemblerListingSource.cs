@@ -170,13 +170,41 @@ namespace WinASM65.Monitor.Shell
                 return NoRows;
             }
 
-            if (!listing.Success)
+            return RowsOf(listing, Path.GetFileName(path), request.MaxRows);
+        }
+
+        /// <summary>
+        /// The rows for a listing this object did not produce.
+        ///
+        /// Added for <see cref="ProjectListingSource"/>, which lists through a
+        /// <see cref="WinASM65.Projects.ProjectSession"/> rather than through the
+        /// service — and which must not translate rows a second way. Everything a
+        /// listing pane reads comes out of one translation: which runs are mnemonics,
+        /// which bytes are an instruction, what the documented cycle count is. Two
+        /// copies of that would be two places for the pane to disagree with itself.
+        ///
+        /// <paramref name="name"/> is what the diagnostics are reported against, which
+        /// is a file name and not a path for the reason <see cref="Describe"/> gives.
+        /// Never throws, and records the reason in <see cref="LastProblem"/> exactly
+        /// as <see cref="Rows"/> does.
+        /// </summary>
+        public IReadOnlyList<ListingRow> RowsOf(SourceListing listing, string name, int maxRows)
+        {
+            _problem = null;
+
+            if (listing == null)
             {
-                _problem = Describe(listing, path);
+                _problem = "the listing service answered nothing.";
                 return NoRows;
             }
 
-            return Translate(listing, request.MaxRows);
+            if (!listing.Success)
+            {
+                _problem = Describe(listing, name);
+                return NoRows;
+            }
+
+            return Translate(listing, maxRows);
         }
 
         /// <summary>
@@ -383,16 +411,17 @@ namespace WinASM65.Monitor.Shell
         ///
         /// The diagnostics are named rather than summarised, because "assembly failed"
         /// tells a user nothing they did not already know and "line 7: Syntax Error"
-        /// is the whole answer. The file is shown by name: the shell knows the path it
-        /// asked about, and a diagnostic that repeats the absolute path of every line
-        /// of a 400-line failure is noise.
+        /// is the whole answer. The file is shown by the name the caller passed
+        /// in — a name, not a path: the shell knows the path it asked about, and a
+        /// diagnostic that repeats the absolute path of every line of a 400-line
+        /// failure is noise.
         /// </summary>
-        private static string Describe(SourceListing listing, string path)
+        private static string Describe(SourceListing listing, string name)
         {
-            string name = Path.GetFileName(path);
+            string file = string.IsNullOrEmpty(name) ? "the source" : name;
 
             if (listing.Assembly == null || listing.Assembly.Diagnostics.Count == 0)
-                return "the assembly of " + name + " failed without naming a reason.";
+                return "the assembly of " + file + " failed without naming a reason.";
 
             List<string> problems = new List<string>();
             foreach (Diagnostic diagnostic in listing.Assembly.Diagnostics)
@@ -402,12 +431,12 @@ namespace WinASM65.Monitor.Shell
 
                 int line = diagnostic.Location.LineNumber;
                 problems.Add(line > 0
-                    ? name + ":" + line.ToString(CultureInfo.InvariantCulture) + ": " + diagnostic.Message
-                    : name + ": " + diagnostic.Message);
+                    ? file + ":" + line.ToString(CultureInfo.InvariantCulture) + ": " + diagnostic.Message
+                    : file + ": " + diagnostic.Message);
             }
 
             if (problems.Count == 0)
-                return "the assembly of " + name + " failed without naming a reason.";
+                return "the assembly of " + file + " failed without naming a reason.";
 
             return string.Join(Environment.NewLine, problems.ToArray());
         }
