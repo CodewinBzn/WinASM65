@@ -147,6 +147,20 @@ namespace WinASM65.Monitor.Shell
         string UnavailableReason { get; }
 
         /// <summary>
+        /// Why the last <see cref="Rows"/> call returned what it returned.
+        ///
+        /// This is not the same question as <see cref="UnavailableReason"/>, and
+        /// conflating the two turns a real error into a missing feature. A source can
+        /// be perfectly listable and still fail — one line of it can reference an
+        /// undefined symbol — and the honest answer then is that line and its
+        /// message, not "the listing API is not in this build".
+        ///
+        /// Null when the last call succeeded, so a caller can tell "no rows because
+        /// the file emitted nothing" from "no rows because the assembly failed".
+        /// </summary>
+        string LastProblem { get; }
+
+        /// <summary>
         /// The rows to draw. Never null. An unavailable source returns an empty
         /// list rather than throwing, because a pane must not be able to take the
         /// shell down.
@@ -179,6 +193,15 @@ namespace WinASM65.Monitor.Shell
         }
 
         public string UnavailableReason
+        {
+            get { return Reason; }
+        }
+
+        /// <summary>
+        /// The same sentence: this source never becomes available, so every call
+        /// fails for the one reason there is.
+        /// </summary>
+        public string LastProblem
         {
             get { return Reason; }
         }
