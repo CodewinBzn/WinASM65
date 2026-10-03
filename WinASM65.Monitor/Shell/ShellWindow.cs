@@ -4,18 +4,33 @@ using System.Drawing;
 using System.Globalization;
 using System.IO;
 using Terminal.Gui;
+using WinASM65.Monitor.Abstractions;
 using WinASM65.Monitor.Protocol;
 
 namespace WinASM65.Monitor.Shell
 {
-    /// <summary>One key the plan binds, and whether this build binds it.</summary>
+    /// <summary>One key the plan binds, whether this build binds it, and what it needs.</summary>
     public sealed class ShellKey
     {
         public ShellKey(string key, string description, bool bound)
+            : this(key, description, bound, ExecutionCapability.None)
+        {
+        }
+
+        /// <param name="key">How the key is written on the help screen.</param>
+        /// <param name="description">What it does.</param>
+        /// <param name="bound">Whether this build binds it at all.</param>
+        /// <param name="requires">
+        /// The capability the action needs from the attached machine, or
+        /// <see cref="ExecutionCapability.None"/> when the shell can do it on its
+        /// own.
+        /// </param>
+        public ShellKey(string key, string description, bool bound, ExecutionCapability requires)
         {
             Key = key;
             Description = description;
             Bound = bound;
+            Requires = requires;
         }
 
         /// <summary>How the key is written on the help screen.</summary>
@@ -27,8 +42,28 @@ namespace WinASM65.Monitor.Shell
         /// False when the action belongs to a later milestone. The key is still
         /// listed: a user reading the plan's table should find out here that a key
         /// is not there, rather than press it and conclude the shell is broken.
+        ///
+        /// A property of this build and of nothing else. Whether the machine behind
+        /// the shell can perform the action is <see cref="Requires"/>, which is
+        /// about the attached backend; keeping the two apart is what lets the help
+        /// screen distinguish a key this build never wrote from a key this machine
+        /// cannot answer.
         /// </summary>
         public bool Bound { get; }
+
+        /// <summary>
+        /// The capability the attached machine must declare for this key to do
+        /// anything. Exactly the bit behind the command the key issues — F9 resumes,
+        /// so it needs <see cref="ExecutionCapability.Resume"/> and not "running",
+        /// which no backend declares and every backend does some of.
+        /// </summary>
+        public ExecutionCapability Requires { get; }
+
+        /// <summary>Whether <paramref name="machine"/> grants everything this key needs.</summary>
+        public bool AvailableWhen(ExecutionCapability machine)
+        {
+            return ExecutionCapabilities.Has(machine, Requires);
+        }
     }
 
     /// <summary>
@@ -73,6 +108,11 @@ namespace WinASM65.Monitor.Shell
         private readonly BreakpointSet _breakpoints;
         private readonly string _directory;
 
+        // What the machine behind the session says it can do, read once at
+        // construction because a backend's capabilities are a fact about the build
+        // it was measured on and do not change while the shell is open.
+        private readonly ExecutionCapability _capabilities;
+
         private readonly StatusLine _status;
         private readonly Label _message;
         private readonly FileTreePane _tree;
@@ -106,6 +146,7 @@ namespace WinASM65.Monitor.Shell
             _theme = theme ?? ShellTheme.Default;
             _listing = listing ?? ListingSourceFactory.Create();
             _directory = directory;
+            _capabilities = ExecutionCapabilities.Of(session.Backend);
 
             // A record, not a second actuator. The machine is told through the session
             // and nothing else, so the breakpoints are kept over a backend that does
@@ -194,6 +235,10 @@ namespace WinASM65.Monitor.Shell
         /// </summary>
         public string SaveStateSlot(string slot)
         {
+            string refusal = Refusal("F7", ExecutionCapability.StateSaveLoad);
+            if (refusal != null)
+                return refusal;
+
             string name = string.IsNullOrWhiteSpace(slot) ? EditorCommands.DefaultStateSlot : slot;
 
             IReadOnlyList<string> answer = Run(EditorCommands.SaveState(name));
@@ -215,6 +260,10 @@ namespace WinASM65.Monitor.Shell
         /// </summary>
         public string LoadStateSlot(string slot)
         {
+            string refusal = Refusal("F7", ExecutionCapability.StateSaveLoad);
+            if (refusal != null)
+                return refusal;
+
             string name = string.IsNullOrWhiteSpace(slot) ? EditorCommands.DefaultStateSlot : slot;
 
             string hex;
@@ -265,11 +314,20 @@ namespace WinASM65.Monitor.Shell
         }
 
         /// <summary>
-        /// The keys this build binds, and the ones a later milestone owns.
+        /// The keys this build binds, the ones a later milestone owns, and what each
+        /// bound key needs from the machine behind the shell.
         ///
         /// A key that is not bound still says so, in this list and on the help screen.
         /// A user reading the plan's table of keys should find out here that one is not
         /// in this build, rather than press it and conclude the shell is broken.
+        ///
+        /// The third column is the other half of the same honesty, and it is not a
+        /// property of this build: F9 is bound here whatever is attached, and on a
+        /// machine that cannot resume it does nothing. Pressing it used to produce
+        /// either silence or the bridge's own refusal, which is how a user found out
+        /// that their emulator lacked an API. Now the table says so before the key is
+        /// pressed, from the bit the backend declared.
+        ///
         /// F12 and Ctrl+A are the outstanding ones: a video pane needs a renderer the
         /// shell does not have yet, and the assistant needs the provider contract.
         /// </summary>
@@ -284,14 +342,54 @@ namespace WinASM65.Monitor.Shell
                     new ShellKey("F3", "listing pane", true),
                     new ShellKey("F4", "RAM pane", true),
                     new ShellKey("F5", "assemble under the cursor", true),
-                    new ShellKey("F7", "save state", true),
-                    new ShellKey("F8", "toggle breakpoint", true),
-                    new ShellKey("F9", "run", true),
-                    new ShellKey("F10", "step", true),
+                    new ShellKey("F7", "save state", true, ExecutionCapability.StateSaveLoad),
+                    new ShellKey("F8", "toggle breakpoint", true, ExecutionCapability.BreakpointExecution),
+                    new ShellKey("F9", "run", true, ExecutionCapability.Resume),
+                    new ShellKey("F10", "step", true, ExecutionCapability.StepInstruction),
                     new ShellKey("F12", "video pane", false),
                     new ShellKey("Ctrl+A", "assistant", false),
                     new ShellKey("Ctrl+Q", "quit", true),
                 };
+            }
+        }
+
+        /// <summary>
+        /// What the attached machine declared it can do — the flag set every key and
+        /// every refusal in this window is decided against.
+        ///
+        /// Read once, at construction. A backend's capabilities are a fact about the
+        /// build it was measured against, so they cannot change under a shell that is
+        /// already open; re-reading them per keypress would only invite a machine to
+        /// change its answer halfway through a session.
+        /// </summary>
+        public ExecutionCapability Capabilities
+        {
+            get { return _capabilities; }
+        }
+
+        /// <summary>
+        /// The machine's name, as its handshake spelled it.
+        ///
+        /// Every refusal starts with it, because a refusal that does not say which
+        /// machine refused is not something anybody can act on: the whole difference
+        /// between F9 working and F9 doing nothing is what is on the other end of the
+        /// bridge.
+        /// </summary>
+        public string MachineName
+        {
+            get
+            {
+                IExecutionAdapter adapter = _session.Backend as IExecutionAdapter;
+                if (adapter != null && !string.IsNullOrWhiteSpace(adapter.DisplayName))
+                    return adapter.DisplayName;
+
+                string name = _session.Backend.EmulatorName;
+                string version = _session.Backend.EmulatorVersion;
+
+                if (string.IsNullOrWhiteSpace(name))
+                    return null;
+
+                return string.IsNullOrWhiteSpace(version) ? name : name + " " + version;
             }
         }
 
@@ -454,10 +552,21 @@ namespace WinASM65.Monitor.Shell
         private void ShowHelp()
         {
             List<string> lines = new List<string>();
+
+            // First, because the message line is one row tall and this is the line
+            // worth seeing without pressing anything else: what this machine is, and
+            // what it cannot be asked to do. The table below says which key that
+            // affects; this says whether there is one.
+            lines.Add(ShellCapabilities.MachineLine(MachineName, _capabilities));
+
+            string missing = ExecutionCapabilities.MissingExecutionControl(_capabilities);
+            if (missing != null)
+                lines.Add("  " + missing);
+
             lines.Add("keys");
 
             foreach (ShellKey key in Keys)
-                lines.Add("  " + key.Key.PadRight(7) + key.Description + (key.Bound ? string.Empty : "  (not in this build)"));
+                lines.Add("  " + key.Key.PadRight(7) + key.Description + Note(key));
 
             lines.Add(string.Empty);
             lines.Add(_theme.DescribeSource());
@@ -466,6 +575,26 @@ namespace WinASM65.Monitor.Shell
                 lines.Add("  " + problem);
 
             SetMessage(string.Join(Environment.NewLine, lines.ToArray()));
+        }
+
+        /// <summary>
+        /// The parenthetical a key carries on the help screen, or nothing.
+        ///
+        /// Two different reasons to say nothing useful, kept apart because they are
+        /// two different facts: a key this build never wrote, and a key this build
+        /// wrote for a machine that cannot answer it. The second one names the host
+        /// and the measurement, because F1 is the screen a user opens precisely to
+        /// find out why a key refused.
+        /// </summary>
+        private string Note(ShellKey key)
+        {
+            if (!key.Bound)
+                return "  (not in this build)";
+
+            if (key.AvailableWhen(_capabilities))
+                return string.Empty;
+
+            return "  " + ShellCapabilities.HelpNote(MachineName, key.Requires);
         }
 
         private void ToggleTree()
@@ -623,6 +752,9 @@ namespace WinASM65.Monitor.Shell
         /// </summary>
         public void ToggleBreakpoint()
         {
+            if (Refusal("F8", ExecutionCapability.BreakpointExecution) != null)
+                return;
+
             int address = _listingPane.CursorAddress;
             if (address < 0)
             {
@@ -676,13 +808,48 @@ namespace WinASM65.Monitor.Shell
         /// <summary>F9. Runs the machine, and the status line says so afterwards.</summary>
         public void ResumeMachine()
         {
+            if (Refusal("F9", ExecutionCapability.Resume) != null)
+                return;
+
             Report(Run(EditorCommands.Resume()));
         }
 
         /// <summary>F10. Advances one instruction.</summary>
         public void StepMachine()
         {
+            if (Refusal("F10", ExecutionCapability.StepInstruction) != null)
+                return;
+
             Report(Run(EditorCommands.Step()));
+        }
+
+        /// <summary>
+        /// The refusal this machine cannot do what <paramref name="key"/> asks, or
+        /// null when it can — in which case the message line says it by name.
+        ///
+        /// The gate lives in the action rather than in <see cref="BindKeys"/>, and
+        /// that is the whole point of it. A binding decides which key reaches a
+        /// handler; only the handler knows what the machine on the other end can
+        /// actually do. Gating in BindKeys would leave F9 bound to a handler that
+        /// runs the command anyway the moment anything else calls it — the REPL
+        /// tests, a future menu, the key handler itself.
+        ///
+        /// Checked before anything else the action could report, including the
+        /// cursor's own complaint in F8: a machine that cannot break at all has no
+        /// business being told that the cursor is in the wrong place.
+        ///
+        /// Issues nothing on refusal. A refused key that had already sent
+        /// <c>STATE SAVE</c> to a machine with no snapshots would be the exact
+        /// capability-the-user-already-pressed failure the flag set exists to avoid.
+        /// </summary>
+        private string Refusal(string key, ExecutionCapability requires)
+        {
+            if (ShellCapabilities.Allows(_capabilities, requires))
+                return null;
+
+            string text = ShellCapabilities.Refusal(key, MachineName, requires);
+            SetMessage(text);
+            return text;
         }
 
         /// <summary>

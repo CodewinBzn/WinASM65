@@ -1,24 +1,53 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using WinASM65.Monitor.Abstractions;
 
 namespace WinASM65.Monitor.Tests
 {
     /// <summary>
     /// Test backend: the same interface as the MesenCE Lua bridge, without an
     /// emulator. All monitor logic must be testable against this fake.
+    ///
+    /// It is an <see cref="IExecutionAdapter"/> too, and it declares only what it
+    /// really is. It is a 64 KiB byte array with no processor behind it: it can
+    /// read, write, pause, resume, reset, step a counter, hold a breakpoint and
+    /// snapshot itself, and it cannot report a register because there is no CPU to
+    /// report. That it does not implement <see cref="ICpuStateSource"/> was already
+    /// the project's way of saying so — the split introduced for exactly this
+    /// backend — and declaring <see cref="ExecutionCapability.CpuState"/> clear now
+    /// says the same thing to the key bindings and the status line, which never see
+    /// the interface split at all.
+    ///
+    /// The name and version are parameters so a test can stand up the fake as a
+    /// measured build and check what the shell does with it. Left as literals they
+    /// would make every backend in this suite unmeasured by accident.
     /// </summary>
-    public class FakeMemoryBackend : IMemoryBackend
+    public class FakeMemoryBackend : IMemoryBackend, IExecutionAdapter
     {
         private readonly byte[] _memory;
 
-        public FakeMemoryBackend(int size = 65536)
+        /// <summary>
+        /// What a byte array with no processor can honestly claim.
+        ///
+        /// No <see cref="ExecutionCapability.CpuState"/> and no watchpoints, because
+        /// there is nothing to watch: nothing runs, so no access ever happens to be
+        /// watched. Everything else is here because the member exists and works,
+        /// which is the whole standard the flags are held to.
+        /// </summary>
+        public const ExecutionCapability DeclaredCapabilities =
+            ExecutionCapability.MemoryRead | ExecutionCapability.MemoryWrite
+            | ExecutionCapability.Pause | ExecutionCapability.Resume | ExecutionCapability.Reset
+            | ExecutionCapability.StepInstruction | ExecutionCapability.BreakpointExecution
+            | ExecutionCapability.StateSaveLoad;
+
+        public FakeMemoryBackend(int size = 65536, string emulatorName = null, string emulatorVersion = null)
         {
             if (size <= 0)
                 throw new ArgumentOutOfRangeException("size");
             _memory = new byte[size];
-            EmulatorName = "FakeEmu";
-            EmulatorVersion = "0.0.0";
+            EmulatorName = emulatorName ?? "FakeEmu";
+            EmulatorVersion = emulatorVersion ?? "0.0.0";
             IsRunning = true;
         }
 
@@ -135,6 +164,148 @@ namespace WinASM65.Monitor.Tests
                 throw new MonitorException("negative length: " + length);
             if (address < 0 || address > _memory.Length - length)
                 throw new AddressRangeException(address, length);
+        }
+
+        // ---------------------------------------------------------------- the contract
+        //
+        // The host <-> plugin contract, implemented by the same object the session
+        // already holds. Explicit where the two interfaces disagree on a signature,
+        // because they genuinely are different questions: Read(int, int) is this
+        // suite's flat address and Read(RegionAddress, int) names a region and a
+        // bank, which is not a thing this backend has.
+
+        private const string FlatRegionName = "flat";
+
+        public string DisplayName
+        {
+            get { return EmulatorName + " " + EmulatorVersion; }
+        }
+
+        public ExecutionCapability Capabilities
+        {
+            get { return DeclaredCapabilities; }
+        }
+
+        public IReadOnlyList<MemoryRegion> Regions
+        {
+            get
+            {
+                return new List<MemoryRegion>
+                {
+                    new MemoryRegion(FlatRegionName, 0x0000, _memory.Length, true, false, 1)
+                };
+            }
+        }
+
+        byte[] IExecutionAdapter.Read(RegionAddress where, int length)
+        {
+            return Read(Flatten(where), length);
+        }
+
+        void IExecutionAdapter.Write(RegionAddress where, byte[] bytes)
+        {
+            if (bytes == null)
+                throw new ArgumentNullException("bytes");
+
+            Write(Flatten(where), bytes);
+        }
+
+        CpuState IExecutionAdapter.ReadCpuState()
+        {
+            // By name, and not by returning zeros. This backend has no processor, so
+            // a reading of zero registers is indistinguishable from a real machine
+            // sitting at its reset vector — which is the exact confusion the
+            // declared flag set exists to prevent.
+            throw new MonitorException(DisplayName + " cannot report registers: "
+                + "this backend is a byte array with no processor behind it");
+        }
+
+        void IExecutionAdapter.Pause()
+        {
+            Require(ExecutionCapability.Pause);
+            Pause();
+        }
+
+        void IExecutionAdapter.Resume()
+        {
+            Require(ExecutionCapability.Resume);
+            Resume();
+        }
+
+        void IExecutionAdapter.Reset()
+        {
+            Require(ExecutionCapability.Reset);
+            Reset();
+        }
+
+        void IExecutionAdapter.Step()
+        {
+            Require(ExecutionCapability.StepInstruction);
+            Step();
+        }
+
+        void IExecutionAdapter.SetBreakpoint(int address)
+        {
+            Require(ExecutionCapability.BreakpointExecution);
+            AddBreakpoint(address, BreakpointKind.Exec);
+        }
+
+        void IExecutionAdapter.ClearBreakpoints()
+        {
+            Require(ExecutionCapability.BreakpointExecution);
+            ClearBreakpoints();
+        }
+
+        void IExecutionAdapter.SetWatchpoint(RegionAddress where, MemoryAccessKind kind)
+        {
+            // Refused whichever kind was asked for, and for the reason that matters:
+            // nothing runs here, so no access can ever be observed being watched.
+            Require(kind == MemoryAccessKind.Write
+                ? ExecutionCapability.WatchpointWrite
+                : ExecutionCapability.WatchpointRead);
+
+            throw new MonitorException("unreachable");
+        }
+
+        void IExecutionAdapter.ClearWatchpoints()
+        {
+            Require(ExecutionCapability.WatchpointRead | ExecutionCapability.WatchpointWrite);
+        }
+
+        byte[] IExecutionAdapter.SaveState()
+        {
+            Require(ExecutionCapability.StateSaveLoad);
+            return SaveState();
+        }
+
+        void IExecutionAdapter.LoadState(byte[] state)
+        {
+            Require(ExecutionCapability.StateSaveLoad);
+            LoadState(state);
+        }
+
+        /// <summary>
+        /// The backstop behind the declared flags: a caller that ignored them is told
+        /// which one it ignored and what the machine would need to grant it.
+        /// </summary>
+        private void Require(ExecutionCapability capability)
+        {
+            if (DeclaredCapabilities.HasFlag(capability))
+                return;
+
+            throw new MonitorException(DisplayName + " cannot "
+                + ExecutionCapabilities.Phrase(capability) + ": it is declared clear");
+        }
+
+        private int Flatten(RegionAddress where)
+        {
+            if (where.Region != 0)
+                throw new MonitorException("no region " + where.Region + ": this backend exposes one flat region");
+
+            if (where.Bank != 0)
+                throw new MonitorException("no bank " + where.Bank + ": this backend's space is not banked");
+
+            return where.Offset;
         }
     }
 

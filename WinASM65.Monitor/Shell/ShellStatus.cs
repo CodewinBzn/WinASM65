@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using WinASM65.Monitor.Abstractions;
 
 namespace WinASM65.Monitor.Shell
 {
@@ -46,7 +47,20 @@ namespace WinASM65.Monitor.Shell
     {
         public const int PriorityHost = 100;
         public const int PriorityExecution = 90;
+
+        /// <summary>
+        /// The machine's declared capability set.
+        ///
+        /// Above the program counter and below the run state, deliberately. It is
+        /// what the user has to know before they press anything, and it is short
+        /// enough ("caps: full control") to cost almost nothing on the line it
+        /// displaces — but the program counter is what a user glances at while
+        /// debugging, and this is what a user reads once.
+        /// </summary>
+        public const int PriorityCapabilities = 85;
+
         public const int PriorityProgramCounter = 80;
+        public const int PriorityControlWarning = 58;
         public const int PriorityWarning = 55;
         public const int PriorityRegisters = 40;
         public const int PriorityBreakpoints = 35;
@@ -57,11 +71,16 @@ namespace WinASM65.Monitor.Shell
         /// refuses to report its CPU produces a line that says so, because a status
         /// line that cannot be read is the one failure that leaves the user with
         /// nothing at all.
+        ///
+        /// What the machine can do is read from the same flag set the key bindings
+        /// are gated against, so the line and the greyed-out keys cannot contradict
+        /// each other. It is a statement of what was declared, not of what was tried:
+        /// nothing here probes the machine to find out what it can do.
         /// </summary>
         public static IReadOnlyList<StatusSegment> Read(IMemoryBackend backend, int breakpointCount)
         {
             if (backend == null)
-                return Compose(null, null, false, null, false, breakpointCount, null);
+                return Compose(null, null, false, null, false, breakpointCount, null, null);
 
             string name;
             string version;
@@ -79,13 +98,23 @@ namespace WinASM65.Monitor.Shell
                 running = false;
             }
 
+            ExecutionCapability capabilities = ExecutionCapabilities.Of(backend);
+
             ICpuStateSource source = backend as ICpuStateSource;
             CpuSnapshot cpu = ReadCpu(source);
 
             IRomInfoSource cartridge = backend as IRomInfoSource;
             string rom = ReadRomInfo(cartridge);
 
-            return Compose(name, version, source != null && cpu != null, cpu, running, breakpointCount, rom);
+            // The flag decides whether registers are asked for, and the reading
+            // decides whether they are shown. A machine that declares no CpuState
+            // is never asked, so there is no reading to fail — and one that declares
+            // it and then cannot answer is the case this line has always covered.
+            bool canObserveCpu = ExecutionCapabilities.Has(capabilities, ExecutionCapability.CpuState)
+                && source != null
+                && cpu != null;
+
+            return Compose(name, version, canObserveCpu, cpu, running, breakpointCount, rom, capabilities);
         }
 
         private static CpuSnapshot ReadCpu(ICpuStateSource source)
@@ -126,6 +155,21 @@ namespace WinASM65.Monitor.Shell
             }
         }
 
+        /// <summary>
+        /// The line, from what has already been read. Every parameter is a reading
+        /// rather than a decision, so a caller can compose a line for a machine it
+        /// could not reach and the line still comes out whole.
+        /// </summary>
+        /// <param name="cartridge">Cartridge line as the machine described it, or null.</param>
+        /// <param name="capabilities">
+        /// What the attached machine declared it can do, or null when nobody
+        /// declared anything and the line has nothing to say about it.
+        ///
+        /// Null and <see cref="ExecutionCapability.None"/> are different facts and
+        /// are rendered differently: null is "not asked", which is how a caller
+        /// composes a line for a machine it has no adapter for, and None is "asked,
+        /// and the answer is that nothing was measured".
+        /// </param>
         public static IReadOnlyList<StatusSegment> Compose(
             string emulatorName,
             string emulatorVersion,
@@ -133,7 +177,8 @@ namespace WinASM65.Monitor.Shell
             CpuSnapshot cpu,
             bool running,
             int breakpointCount,
-            string cartridge)
+            string cartridge,
+            ExecutionCapability? capabilities = null)
         {
             List<StatusSegment> segments = new List<StatusSegment>();
 
@@ -147,6 +192,28 @@ namespace WinASM65.Monitor.Shell
                 running ? "RUNNING" : "STOPPED",
                 running ? ThemeRole.Label : ThemeRole.Warning,
                 PriorityExecution));
+
+            if (capabilities.HasValue)
+            {
+                string summary = ExecutionCapabilities.Summary(capabilities.Value);
+
+                segments.Add(new StatusSegment(
+                    "caps: " + summary,
+                    capabilities.Value == ExecutionCapability.None ? ThemeRole.Warning : ThemeRole.Label,
+                    PriorityCapabilities));
+
+                // Named separately, and only when something is actually missing: the
+                // summary says what there is, this says which of F9, F10 and F8 are
+                // about to refuse, before the user presses them.
+                string missing = ExecutionCapabilities.MissingExecutionControl(capabilities.Value);
+                if (missing != null)
+                {
+                    segments.Add(new StatusSegment(
+                        missing,
+                        ThemeRole.Warning,
+                        PriorityControlWarning));
+                }
+            }
 
             if (!canObserveCpu || cpu == null)
             {
