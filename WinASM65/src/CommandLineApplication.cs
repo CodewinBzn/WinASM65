@@ -212,7 +212,14 @@ namespace WinASM65
                         Cpu = cpu,
                         PredefinedSymbols = symbols,
                         EnableListing = enableListing,
-                        DefaultOrigin = target.LoadAddress
+                        DefaultOrigin = target.LoadAddress,
+
+                        // The one place a name may legitimately be unknown while a
+                        // source is being read: this file is one segment of a build
+                        // and a segment further down may define it. MultiSegmentOrchestrator
+                        // asks the question once every segment is in, so refusing here
+                        // would only break a program that is in fact correct.
+                        ReportUndefinedSymbols = false
                     });
                     MultiSegmentResult segments = new MultiSegmentOrchestrator(asmFactory).AssembleSegments(config.Input);
                     if (!segments.Success) { DisplayDiagnostics(segments.Diagnostics); return 1; }

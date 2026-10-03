@@ -463,11 +463,17 @@ namespace WinASM65.Tests
         [TestMethod]
         public void UndefinedSymbol_LeavesTheSiteUnresolved()
         {
-            // Permissive by default, on purpose: this engine also runs as one
+            // Opt-in permissive, and only because this engine also runs as one
             // phase of a multi-file build, where the name may come from a file
-            // read later. AssembleStrict below is the standalone case.
+            // read later. This used to be the default and the assertion below was
+            // "the assembler does not fail on an unresolved cross-file JSR" -- which
+            // is the same thing as saying a typo in a label is indistinguishable
+            // from a name that resolves. The permissive reading now has to be asked
+            // for; see UneAssemblageSeulRefuseUnSymboleQuePersonneNeDefinit for the
+            // default. What this test is really about is unchanged: the site stays
+            // unresolved and is still recorded as a relocation for a later pass.
             AssemblyResult result = Assemble(".org $8000\n  JSR NOWHERE\n");
-            Assert.IsTrue(result.Success, Describe(result), "the assembler does not fail on an unresolved cross-file JSR");
+            Assert.IsTrue(result.Success, Describe(result), "the permissive reading is the one that was asked for");
 
             RelocationRecord record = Only(result);
             Assert.AreEqual(RelocationType.Abs16, record.Type);
@@ -542,7 +548,8 @@ namespace WinASM65.Tests
                     new Segment { FileName = aPath, OutputFile = Path.Combine(dir, "a.o"), Dependencies = new[] { bPath } }
                 };
 
-                MultiSegmentResult result = new MultiSegmentOrchestrator(() => new AssemblerEngine()).AssembleSegments(segments);
+                MultiSegmentResult result = new MultiSegmentOrchestrator(() => new AssemblerEngine(reportUndefinedSymbols: false))
+                    .AssembleSegments(segments);
                 Assert.IsTrue(result.Success, "orchestrated build: " + Describe(result.Diagnostics));
                 CollectionAssert.AreEqual(new byte[] { 0x20, 0x23, 0xC1, 0x60 },
                     File.ReadAllBytes(Path.Combine(dir, "a.o")), "JSR $C123 then RTS");
