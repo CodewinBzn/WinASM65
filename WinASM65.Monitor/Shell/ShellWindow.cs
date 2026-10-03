@@ -45,6 +45,28 @@ namespace WinASM65.Monitor.Shell
     /// </summary>
     public sealed class ShellWindow : Toplevel
     {
+        /// <summary>
+        /// Where the editor expects the first emitted byte to land.
+        ///
+        /// Stated, not applied. A source declares its own origin with <c>.org</c>, and
+        /// the listing reports the address the assembler actually used — a pane that
+        /// showed the origin it was asked for rather than the one the code was built
+        /// at would be wrong for every source that does not agree with this number.
+        /// The request carries it so the seam has one place to be told, and a future
+        /// one that relocates has somewhere to start.
+        /// </summary>
+        public const int DefaultOrigin = 0x0800;
+
+        /// <summary>
+        /// Rows the listing pane will ever be asked for.
+        ///
+        /// A ceiling, not a target: a source that lists in fewer rows shows fewer. It
+        /// exists so that assembling something enormous cannot turn one keystroke into
+        /// a screenful per frame, and it is generous enough that a real source is
+        /// never truncated by it.
+        /// </summary>
+        public const int MaxRows = 4000;
+
         private readonly MonitorSession _session;
         private readonly ShellTheme _theme;
         private readonly IListingSource _listing;
@@ -59,11 +81,21 @@ namespace WinASM65.Monitor.Shell
         private readonly Label _refusal;
 
         private readonly List<Shortcut> _shortcuts = new List<Shortcut>();
+        private readonly List<string> _commands = new List<string>();
 
         private ShellLayout _layout;
         private bool _treeOpen = true;
         private bool _rightPaneOpen = true;
         private bool _ramOpen = true;
+
+        /// <summary>
+        /// The source the editor keys act on, as the session would be given it: a path
+        /// relative to the directory the session was constructed with, or absolute.
+        /// Null until a source has been opened, because opening one is an action the
+        /// user takes and assuming one would mean F5 assembled whatever happened to be
+        /// first in the tree.
+        /// </summary>
+        private string _sourceFile;
 
         public ShellWindow(MonitorSession session, ShellTheme theme, IListingSource listing, string directory)
         {
@@ -72,9 +104,16 @@ namespace WinASM65.Monitor.Shell
 
             _session = session;
             _theme = theme ?? ShellTheme.Default;
-            _listing = listing ?? new UnavailableListingSource();
+            _listing = listing ?? ListingSourceFactory.Create();
             _directory = directory;
-            _breakpoints = new BreakpointSet(session.Backend);
+
+            // A record, not a second actuator. The machine is told through the session
+            // and nothing else, so the breakpoints are kept over a backend that does
+            // not forward them: otherwise setting one through BREAK SET and then
+            // recording it here would install the same callback twice on the emulator,
+            // and BreakpointSet's own documentation is explicit that the second one is
+            // invisible to the user and never released.
+            _breakpoints = new BreakpointSet(new RecordOnlyBackend(session.Backend));
 
             Title = "WinASM65 monitor";
             ColorScheme = ShellColorScheme.Build(_theme, ColorSchemeRoles.Chrome);
@@ -131,7 +170,15 @@ namespace WinASM65.Monitor.Shell
             get { return _layout; }
         }
 
-        /// <summary>The keys this build binds, and the ones a later milestone owns.</summary>
+        /// <summary>
+        /// The keys this build binds, and the ones a later milestone owns.
+        ///
+        /// A key that is not bound still says so, in this list and on the help screen.
+        /// A user reading the plan's table of keys should find out here that one is not
+        /// in this build, rather than press it and conclude the shell is broken.
+        /// F7 is the outstanding one: its slot vocabulary belongs to
+        /// <c>StateCommands</c>, which is not in this build.
+        /// </summary>
         public static IReadOnlyList<ShellKey> Keys
         {
             get
@@ -142,11 +189,11 @@ namespace WinASM65.Monitor.Shell
                     new ShellKey("F2", "file tree", true),
                     new ShellKey("F3", "listing pane", true),
                     new ShellKey("F4", "RAM pane", true),
-                    new ShellKey("F5", "assemble under the cursor", false),
+                    new ShellKey("F5", "assemble under the cursor", true),
                     new ShellKey("F7", "save state", false),
-                    new ShellKey("F8", "toggle breakpoint", false),
-                    new ShellKey("F9", "run", false),
-                    new ShellKey("F10", "step", false),
+                    new ShellKey("F8", "toggle breakpoint", true),
+                    new ShellKey("F9", "run", true),
+                    new ShellKey("F10", "step", true),
                     new ShellKey("F12", "video pane", false),
                     new ShellKey("Ctrl+A", "assistant", false),
                     new ShellKey("Ctrl+Q", "quit", true),
@@ -282,6 +329,15 @@ namespace WinASM65.Monitor.Shell
             AddShortcut(Key.F2, "Tree", ToggleTree);
             AddShortcut(Key.F3, "Listing", ToggleRightPane);
             AddShortcut(Key.F4, "RAM", ToggleRam);
+            AddShortcut(Key.F5, "Assemble", AssembleCurrentSource);
+            AddShortcut(Key.F8, "Breakpoint", ToggleBreakpoint);
+            AddShortcut(Key.F9, "Run", ResumeMachine);
+            AddShortcut(Key.F10, "Step", StepMachine);
+
+            // F7 is absent, not stubbed: save state belongs to StateCommands, which is
+            // not in this build. Binding a key to a guess at its command line is worse
+            // than leaving it unbound, because the guess would be the only thing the
+            // REPL cannot reproduce.
             AddShortcut(CtrlQ(), "Quit", RequestQuit);
         }
 
@@ -343,6 +399,321 @@ namespace WinASM65.Monitor.Shell
             SetMessage("RAM pane " + (_ramOpen ? "open" : "closed"));
         }
 
+        /// <summary>
+        /// The source the editor keys act on, as the session would be given it. Null
+        /// until a source has been opened.
+        /// </summary>
+        public string SourceFile
+        {
+            get { return _sourceFile; }
+        }
+
+        /// <summary>The listing pane, for the editor keys and for tests.</summary>
+        public ListingPane Listing
+        {
+            get { return _listingPane; }
+        }
+
+        /// <summary>
+        /// The status line. Exposed because "STOPPED" versus "RUNNING" and the
+        /// breakpoint count are the statements the editor keys make about the machine,
+        /// and a claim the test cannot read is a claim nobody can check.
+        /// </summary>
+        public StatusLine Status
+        {
+            get { return _status; }
+        }
+
+        /// <summary>
+        /// Every command line this window has issued into the session, oldest first.
+        ///
+        /// Recorded rather than reconstructed, because the invariant the class keeps is
+        /// that every action is a command line: being able to name the last ones is
+        /// what makes that claim checkable instead of a promise in a comment. Bounded,
+        /// so a session left open for a day cannot grow the list without limit — a
+        /// monitor is not an audit log, and the last hundred keystrokes are more than
+        /// any user reads back.
+        /// </summary>
+        public IReadOnlyList<string> Commands
+        {
+            get { return _commands; }
+        }
+
+        /// <summary>
+        /// Opens a source without acting on it, for the runner and for tests.
+        ///
+        /// The path is what the session was given as the working directory's, so the
+        /// listing pane asks the seam for exactly the file <c>ASSEMBLE</c> would name.
+        /// </summary>
+        public void OpenSource(string sourceFile)
+        {
+            _sourceFile = string.IsNullOrEmpty(sourceFile) ? null : sourceFile;
+        }
+
+        /// <summary>
+        /// F5. Assembles the open source, then re-lists it.
+        ///
+        /// The two are in this order for a reason. The listing comes from an assembly
+        /// run here and now: the seam assembles the file again on every request and
+        /// keeps nothing, so there is no earlier listing to be shown by mistake. And
+        /// when the assembly is refused, the pane is given the refusal instead of the
+        /// listing the same source produced a moment ago — a pane showing rows the
+        /// machine has just refused to accept is the one picture a debugger must never
+        /// present.
+        /// </summary>
+        public void AssembleCurrentSource()
+        {
+            if (_sourceFile == null)
+            {
+                SetMessage("no source is open. F2 focuses the file tree; pick a .asm and"
+                    + " F5 assembles it.");
+                return;
+            }
+
+            IReadOnlyList<string> answer = Run(EditorCommands.Assemble(_sourceFile));
+
+            if (Failed(answer))
+            {
+                SetMessage(string.Join(" ", new List<string>(answer).ToArray()));
+                _listingPane.ShowProblem(string.Join(" " + Environment.NewLine, new List<string>(answer).ToArray()));
+                RefreshPanes();
+                return;
+            }
+
+            SetMessage(string.Join(" ", new List<string>(answer).ToArray()));
+            ReloadListing();
+            RefreshPanes();
+        }
+
+        /// <summary>
+        /// Re-lists the open source through the seam.
+        ///
+        /// The reason the listing pane cannot produce is shown in the pane rather than
+        /// only in the message line: a user looking at the editor pane is looking at
+        /// the pane, and the message line is one keypress from being overwritten.
+        /// </summary>
+        public void ReloadListing()
+        {
+            if (_sourceFile == null)
+                return;
+
+            if (!_listing.IsAvailable)
+            {
+                _listingPane.ShowUnavailable();
+                return;
+            }
+
+            IReadOnlyList<ListingRow> rows =
+                _listing.Rows(new ListingRequest(_sourceFile, DefaultOrigin, MaxRows));
+
+            if (rows.Count == 0)
+            {
+                _listingPane.ShowProblem(_listing.UnavailableReason);
+                return;
+            }
+
+            _listingPane.Show(rows);
+        }
+
+        /// <summary>
+        /// F8. Toggles an exec breakpoint at the address under the cursor.
+        ///
+        /// Setting it is one command line, <c>BREAK SET exec $addr</c>. Clearing it is
+        /// not, and that asymmetry is the session's, not this method's: Mesen exposes
+        /// no way to release a single callback, so <c>BREAK REMOVE</c> is refused in
+        /// favour of <c>BREAK CLEAR</c>. A REPL user who wanted one breakpoint gone
+        /// types exactly what follows — clear, then set each one still wanted — so the
+        /// shell types it too rather than reaching around the session to do something
+        /// no command line could express.
+        /// </summary>
+        public void ToggleBreakpoint()
+        {
+            int address = _listingPane.CursorAddress;
+            if (address < 0)
+            {
+                SetMessage("the cursor is not on an address: move it to a line that emits"
+                    + " bytes before setting a breakpoint.");
+                return;
+            }
+
+            const string Kind = BreakpointKind.Exec;
+            bool wasSet = _breakpoints.Contains(address, Kind);
+
+            List<string> report = new List<string>();
+
+            if (wasSet)
+            {
+                report.AddRange(Run(EditorCommands.ClearBreakpoints()));
+
+                foreach (Breakpoint wanted in _breakpoints.Items)
+                {
+                    if (wanted.Address == address)
+                        continue;
+
+                    report.AddRange(Run(EditorCommands.SetBreakpoint(wanted.Kind, wanted.Address)));
+                }
+            }
+            else
+            {
+                report.AddRange(Run(EditorCommands.SetBreakpoint(Kind, address)));
+            }
+
+            if (Failed(report))
+            {
+                SetMessage(string.Join(" ", report.ToArray()));
+                RefreshPanes();
+                return;
+            }
+
+            // Recorded only now, from an answer that succeeded. A refusal leaves no
+            // entry, so the status line cannot advertise a breakpoint the emulator
+            // never took.
+            if (wasSet)
+                _breakpoints.Remove(address, Kind);
+            else
+                _breakpoints.Add(address, Kind);
+
+            SetMessage((wasSet ? "breakpoint cleared at " : "breakpoint set at ")
+                + EditorCommands.Hex(address));
+            RefreshPanes();
+        }
+
+        /// <summary>F9. Runs the machine, and the status line says so afterwards.</summary>
+        public void ResumeMachine()
+        {
+            Report(Run(EditorCommands.Resume()));
+        }
+
+        /// <summary>F10. Advances one instruction.</summary>
+        public void StepMachine()
+        {
+            Report(Run(EditorCommands.Step()));
+        }
+
+        /// <summary>
+        /// Shows what a command answered and re-reads the panes, which is what keeps
+        /// the status line honest: "RUNNING" has to come from a fresh reading of the
+        /// machine, not from the keypress that asked for it.
+        /// </summary>
+        private void Report(IReadOnlyList<string> answer)
+        {
+            SetMessage(string.Join(" ", new List<string>(answer).ToArray()));
+            RefreshPanes();
+        }
+
+        /// <summary>
+        /// Whether the session refused. Read from the answers, not from an exception:
+        /// the session reports a bad command as an <c>ERR</c> line precisely so that
+        /// it stays usable, and a key handler that only caught exceptions would report
+        /// success for every one of them.
+        /// </summary>
+        private static bool Failed(IReadOnlyList<string> answer)
+        {
+            if (answer == null)
+                return false;
+
+            for (int i = 0; i < answer.Count; i++)
+            {
+                string line = answer[i];
+                if (line != null && line.StartsWith(MonitorProtocol.ErrPrefix, StringComparison.Ordinal))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// What a breakpoint record is allowed to do to the machine: nothing.
+        ///
+        /// Everything else is forwarded, because the record is the same backend for
+        /// every other purpose — the RAM pane and the status line read the real
+        /// machine, and only the two breakpoint calls are turned away. That they are
+        /// the two is the whole point: they are the two that would install or release
+        /// a callback a second time, and the session has already done that work.
+        /// </summary>
+        private sealed class RecordOnlyBackend : IMemoryBackend
+        {
+            private readonly IMemoryBackend _inner;
+
+            public RecordOnlyBackend(IMemoryBackend inner)
+            {
+                if (inner == null)
+                    throw new ArgumentNullException("inner");
+
+                _inner = inner;
+            }
+
+            public string EmulatorName
+            {
+                get { return _inner.EmulatorName; }
+            }
+
+            public string EmulatorVersion
+            {
+                get { return _inner.EmulatorVersion; }
+            }
+
+            public bool IsRunning
+            {
+                get { return _inner.IsRunning; }
+            }
+
+            public byte[] Read(int address, int length)
+            {
+                return _inner.Read(address, length);
+            }
+
+            public void Write(int address, byte[] bytes)
+            {
+                _inner.Write(address, bytes);
+            }
+
+            public void Pause()
+            {
+                _inner.Pause();
+            }
+
+            public void Resume()
+            {
+                _inner.Resume();
+            }
+
+            public void Step()
+            {
+                _inner.Step();
+            }
+
+            public void Reset()
+            {
+                _inner.Reset();
+            }
+
+            public void AddBreakpoint(int address, string kind)
+            {
+            }
+
+            public void ClearBreakpoints()
+            {
+            }
+
+            public byte[] SaveState()
+            {
+                return _inner.SaveState();
+            }
+
+            public void LoadState(byte[] state)
+            {
+                _inner.LoadState(state);
+            }
+
+            public void Dispose()
+            {
+                // The inner backend belongs to the session, which disposes it. A record
+                // that disposed the machine it is only recording would take the
+                // emulator down with the shell.
+            }
+        }
+
         private void RequestQuit()
         {
             Application.RequestStop(this);
@@ -361,9 +732,9 @@ namespace WinASM65.Monitor.Shell
         }
 
         /// <summary>
-        /// Acts on a tree row. A source is assembled through the session, which is
-        /// the same call the REPL makes, so the file tree cannot mean something else
-        /// than <c>ASSEMBLE</c> does.
+        /// Acts on a tree row. A source is opened and assembled through the session,
+        /// which is the same call the REPL makes, so the file tree cannot mean
+        /// something else than <c>ASSEMBLE</c> does.
         /// </summary>
         private void OnTreeActivated(object sender, FileTreeRow row)
         {
@@ -373,9 +744,10 @@ namespace WinASM65.Monitor.Shell
                 return;
             }
 
-            string result = string.Join(" ", new List<string>(Run(row.Value)).ToArray());
-            SetMessage(result);
-            RefreshPanes();
+            // Opened before it is assembled, so the editor keys that follow act on the
+            // source the user just chose rather than on whatever was open before.
+            OpenSource(row.Value);
+            AssembleCurrentSource();
         }
 
         /// <summary>
@@ -385,6 +757,8 @@ namespace WinASM65.Monitor.Shell
         /// </summary>
         public IReadOnlyList<string> Run(string commandLine)
         {
+            Remember(commandLine);
+
             try
             {
                 return _session.Execute(commandLine);
@@ -414,6 +788,23 @@ namespace WinASM65.Monitor.Shell
         public void ActivateRow(FileTreeRow row)
         {
             OnTreeActivated(this, row);
+        }
+
+        /// <summary>
+        /// Keeps the last hundred command lines. A null line is not remembered: there
+        /// was no action to record, and an entry that claimed otherwise would make the
+        /// list a worse witness than nothing.
+        /// </summary>
+        private void Remember(string commandLine)
+        {
+            if (commandLine == null)
+                return;
+
+            const int Remembered = 100;
+            _commands.Add(commandLine);
+
+            while (_commands.Count > Remembered)
+                _commands.RemoveAt(0);
         }
 
         /// <summary>Sets the message line, for tests and for the runner's banner.</summary>
