@@ -171,13 +171,107 @@ namespace WinASM65.Monitor.Shell
         }
 
         /// <summary>
+        /// Captures the machine into a named slot, and restores it back out of one.
+        ///
+        /// The slot lives here, on the shell's side, because <c>STATE SAVE</c> hands
+        /// back hex and <c>STATE LOAD</c> takes hex: the bridge has no slot concept and
+        /// never had one. Keeping the hex here is also what makes the round trip
+        /// reachable from a key, and it stays reachable from the REPL by hand, because
+        /// the two verbs and the hex between them are all the round trip ever was.
+        /// </summary>
+        private readonly Dictionary<string, string> _stateSlots =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>The slots currently holding captured state, for the status line.</summary>
+        public int CapturedStateCount
+        {
+            get { return _stateSlots.Count; }
+        }
+
+        /// <summary>
+        /// Runs <c>STATE SAVE</c> and keeps the hex under <paramref name="slot"/>.
+        /// Stores nothing, and says so, when the capture failed.
+        /// </summary>
+        public string SaveStateSlot(string slot)
+        {
+            string name = string.IsNullOrWhiteSpace(slot) ? EditorCommands.DefaultStateSlot : slot;
+
+            IReadOnlyList<string> answer = Run(EditorCommands.SaveState(name));
+            string hex = ExtractStateHex(answer);
+
+            if (hex == null)
+            {
+                _stateSlots.Remove(name);
+                return JoinAnswer(answer, "state not saved");
+            }
+
+            _stateSlots[name] = hex;
+            return "state saved in slot " + name + " (" + (hex.Length / 2) + " bytes)";
+        }
+
+        /// <summary>
+        /// Restores a slot through <c>STATE LOAD</c>. Reports honestly when the slot was
+        /// never captured, rather than sending an empty hex to the machine.
+        /// </summary>
+        public string LoadStateSlot(string slot)
+        {
+            string name = string.IsNullOrWhiteSpace(slot) ? EditorCommands.DefaultStateSlot : slot;
+
+            string hex;
+            if (!_stateSlots.TryGetValue(name, out hex))
+                return "no state in slot " + name + ": press F7 to capture one first";
+
+            return JoinAnswer(Run(EditorCommands.LoadState(hex)), "state restored from slot " + name);
+        }
+
+        /// <summary>
+        /// Pulls the hex out of an <c>OK &lt;hex&gt;</c> answer, or null when the answer
+        /// is an error. The session answers <c>STATE SAVE</c> with the hex on a second
+        /// token; anything else means there is nothing worth storing.
+        /// </summary>
+        private static string ExtractStateHex(IReadOnlyList<string> answer)
+        {
+            if (answer == null)
+                return null;
+
+            foreach (string line in answer)
+            {
+                if (line == null)
+                    continue;
+
+                string trimmed = line.Trim();
+                if (trimmed.StartsWith(MonitorProtocol.ErrPrefix, StringComparison.Ordinal))
+                    return null;
+
+                string[] parts = trimmed.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 2 && parts[0] == MonitorProtocol.OkPrefix)
+                    return parts[1];
+            }
+
+            return null;
+        }
+
+        private static string JoinAnswer(IReadOnlyList<string> answer, string onSuccess)
+        {
+            if (answer == null || answer.Count == 0)
+                return onSuccess;
+
+            return string.Join(" ", new List<string>(answer).ToArray());
+        }
+
+        private void SaveCurrentState()
+        {
+            SetMessage(SaveStateSlot(null));
+        }
+
+        /// <summary>
         /// The keys this build binds, and the ones a later milestone owns.
         ///
         /// A key that is not bound still says so, in this list and on the help screen.
         /// A user reading the plan's table of keys should find out here that one is not
         /// in this build, rather than press it and conclude the shell is broken.
-        /// F7 is the outstanding one: its slot vocabulary belongs to
-        /// <c>StateCommands</c>, which is not in this build.
+        /// F12 and Ctrl+A are the outstanding ones: a video pane needs a renderer the
+        /// shell does not have yet, and the assistant needs the provider contract.
         /// </summary>
         public static IReadOnlyList<ShellKey> Keys
         {
@@ -190,7 +284,7 @@ namespace WinASM65.Monitor.Shell
                     new ShellKey("F3", "listing pane", true),
                     new ShellKey("F4", "RAM pane", true),
                     new ShellKey("F5", "assemble under the cursor", true),
-                    new ShellKey("F7", "save state", false),
+                    new ShellKey("F7", "save state", true),
                     new ShellKey("F8", "toggle breakpoint", true),
                     new ShellKey("F9", "run", true),
                     new ShellKey("F10", "step", true),
@@ -333,11 +427,7 @@ namespace WinASM65.Monitor.Shell
             AddShortcut(Key.F8, "Breakpoint", ToggleBreakpoint);
             AddShortcut(Key.F9, "Run", ResumeMachine);
             AddShortcut(Key.F10, "Step", StepMachine);
-
-            // F7 is absent, not stubbed: save state belongs to StateCommands, which is
-            // not in this build. Binding a key to a guess at its command line is worse
-            // than leaving it unbound, because the guess would be the only thing the
-            // REPL cannot reproduce.
+            AddShortcut(Key.F7, "SaveState", SaveCurrentState);
             AddShortcut(CtrlQ(), "Quit", RequestQuit);
         }
 

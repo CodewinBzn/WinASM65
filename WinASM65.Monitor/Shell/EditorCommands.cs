@@ -71,26 +71,31 @@ namespace WinASM65.Monitor.Shell
         }
 
         /// <summary>
-        /// <c>STATE SAVE &lt;slot&gt;</c>.
+        /// <c>STATE SAVE</c>, via <see cref="StateCommands"/>.
         ///
-        /// F7 is not bound in this build: <c>WinASM65.Monitor.Shell.StateCommands</c>,
-        /// which owns the slot vocabulary, does not exist yet. When it lands,
-        /// <c>StateCommands.Save(slot)</c> returns this line and the only change here
-        /// is to delegate to it, so the slot naming stays in one place.
+        /// This delegates rather than spelling the line out, and that is not tidiness.
+        /// The session accepts <c>STATE SAVE</c> as exactly two tokens and
+        /// <c>STATE LOAD &lt;hex&gt;</c> as exactly three, so the earlier version here,
+        /// which appended the slot to both, produced lines the session answered with
+        /// "STATE expects SAVE or LOAD &lt;hex&gt;" — a key bound to a command that
+        /// could never work. The slot names a place on the shell's side only; the
+        /// bridge has no slot and never had one.
         /// </summary>
         public static string SaveState(string slot)
         {
-            return "STATE SAVE " + (slot ?? DefaultStateSlot);
+            return StateCommands.Save(slot ?? DefaultStateSlot);
         }
 
         /// <summary>
-        /// <c>STATE LOAD &lt;slot&gt;</c>. As <see cref="SaveState"/>: written out
-        /// here, and to be replaced by <c>StateCommands.Load(slot)</c> when that type
-        /// exists.
+        /// <c>STATE LOAD &lt;hex&gt;</c>, via <see cref="StateCommands"/>.
+        ///
+        /// The argument is the state data <c>STATE SAVE</c> returned, not a slot name:
+        /// the round trip is hex out and hex back, and conflating the two would send a
+        /// slot name where the machine expects bytes.
         /// </summary>
-        public static string LoadState(string slot)
+        public static string LoadState(string stateData)
         {
-            return "STATE LOAD " + (slot ?? DefaultStateSlot);
+            return StateCommands.Load(stateData);
         }
 
         /// <summary>The monitor's own spelling of an address: <c>$C000</c>.</summary>
