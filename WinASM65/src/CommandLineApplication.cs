@@ -173,7 +173,10 @@ namespace WinASM65
             {
                 if (!string.IsNullOrEmpty(sourceFile))
                 {
-                    if (string.IsNullOrEmpty(objectFile)) objectFile = string.Format("{0}.o", sourceFile.Split('.')[0]);
+                    // The whole path with the extension off, so the object file lands
+                    // beside the source. "a.b.asm" and "C:\dir.v2\main.asm" both name
+                    // it after the file; the path up to its first dot names neither.
+                    if (string.IsNullOrEmpty(objectFile)) objectFile = WinASM65.Core.SideFiles.BaseNameOf(sourceFile) + ".o";
                     AssemblerOptions options = new AssemblerOptions
                     {
                         EnableListing = enableListing,

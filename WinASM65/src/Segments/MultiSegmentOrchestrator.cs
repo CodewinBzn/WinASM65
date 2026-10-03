@@ -22,10 +22,24 @@ namespace WinASM65.Segments
     {
         private readonly Func<IAssembler> _assemblerFactory;
 
+        /// <summary>
+        /// Where the side files of the build are, or null for beside their source.
+        /// It has to be the directory the assembler was told to write them in,
+        /// because these files are the only channel between one unit of a build and
+        /// the next: <see cref="WinASM65.Core.AssemblerOptions.SideFileDirectory"/>.
+        /// </summary>
+        private readonly string _sideFileDirectory;
+
         public MultiSegmentOrchestrator(Func<IAssembler> assemblerFactory)
+            : this(assemblerFactory, null)
+        {
+        }
+
+        public MultiSegmentOrchestrator(Func<IAssembler> assemblerFactory, string sideFileDirectory)
         {
             if (assemblerFactory == null) throw new ArgumentNullException("assemblerFactory");
             _assemblerFactory = assemblerFactory;
+            _sideFileDirectory = string.IsNullOrWhiteSpace(sideFileDirectory) ? null : sideFileDirectory;
         }
 
         public MultiSegmentResult AssembleSegments(IReadOnlyList<Segment> segmentList)
@@ -58,10 +72,10 @@ namespace WinASM65.Segments
 
         private bool ResolveSegment(Segment segment, JsonSerializer serializer, List<Diagnostic> diagnostics)
         {
-            string baseName = segment.FileName.Split('.')[0];
+            string baseName = SideFiles.BaseNameOf(segment.FileName);
             string objectFile = GetObjectFile(segment);
-            string unsolvedFile = baseName + ".Unsolved";
-            string unsolvedExprFile = baseName + ".UnsolvedExpr";
+            string unsolvedFile = SideFile(baseName + ".Unsolved");
+            string unsolvedExprFile = SideFile(baseName + ".UnsolvedExpr");
             if (!File.Exists(unsolvedFile)) return true;
             if (!File.Exists(unsolvedExprFile))
             {
@@ -102,7 +116,7 @@ namespace WinASM65.Segments
             {
                 foreach (string dependency in segment.Dependencies)
                 {
-                    string symbolFile = dependency.Split('.')[0] + ".symb";
+                    string symbolFile = SideFile(SideFiles.BaseNameOf(dependency) + ".symb");
                     if (!File.Exists(symbolFile))
                     {
                         AddError(diagnostics, segment.FileName, "Dependency symbol file doesn't exist: " + symbolFile);
@@ -132,7 +146,21 @@ namespace WinASM65.Segments
 
         private static string GetObjectFile(Segment segment)
         {
-            return !string.IsNullOrWhiteSpace(segment.OutputFile) ? segment.OutputFile : segment.FileName.Split('.')[0] + ".o";
+            // Beside the source by default, and named after it -- see SideFiles for
+            // why the whole path with the extension off is the base, and why a name
+            // without its directory would scatter the build across the disk.
+            return !string.IsNullOrWhiteSpace(segment.OutputFile)
+                ? segment.OutputFile
+                : SideFiles.BaseNameOf(segment.FileName) + ".o";
+        }
+
+        /// <summary>
+        /// Puts a side file where <see cref="AssemblerEngine"/> wrote it. The rule is
+        /// <see cref="SideFiles"/>'s, so the two cannot drift apart.
+        /// </summary>
+        private string SideFile(string name)
+        {
+            return SideFiles.Locate(name, _sideFileDirectory);
         }
         private static void AddDiagnostics(List<Diagnostic> target, IReadOnlyList<Diagnostic> source)
         {

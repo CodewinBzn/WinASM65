@@ -101,6 +101,13 @@ namespace WinASM65.Core
         private readonly bool _reportUndefinedSymbols;
 
         /// <summary>
+        /// Where the symbol files of a multi-file build are written, or null for
+        /// the process's working directory. See
+        /// <see cref="AssemblerOptions.SideFileDirectory"/>.
+        /// </summary>
+        private readonly string _sideFileDirectory;
+
+        /// <summary>
         /// The names the target predefined and that no source has taken over yet.
         /// </summary>
         private readonly HashSet<string> _predefinedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -192,7 +199,8 @@ namespace WinASM65.Core
             IDirectiveDispatcher directiveDispatcher = null,
             IDictionary<string, long> predefinedSymbols = null,
             ushort? defaultOrigin = null,
-            bool reportUndefinedSymbols = true)
+            bool reportUndefinedSymbols = true,
+            string sideFileDirectory = null)
         {
             _cpu = cpu ?? new Cpu6502();
             _tokenizer = tokenizer ?? new WinASM65.Expressions.Tokenizer();
@@ -205,6 +213,7 @@ namespace WinASM65.Core
             _predefinedSymbols = predefinedSymbols;
             _defaultOrigin = defaultOrigin;
             _reportUndefinedSymbols = reportUndefinedSymbols;
+            _sideFileDirectory = string.IsNullOrWhiteSpace(sideFileDirectory) ? null : sideFileDirectory;
         }
 
         private static IDirectiveDispatcher CreateDefaultDispatcher()
@@ -1319,25 +1328,37 @@ namespace WinASM65.Core
 
         private void ExportSymbolFiles(string sourceFile)
         {
-            string baseName = sourceFile.Split('.')[0];
+            // The whole path with the extension off, so the files land beside the
+            // source they describe -- which is where the orchestrator looks for them,
+            // and where they have always been written.
+            string baseName = SideFiles.BaseNameOf(sourceFile);
 
             if (_scopeManager.GlobalScope.SymbolTable.Count > 0)
             {
-                string symbPath = string.Format("{0}.symb", baseName);
+                string symbPath = SideFile(baseName, ".symb");
                 File.WriteAllText(symbPath, JsonConvert.SerializeObject(_scopeManager.GlobalScope.SymbolTable));
             }
 
             if (_scopeManager.GlobalScope.UnsolvedSymbols.Count > 0)
             {
-                string unsolvedPath = string.Format("{0}.Unsolved", baseName);
+                string unsolvedPath = SideFile(baseName, ".Unsolved");
                 File.WriteAllText(unsolvedPath, JsonConvert.SerializeObject(_scopeManager.GlobalScope.UnsolvedSymbols));
             }
 
             if (_scopeManager.UnsolvedExprList.Count > 0)
             {
-                string exprPath = string.Format("{0}.UnsolvedExpr", baseName);
+                string exprPath = SideFile(baseName, ".UnsolvedExpr");
                 File.WriteAllText(exprPath, JsonConvert.SerializeObject(_scopeManager.UnsolvedExprList));
             }
+        }
+
+        /// <summary>
+        /// Puts a side file where the rest of the build will look for it. The rule is
+        /// <see cref="SideFiles"/>'s, so the writer and the reader cannot disagree.
+        /// </summary>
+        private string SideFile(string baseName, string extension)
+        {
+            return SideFiles.Locate(baseName + extension, _sideFileDirectory);
         }
 
         private class SourceFileState
