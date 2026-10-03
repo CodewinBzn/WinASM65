@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>WinASM65.Monitor.Abstractions.Tests</RootNamespace>
+    <AssemblyName>WinASM65.Monitor.Abstractions.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="MSTest.TestAdapter" Version="3.6.1" />
+    <PackageReference Include="MSTest.TestFramework" Version="3.6.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The contract and nothing else. A loading test that reached the monitor
+         instead would be testing a different assembly's identity. -->
+    <ProjectReference Include="..\WinASM65.Monitor.Abstractions\WinASM65.Monitor.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

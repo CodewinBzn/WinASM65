@@ -11,6 +11,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinASM65.Monitor", "WinASM6
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinASM65.Monitor.Tests", "WinASM65.Monitor.Tests\WinASM65.Monitor.Tests.csproj", "{84925184-F7C0-4AF6-A60F-D734C1926AE8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinASM65.Monitor.Abstractions", "WinASM65.Monitor.Abstractions\WinASM65.Monitor.Abstractions.csproj", "{EFDBAC67-BFB8-4C09-9DF6-BBA2C7A8AC1F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinASM65.Monitor.Abstractions.Tests", "WinASM65.Monitor.Abstractions.Tests\WinASM65.Monitor.Abstractions.Tests.csproj", "{2422BFAF-123C-412A-AD0C-638B28F701D3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +37,14 @@ Global
 		{84925184-F7C0-4AF6-A60F-D734C1926AE8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{84925184-F7C0-4AF6-A60F-D734C1926AE8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{84925184-F7C0-4AF6-A60F-D734C1926AE8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EFDBAC67-BFB8-4C09-9DF6-BBA2C7A8AC1F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EFDBAC67-BFB8-4C09-9DF6-BBA2C7A8AC1F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EFDBAC67-BFB8-4C09-9DF6-BBA2C7A8AC1F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EFDBAC67-BFB8-4C09-9DF6-BBA2C7A8AC1F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2422BFAF-123C-412A-AD0C-638B28F701D3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2422BFAF-123C-412A-AD0C-638B28F701D3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2422BFAF-123C-412A-AD0C-638B28F701D3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2422BFAF-123C-412A-AD0C-638B28F701D3}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
