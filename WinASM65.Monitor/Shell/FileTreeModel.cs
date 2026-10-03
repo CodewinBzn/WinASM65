@@ -61,7 +61,14 @@ namespace WinASM65.Monitor.Shell
     public static class FileTreeModel
     {
         /// <summary>Extensions the assembler can be pointed at.</summary>
-        private static readonly string[] SourceExtensions = { ".asm", ".s", ".inc", ".65" };
+        ///
+        /// .nas is here because the NES homebrew this tool is built to debug is
+        /// written in it, and a source the tree will not list is a source the user
+        /// cannot open. The assembler reads .incbin, .include and .org, so the
+        /// dialect is one it can be pointed at — whether it accepts every construct
+        /// in a given file is the listing's answer to report, not the tree's to
+        /// pre-judge by hiding the file.
+        private static readonly string[] SourceExtensions = { ".asm", ".s", ".inc", ".65", ".nas" };
 
         /// <summary>
         /// How many files are listed. The tree is a navigation aid, not a file

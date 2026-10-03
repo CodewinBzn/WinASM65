@@ -22,19 +22,28 @@ namespace WinASM65.Monitor.Tests
     public class ListingSeamTests
     {
         [TestMethod]
-        public void TheSeamIsNarrowEnoughToRePoint()
-        {
-            // If this ever grows, the seam has stopped being a seam and has become a
-            // second listing implementation inside the monitor.
-            Type contract = typeof(IListingSource);
+public void TheSeamIsNarrowEnoughToRePoint()
+          {
+              // If this ever grows, the seam has stopped being a seam and has become a
+              // second listing implementation inside the monitor.
+              //
+              // get_LastProblem is the one addition, and it was measured rather than
+              // assumed: without it, a source that fails to assemble produced an empty
+              // pane, and the pane then reported UnavailableReason — "the listing API is
+              // not in this build" — to someone whose file simply had an undefined
+              // symbol on line 536. It reports text about a failure; it does not list
+              // anything, so the seam is still a seam. Anything that assembles, filters
+              // or orders rows here is the thing this test exists to catch.
+              Type contract = typeof(IListingSource);
 
-            foreach (System.Reflection.MethodInfo method in contract.GetMethods())
-            {
-                Assert.IsTrue(
-                    method.Name == "get_IsAvailable" || method.Name == "get_UnavailableReason" || method.Name == "Rows",
-                    "IListingSource grew a member: " + method.Name + ". Keep the seam re-pointable.");
-            }
-        }
+              foreach (System.Reflection.MethodInfo method in contract.GetMethods())
+              {
+                  Assert.IsTrue(
+                      method.Name == "get_IsAvailable" || method.Name == "get_UnavailableReason"
+                          || method.Name == "get_LastProblem" || method.Name == "Rows",
+                      "IListingSource grew a member: " + method.Name + ". Keep the seam re-pointable.");
+              }
+          }
 
         [TestMethod]
         public void TheFactoryNowHandsOverTheRealAdapter()
@@ -186,6 +195,11 @@ namespace WinASM65.Monitor.Tests
             public string UnavailableReason
             {
                 get { return string.Empty; }
+            }
+
+            public string LastProblem
+            {
+                get { return null; }
             }
 
             public IReadOnlyList<ListingRow> Rows(ListingRequest request)

@@ -598,7 +598,12 @@ namespace WinASM65.Monitor.Shell
 
             if (rows.Count == 0)
             {
-                _listingPane.ShowProblem(_listing.UnavailableReason);
+                // LastProblem, not UnavailableReason. A file that fails to assemble is
+                // not a missing feature, and answering "the listing API is not in this
+                // build" to someone whose source has an undefined symbol on line 536
+                // sends them to look for a problem that does not exist.
+                _listingPane.ShowProblem(
+                    string.IsNullOrEmpty(_listing.LastProblem) ? _listing.UnavailableReason : _listing.LastProblem);
                 return;
             }
 
