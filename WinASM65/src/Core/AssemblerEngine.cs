@@ -192,7 +192,7 @@ namespace WinASM65.Core
             IDirectiveDispatcher directiveDispatcher = null,
             IDictionary<string, long> predefinedSymbols = null,
             ushort? defaultOrigin = null,
-            bool reportUndefinedSymbols = false)
+            bool reportUndefinedSymbols = true)
         {
             _cpu = cpu ?? new Cpu6502();
             _tokenizer = tokenizer ?? new WinASM65.Expressions.Tokenizer();

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
 using WinASM65.Core;
@@ -45,6 +46,26 @@ namespace WinASM65.Directives
 
             record.MarkResolved(value);
             context.Emitter.RecordRelocation(record);
+        }
+    }
+
+    /// <summary>
+    /// Reports a data field whose value does not fit the field it is written into.
+    /// <para>
+    /// The message is the one the instruction path already used, so a value that is
+    /// too wide reads the same whether it was written with <c>.byte</c> or with
+    /// <c>LDX #</c>. Two widths, two bounds, and both the directive and the
+    /// instruction path go through <see cref="Value.InByteRange"/> and
+    /// <see cref="Value.InWordRange"/>, so the two cannot drift apart.
+    /// </para>
+    /// </summary>
+    internal static class DataRange
+    {
+        public static void Report(IAssemblyContext context, long value, bool byteSized)
+        {
+            string template = byteSized ? ErrorCodes.VALUE_OUT_OF_RANGE_BYTE : ErrorCodes.VALUE_OUT_OF_RANGE_WORD;
+            context.Diagnostics.ReportError(context.CurrentLocation,
+                string.Format(CultureInfo.InvariantCulture, template, value));
         }
     }
 
@@ -177,9 +198,25 @@ namespace WinASM65.Directives
                     ExpressionResult res = context.ResolveExpression(data, AddressingMode.None, false);
                     if (res.IsResolved)
                     {
-                        int fieldOffset = context.Emitter.Length;
-                        context.Emitter.EmitByte(res.Value.ToByte());
-                        DataRelocation.Record(context, res.WithRole(ExpressionRole.Data), fieldOffset, 1, res.Value.AsInteger);
+                        // A value that does not fit is refused, not narrowed. ToByte()
+                        // masks to the low octet, so 300 became $2C and the image built
+                        // clean while behaving in a way the source never described -- and
+                        // .byte is the instruction byte of every LDA/STA operand the NES
+                        // sources write, so a wrong byte there is a wrong program. The
+                        // placeholder is a zero rather than the truncated value: the byte
+                        // is still emitted, so every address after it stays where the
+                        // source put it and the listing still counts the right length.
+                        if (!Value.InByteRange(res.Value.AsInteger))
+                        {
+                            DataRange.Report(context, res.Value.AsInteger, true);
+                            context.Emitter.EmitByte(0);
+                        }
+                        else
+                        {
+                            int fieldOffset = context.Emitter.Length;
+                            context.Emitter.EmitByte(res.Value.ToByte());
+                            DataRelocation.Record(context, res.WithRole(ExpressionRole.Data), fieldOffset, 1, res.Value.AsInteger);
+                        }
                     }
                     else
                     {
@@ -233,9 +270,20 @@ namespace WinASM65.Directives
                 ExpressionResult res = context.ResolveExpression(data, AddressingMode.None, false);
                 if (res.IsResolved)
                 {
-                    int fieldOffset = context.Emitter.Length;
-                    context.Emitter.EmitWord(res.Value.ToUInt16());
-                    DataRelocation.Record(context, res.WithRole(ExpressionRole.Data), fieldOffset, 2, res.Value.AsInteger);
+                    // Same rule as .byte, at the two-byte width: ToUInt16() masks, and a
+                    // masked address is a pointer into the middle of the address space
+                    // rather than an error.
+                    if (!Value.InWordRange(res.Value.AsInteger))
+                    {
+                        DataRange.Report(context, res.Value.AsInteger, false);
+                        context.Emitter.EmitWord(0);
+                    }
+                    else
+                    {
+                        int fieldOffset = context.Emitter.Length;
+                        context.Emitter.EmitWord(res.Value.ToUInt16());
+                        DataRelocation.Record(context, res.WithRole(ExpressionRole.Data), fieldOffset, 2, res.Value.AsInteger);
+                    }
                 }
                 else
                 {

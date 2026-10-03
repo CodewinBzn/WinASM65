@@ -139,11 +139,12 @@ namespace WinASM65.Tests
                 string consumerOutput = Path.Combine(temp.Path, "consumer.o");
                 File.WriteAllText(provider, ".org $8000\nshared:\nnop\n");
                 File.WriteAllText(consumer, ".org $8000\n.word shared\n");
-                MultiSegmentResult result = new MultiSegmentOrchestrator(() => new AssemblerEngine()).AssembleSegments(new[]
-                {
-                    new Segment { FileName = provider },
-                    new Segment { FileName = consumer, OutputFile = consumerOutput, Dependencies = new[] { provider } }
-                });
+                MultiSegmentResult result = new MultiSegmentOrchestrator(() => new AssemblerEngine(reportUndefinedSymbols: false))
+                    .AssembleSegments(new[]
+                    {
+                        new Segment { FileName = provider },
+                        new Segment { FileName = consumer, OutputFile = consumerOutput, Dependencies = new[] { provider } }
+                    });
                 Assert.IsTrue(result.Success);
                 CollectionAssert.AreEqual(new byte[] { 0x00, 0x80 }, File.ReadAllBytes(consumerOutput));
             }
