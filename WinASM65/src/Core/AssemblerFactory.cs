@@ -45,6 +45,23 @@ namespace WinASM65.Core
         /// </para>
         /// </summary>
         public bool ReportUndefinedSymbols { get; set; }
+
+        /// <summary>
+        /// Where the <c>.symb</c>, <c>.Unsolved</c> and <c>.UnsolvedExpr</c> files
+        /// are written. Left null they go beside the source they describe, which is
+        /// where they have always gone.
+        /// <para>
+        /// These three are how one unit of a multi-file build is handed to the next,
+        /// so the reader and the writer have to agree on the directory. Anything
+        /// driving a build that wants them out of the source tree -- a user
+        /// interface, a service, a test -- names the directory here and gives
+        /// <see cref="WinASM65.Segments.MultiSegmentOrchestrator"/> the same value.
+        /// </para>
+        /// <para>
+        /// See <see cref="SideFiles"/>, which holds the rule both sides follow.
+        /// </para>
+        /// </summary>
+        public string SideFileDirectory { get; set; }
     }
 
     public interface IAssemblerFactory
@@ -69,7 +86,8 @@ namespace WinASM65.Core
                     ?? new ListingService { IsEnabled = options.EnableListing },
                 predefinedSymbols: options.PredefinedSymbols,
                 defaultOrigin: options.DefaultOrigin,
-                reportUndefinedSymbols: options.ReportUndefinedSymbols);
+                reportUndefinedSymbols: options.ReportUndefinedSymbols,
+                sideFileDirectory: options.SideFileDirectory);
         }
     }
 }
