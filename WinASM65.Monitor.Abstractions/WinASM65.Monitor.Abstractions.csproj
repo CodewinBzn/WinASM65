@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The host <-> plugin contract.
+
+    This assembly exists for one reason: it is the only type identity the monitor
+    and a plugin can agree on. An interface compiled into both sides is two
+    interfaces, and the disagreement does not fail the build. It fails later, as an
+    InvalidCastException thrown from a cast nobody could check, on a plugin the user
+    installed.
+
+    Direction of travel: no behaviour. Nothing in here decides anything, opens
+    anything, fills in a default or falls back to something plausible. It declares
+    what a plugin supplies and what the host is allowed to ask of it. A capability
+    no measured backend has is not declared, and one that does is not left out:
+    IExecutionAdapter.Capabilities is the flag set the host greys out against, and
+    it is also the data behind the published capability table.
+
+    This project references nothing, deliberately. No ProjectReference, no
+    PackageReference. A reference out of here is how a contract stops being a
+    contract, so the test suite asserts that there is none.
+
+    Precedent: ICpuStateSource, declared apart from IMemoryBackend on CpuSnapshot.cs
+    because a backend with no processor must not pretend it has one. The same
+    discipline, generalised: a plugin supplies what it can and the host asks what it
+    has.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>WinASM65.Monitor.Abstractions</RootNamespace>
+    <AssemblyName>WinASM65.Monitor.Abstractions</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>
