@@ -83,9 +83,30 @@ namespace WinASM65.Monitor.Shell
         /// Terminal.Gui clears its hooks. <see cref="UntilQuit"/> means no bound, and
         /// is what the executable passes.
         /// </summary>
-        public static int Run(MonitorSession session, ShellTheme theme, IListingSource listing,
-            string directory, Process emulator, IConsoleDriver driver, int maxIterations)
-        {
+public static int Run(MonitorSession session, ShellTheme theme, IListingSource listing,
+              string directory, Process emulator, IConsoleDriver driver, int maxIterations)
+          {
+              return Run(session, theme, listing, directory, emulator, driver, maxIterations, null);
+          }
+
+          /// <summary>
+          /// The same run, opening <paramref name="initialSource"/> before the first
+          /// frame.
+          ///
+          /// A debugger launched on a known program should land on that program. Making
+          /// the user navigate a tree and press a key to reach the file they named on
+          /// the command line is a step the argument already decided for them.
+          ///
+          /// <paramref name="initialSource"/> resolves the same way every other path in
+          /// the session does — relative to <paramref name="directory"/> — because a
+          /// source named one way and listed another is two files. A name that does not
+          /// resolve is refused here, before the terminal is taken, rather than left to
+          /// produce an empty pane the user has to interpret.
+          /// </summary>
+          public static int Run(MonitorSession session, ShellTheme theme, IListingSource listing,
+              string directory, Process emulator, IConsoleDriver driver, int maxIterations,
+              string initialSource)
+          {
             Exception failure = null;
             bool initialised = false;
 
@@ -97,17 +118,42 @@ namespace WinASM65.Monitor.Shell
                 // stop it as any other. The same holds for the bound: it is checked
                 // here, before Init, so a nonsense one is refused without the console
                 // ever being taken.
-                if (session == null)
-                    throw new ArgumentNullException("session");
-                if (maxIterations < 0)
-                    throw new ArgumentOutOfRangeException("maxIterations", maxIterations,
-                        "use " + UntilQuit + " for a run that lasts until the user quits");
+if (session == null)
+                      throw new ArgumentNullException("session");
+                  if (maxIterations < 0)
+                      throw new ArgumentOutOfRangeException("maxIterations", maxIterations,
+                          "use " + UntilQuit + " for a run that lasts until the user quits");
+
+                  // Resolved before the console is taken, so a bad name is a message on
+                  // stderr and an exit code rather than a shell the user has to quit to
+                  // read the complaint.
+                  string opening = null;
+                  if (!string.IsNullOrWhiteSpace(initialSource))
+                  {
+                      opening = ResolveInitialSource(initialSource, directory);
+                      if (opening == null)
+                      {
+                          Console.Error.WriteLine("No such source: " + initialSource
+                              + (string.IsNullOrEmpty(directory) ? string.Empty : " (looked in " + directory + ")"));
+                          return 4;
+                      }
+                  }
 
                 Application.Init(driver);
                 initialised = true;
 
-                ShellWindow window = new ShellWindow(session, theme, listing, directory);
-                window.PostMessage("Ctrl+Q quits, F1 lists the keys.");
+ShellWindow window = new ShellWindow(session, theme, listing, directory);
+                  window.PostMessage("Ctrl+Q quits, F1 lists the keys.");
+
+                  // Opened before the first frame, so the listing pane is never painted
+                  // empty and then filled in. A failure here is not fatal: the reason
+                  // goes to the pane that would have shown it, and the shell stays up
+                  // with the rest of the program available.
+                  if (opening != null)
+                  {
+                      window.OpenSource(opening);
+                      window.RefreshPanes();
+                  }
 
                 // The driver reports the real terminal size, which is the only
                 // honest input to the breakpoint rule. The handlers are closures
@@ -160,11 +206,11 @@ namespace WinASM65.Monitor.Shell
 
                 return 0;
             }
-            catch (Exception ex)
-            {
-                failure = ex;
-                return 1;
-            }
+catch (Exception ex)
+              {
+                  failure = ex;
+                  return 1;
+              }
             finally
             {
                 // Shutdown first, so the console is restored even when the run
@@ -194,6 +240,26 @@ namespace WinASM65.Monitor.Shell
         /// script lives inside the emulator process, so a stopped emulator is a
         /// stopped script with nothing left to clean up.
         /// </summary>
+        /// <summary>
+        /// Resolves a source named on the command line, the way the session resolves
+        /// every other path: absolute names are taken as given, relative ones are taken
+        /// against the session's directory.
+        ///
+        /// Returns null when nothing matches. The caller turns that into the message,
+        /// because only it knows how the user asked.
+        /// </summary>
+        private static string ResolveInitialSource(string source, string directory)
+        {
+            if (System.IO.Path.IsPathRooted(source))
+                return System.IO.File.Exists(source) ? source : null;
+
+            string relative = string.IsNullOrEmpty(directory)
+                ? source
+                : System.IO.Path.Combine(directory, source);
+
+            return System.IO.File.Exists(relative) ? relative : null;
+        }
+
         public static void StopEmulator(Process emulator)
         {
             if (emulator == null)
