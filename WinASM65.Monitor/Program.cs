@@ -108,13 +108,21 @@ namespace WinASM65.Monitor.Cli
                     // answers all of them, because it has the API to do it.
                     using (BridgeMemoryBackend backend = Connect(port))
                     {
+                        // One CPU instance, given to both the session and the listing.
+                        // They have to agree: what a listing reports as a mnemonic, how
+                        // long each form is and how many cycles it takes all come from
+                        // the opcode table, so a listing built against a different CPU
+                        // would colour a source by rules the assembler never applied.
+                        ICpuInstructionSet cpu = new Cpu6502();
+
                         MonitorSession session =
-                            new MonitorSession(backend, new Cpu6502(), Directory.GetCurrentDirectory());
+                            new MonitorSession(backend, cpu, Directory.GetCurrentDirectory());
 
                         if (UseShell(wantShell))
                         {
                             ShellTheme theme = ShellTheme.Load(themePath);
-                            return ShellRunner.Run(session, theme, ListingSourceFactory.Create(),
+                            return ShellRunner.Run(session, theme,
+                                ListingSourceFactory.Create(cpu, Directory.GetCurrentDirectory()),
                                 Directory.GetCurrentDirectory(), mesen);
                         }
 
