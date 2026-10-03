@@ -18,9 +18,9 @@ namespace WinASM65.Monitor
     /// forwarded, even when the machine is a bridge on the other side of a socket.
     /// They are already the <see cref="IMemoryBackend"/> contract, so forwarding
     /// them would only re-encode something already typed. The commands that exist
-    /// *because* the monitor is here — ASSEMBLE, LOAD, UNITS — belong to the
-    /// <see cref="UnitLibrary"/>, which no bridge can host, because assembling needs
-    /// this assembler.
+    /// *because* the monitor is here — ASSEMBLE, BUILD, LOAD, UNITS — belong to the
+    /// <see cref="UnitLibrary"/> and the <see cref="ProjectBuilder"/>, which no
+    /// bridge can host, because assembling needs this assembler.
     ///
     /// DISASM is decoded from a single memory snapshot. Reading byte by byte would
     /// let the emulated CPU run between reads and produce a listing that never
@@ -31,6 +31,7 @@ namespace WinASM65.Monitor
         private readonly IMemoryBackend _backend;
         private readonly Disassembler _disassembler;
         private readonly UnitLibrary _library;
+        private readonly ProjectBuilder _projects;
 
         // Remembered between CPU commands so the session can tell a machine that
         // advanced from one that stood still. Not persisted: this is a statement
@@ -47,6 +48,11 @@ namespace WinASM65.Monitor
             _backend = backend;
             _disassembler = new Disassembler(cpu);
             _library = new UnitLibrary(backend, assemblerDirectory);
+
+            // The same directory, for the same reason: `BUILD config.json` typed at the
+            // prompt and F5 in the shell have to name the same project, and a relative
+            // name only means something relative to something.
+            _projects = new ProjectBuilder(assemblerDirectory);
         }
 
         public IMemoryBackend Backend
@@ -57,6 +63,13 @@ namespace WinASM65.Monitor
         public UnitLibrary Library
         {
             get { return _library; }
+        }
+
+        /// <summary>The project builder, for the shell and for a caller that wants the
+        /// session a build opened rather than only the lines it printed.</summary>
+        public ProjectBuilder Projects
+        {
+            get { return _projects; }
         }
 
         /// <summary>Set once the user asks to leave, so the caller stops reading.</summary>
@@ -139,6 +152,10 @@ namespace WinASM65.Monitor
                         Require(parts, 2, "ASSEMBLE <source file>");
                         output.Add(_library.Assemble(parts[1]));
                         break;
+                    case "BUILD":
+                        Require(parts, 2, "BUILD <config.json>");
+                        output.AddRange(_projects.Build(parts[1]).Answer);
+                        break;
                     case "LOAD":
                         Require(parts, 3, "LOAD <unit> <address>");
                         output.Add(_library.Load(parts[1], ParseAddress(parts, 2, "LOAD <unit> <address>")));
@@ -191,6 +208,7 @@ namespace WinASM65.Monitor
                 "BREAK SET|REMOVE|LIST|CLEAR  breakpoints, kind read/write/exec",
                 "STATE SAVE | STATE LOAD <hex> capture and restore the machine",
                 "ASSEMBLE <source>             assemble once and keep the unit",
+                "BUILD <config.json>            build every unit of a project and write the image",
                 "LOAD <unit> <addr>            relink, write, and read back",
                 "UNITS                         what has been assembled",
                 "HELP                          this list",
