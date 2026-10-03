@@ -39,6 +39,7 @@ namespace WinASM65.Monitor.Cli
             string romPath = null;
             string emulator = MesenCe;
             string themePath = null;
+              string sourceFile = null;
             bool? wantShell = null;
 
             try
@@ -59,9 +60,12 @@ namespace WinASM65.Monitor.Cli
                         case "--emulator":
                             emulator = args[++i].ToLowerInvariant();
                             break;
-                        case "--theme":
-                            themePath = args[++i];
-                            break;
+case "--theme":
+                              themePath = args[++i];
+                              break;
+                          case "--source":
+                              sourceFile = args[++i];
+                              break;
                         case "--tui":
                             wantShell = true;
                             break;
@@ -123,7 +127,8 @@ namespace WinASM65.Monitor.Cli
                             ShellTheme theme = ShellTheme.Load(themePath);
                             return ShellRunner.Run(session, theme,
                                 ListingSourceFactory.Create(cpu, Directory.GetCurrentDirectory()),
-                                Directory.GetCurrentDirectory(), mesen);
+                                Directory.GetCurrentDirectory(), mesen, null,
+                                ShellRunner.UntilQuit, sourceFile);
                         }
 
                         return RunRepl(session);
@@ -176,6 +181,7 @@ namespace WinASM65.Monitor.Cli
             Console.WriteLine("  --rom <file>     ROM to load (required with --mesen)");
             Console.WriteLine("  --emulator <id>  " + MesenCe + " (default, memory only) or " + Mesen2 + " (full control)");
             Console.WriteLine("  --theme <file>   palette to load (default: theme.json beside the executable)");
+            Console.WriteLine("  --source <file>  source to open in the editor at startup, relative to the working directory");
             Console.WriteLine("  --tui | --repl   force the terminal shell, or the line prompt");
             Console.WriteLine("With no --mesen, the monitor attaches to an already running bridge.");
             Console.WriteLine("The shell is chosen automatically: with a real terminal it draws the");
