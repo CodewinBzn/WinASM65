@@ -4,8 +4,10 @@ using System.Drawing;
 using System.Globalization;
 using System.IO;
 using Terminal.Gui;
+using WinASM65.Cpu;
 using WinASM65.Monitor.Abstractions;
 using WinASM65.Monitor.Protocol;
+using WinASM65.Projects;
 
 namespace WinASM65.Monitor.Shell
 {
@@ -104,9 +106,19 @@ namespace WinASM65.Monitor.Shell
 
         private readonly MonitorSession _session;
         private readonly ShellTheme _theme;
-        private readonly IListingSource _listing;
+        private readonly IListingSource _singleFileListing;
         private readonly BreakpointSet _breakpoints;
         private readonly string _directory;
+
+        // Which listing source the pane is reading through, decided by what F5 last
+        // did. Re-pointed rather than wrapped: the seam exists so that swapping the
+        // implementation behind it is a one-line change, and a wrapper around both
+        // would put the choice back inside the thing the choice was extracted from.
+        private IListingSource _listing;
+
+        // Held across builds so the pane keeps one object and only the knowledge
+        // behind it changes. Null until a project has been built.
+        private ProjectListingSource _projectListing;
 
         // What the machine behind the session says it can do, read once at
         // construction because a backend's capabilities are a fact about the build
@@ -144,7 +156,8 @@ namespace WinASM65.Monitor.Shell
 
             _session = session;
             _theme = theme ?? ShellTheme.Default;
-            _listing = listing ?? ListingSourceFactory.Create();
+            _singleFileListing = listing ?? ListingSourceFactory.Create();
+            _listing = _singleFileListing;
             _directory = directory;
             _capabilities = ExecutionCapabilities.Of(session.Backend);
 
@@ -313,6 +326,24 @@ namespace WinASM65.Monitor.Shell
             SetMessage(SaveStateSlot(null));
         }
 
+        /// The F5 rule, as the help screen states it.
+        ///
+        /// One public constant so the screen and the tests read the same sentence. A
+        /// rule the help screen paraphrases and the tests quote separately is two
+        /// rules, and they drift on the day somebody tidies the wording.
+        ///
+        /// It has to be on the screen rather than in a comment because the alternative
+        /// is a key that assembles one file in one directory and a whole project in
+        /// another, with nothing on screen to say which just happened. The message
+        /// line names the branch on every press; this line is what makes the branch
+        /// predictable in advance.
+        /// </summary>
+        public const string ProjectRule =
+            "F5 builds the project when a config.json in the open source's directory, or"
+            + " in one above it up to the session directory, declares that source as an"
+            + " input; otherwise it assembles that one file (BUILD config.json, or"
+            + " ASSEMBLE <file>).";
+
         /// <summary>
         /// The keys this build binds, the ones a later milestone owns, and what each
         /// bound key needs from the machine behind the shell.
@@ -341,7 +372,7 @@ namespace WinASM65.Monitor.Shell
                     new ShellKey("F2", "file tree", true),
                     new ShellKey("F3", "listing pane", true),
                     new ShellKey("F4", "RAM pane", true),
-                    new ShellKey("F5", "assemble under the cursor", true),
+                    new ShellKey("F5", "build: the project, or the one file", true),
                     new ShellKey("F7", "save state", true, ExecutionCapability.StateSaveLoad),
                     new ShellKey("F8", "toggle breakpoint", true, ExecutionCapability.BreakpointExecution),
                     new ShellKey("F9", "run", true, ExecutionCapability.Resume),
@@ -569,6 +600,14 @@ namespace WinASM65.Monitor.Shell
                 lines.Add("  " + key.Key.PadRight(7) + key.Description + Note(key));
 
             lines.Add(string.Empty);
+
+            // The F5 rule, on the screen a user opens precisely to find out what a key
+            // does. Two lines rather than a table, because it is one sentence of rule
+            // and a line per source would be a help screen nobody reads.
+            lines.Add(ProjectRule);
+            lines.Add("  The message line names which of the two ran, every time.");
+
+            lines.Add(string.Empty);
             lines.Add(_theme.DescribeSource());
 
             foreach (string problem in _theme.Diagnostics)
@@ -634,6 +673,20 @@ namespace WinASM65.Monitor.Shell
         }
 
         /// <summary>
+        /// The source the listing pane is reading through right now, which is the
+        /// single-file adapter or the project one depending on what F5 last did.
+        /// <para>
+        /// Exposed because "which of the two" is the claim this window makes about
+        /// itself, and a claim a test cannot read is a claim nobody can check. It is the
+        /// same four-member seam the pane holds, so asking costs the pane nothing.
+        /// </para>
+        /// </summary>
+        public IListingSource ListingSource
+        {
+            get { return _listing; }
+        }
+
+        /// <summary>
         /// The status line. Exposed because "STOPPED" versus "RUNNING" and the
         /// breakpoint count are the statements the editor keys make about the machine,
         /// and a claim the test cannot read is a claim nobody can check.
@@ -670,15 +723,30 @@ namespace WinASM65.Monitor.Shell
         }
 
         /// <summary>
-        /// F5. Assembles the open source, then re-lists it.
+        /// F5. Builds the project the open source belongs to, or assembles that one
+        /// file.
         ///
-        /// The two are in this order for a reason. The listing comes from an assembly
-        /// run here and now: the seam assembles the file again on every request and
-        /// keeps nothing, so there is no earlier listing to be shown by mistake. And
-        /// when the assembly is refused, the pane is given the refusal instead of the
-        /// listing the same source produced a moment ago — a pane showing rows the
-        /// machine has just refused to accept is the one picture a debugger must never
-        /// present.
+        /// <para>
+        /// The rule is stated on the help screen and repeated on the message line
+        /// after every press, because a key that quietly changes what it does
+        /// depending on where a file happens to sit is the one thing a user cannot
+        /// debug. <see cref="ProjectConfigLocator"/> decides it — a
+        /// <c>config.json</c> governs the open source when it declares that source as
+        /// one of its inputs — and the branch is one command line either way:
+        /// <c>BUILD config.json</c> or <c>ASSEMBLE &lt;file&gt;</c>. Nothing here calls
+        /// the assembler or the project session itself, so the REPL can do either, and
+        /// even the refusal of a configuration that cannot be read is the session's
+        /// answer rather than a second one invented here.
+        /// </para>
+        ///
+        /// <para>
+        /// The order afterwards is the same for both branches, and for the same reason
+        /// as before: the listing comes from a run that just happened, so the pane
+        /// cannot be one assembly behind the source. A refused build is given to the
+        /// pane rather than the rows it would otherwise have shown — rows drawn beside
+        /// the reason they could not be produced are the fiction this project refuses
+        /// everywhere else.
+        /// </para>
         /// </summary>
         public void AssembleCurrentSource()
         {
@@ -689,19 +757,112 @@ namespace WinASM65.Monitor.Shell
                 return;
             }
 
+            ProjectGovernance project = ProjectConfigLocator.Locate(_sourceFile, _directory);
+
+            if (!project.Governed)
+            {
+                AssembleSingleFile();
+                return;
+            }
+
+            BuildProject(project.Configuration);
+        }
+
+        /// <summary>The no-project branch of F5: exactly what it always issued.</summary>
+        private void AssembleSingleFile()
+        {
             IReadOnlyList<string> answer = Run(EditorCommands.Assemble(_sourceFile));
 
             if (Failed(answer))
             {
-                SetMessage(string.Join(" ", new List<string>(answer).ToArray()));
-                _listingPane.ShowProblem(string.Join(" " + Environment.NewLine, new List<string>(answer).ToArray()));
-                RefreshPanes();
+                ShowFailure(answer);
                 return;
             }
 
-            SetMessage(string.Join(" ", new List<string>(answer).ToArray()));
+            _listing = _singleFileListing;
+            SetMessage(Said(answer) + " -- one file: no config.json declares it.");
             ReloadListing();
             RefreshPanes();
+        }
+
+        /// <summary>
+        /// The project branch of F5. The answer is the build's own, with the branch
+        /// named at the end, so a user reading the message line knows which of the two
+        /// things F5 just did before they read anything else.
+        /// </summary>
+        private void BuildProject(string configuration)
+        {
+            IReadOnlyList<string> answer = Run(EditorCommands.Build(configuration));
+
+            if (Failed(answer))
+            {
+                ShowFailure(answer);
+                return;
+            }
+
+            ProjectSession session = _session.Projects.LastSession;
+
+            if (session != null)
+            {
+                ProjectListingSource project = _projectListing;
+                if (project == null)
+                {
+                    project = new ProjectListingSource(Adapter(), _directory, session, configuration);
+                    _projectListing = project;
+                }
+                else
+                {
+                    project.Use(session, configuration);
+                }
+
+                _listing = project;
+            }
+
+            SetMessage(Said(answer) + " -- project " + configuration
+                + ". Load the image in the emulator; this shell has no verb that pushes"
+                + " one into a running machine.");
+            ReloadListing();
+            RefreshPanes();
+        }
+
+        /// <summary>
+        /// The row translation the project source reuses, rather than a second one.
+        ///
+        /// The adapter this window was built with is normally already the single-file
+        /// one, which is what carries the CPU's opcode table and the lexer — the two
+        /// things that decide what a pane paints a row as. When the caller handed over
+        /// some other <see cref="IListingSource"/> there is no adapter to borrow, and a
+        /// default-CPU one is built: a project listing then reports the standard 6502's
+        /// mnemonics and forms, which is what the factory's own source would have
+        /// reported too. A stub listing source has no CPU to be consistent with, so
+        /// there is nothing better to pick.
+        /// </summary>
+        private AssemblerListingSource Adapter()
+        {
+            return _singleFileListing as AssemblerListingSource
+                ?? new AssemblerListingSource(CpuFactory.Create("6502"), _directory);
+        }
+
+        /// <summary>
+        /// A refused command, in the pane and in the message line. Both get the whole
+        /// answer: a project failure is several diagnostics, and the message row and
+        /// the pane are two places to show them rather than one.
+        /// </summary>
+        private void ShowFailure(IReadOnlyList<string> answer)
+        {
+            SetMessage(Said(answer));
+            _listingPane.ShowProblem(answer == null || answer.Count == 0
+                ? "the command was refused without saying why."
+                : string.Join(Environment.NewLine, new List<string>(answer).ToArray()));
+            RefreshPanes();
+        }
+
+        /// <summary>The answer as one line, which is what the message row can show.</summary>
+        private static string Said(IReadOnlyList<string> answer)
+        {
+            return answer == null || answer.Count == 0
+                ? string.Empty
+                : string.Join(" ", new List<string>(answer).ToArray());
         }
 
         /// <summary>

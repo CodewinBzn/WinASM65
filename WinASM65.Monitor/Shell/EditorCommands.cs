@@ -33,6 +33,21 @@ namespace WinASM65.Monitor.Shell
             return "ASSEMBLE " + (sourceFile ?? string.Empty);
         }
 
+        /// <summary>
+        /// <c>BUILD &lt;config.json&gt;</c>.
+        ///
+        /// The same verb a user types at the prompt, and resolved by the same rule:
+        /// against the directory the session was given. The shell's whole claim is
+        /// that F5 does nothing a REPL user cannot, and a key that built the project
+        /// by calling the library itself would break that claim on the one verb where
+        /// it would cost the user the most — a project is many files and a silent
+        /// second code path is a second dialect nobody can type.
+        /// </summary>
+        public static string Build(string configurationFile)
+        {
+            return "BUILD " + (configurationFile ?? string.Empty);
+        }
+
         /// <summary><c>BREAK SET &lt;kind&gt; $addr</c>.</summary>
         public static string SetBreakpoint(string kind, int address)
         {
