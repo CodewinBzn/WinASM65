@@ -12,7 +12,7 @@ namespace WinASM65.Monitor.Shell
     /// only presentation surface. The active editor remains available to the shell
     /// so existing commands continue to operate on the selected document.
     /// </summary>
-    public sealed class SourceEditorTabs
+    public sealed class SourceEditorTabs : IDisposable
     {
         private readonly TabControl _tabs = new TabControl();
         private readonly List<SourceEditorPane> _editors = new List<SourceEditorPane>();
@@ -72,10 +72,7 @@ namespace WinASM65.Monitor.Shell
             }
 
             SourceEditorPane editor = CreateEditor();
-            if (text == null && File.Exists(fullPath))
-                editor.LoadSource(fullPath, File.ReadAllText(fullPath));
-            else
-                editor.LoadSource(fullPath, text ?? string.Empty);
+            editor.LoadSource(fullPath, text ?? string.Empty);
             _editors.Add(editor);
             _paths.Add(fullPath);
             _tabs.AddTab(Path.GetFileName(fullPath), editor.Control, true);
@@ -150,6 +147,12 @@ namespace WinASM65.Monitor.Shell
                     success = false;
             }
             return success;
+        }
+
+        public void Dispose()
+        {
+            foreach (SourceEditorPane editor in _editors)
+                editor.Dispose();
         }
 
         public string GetSourceFile(SourceEditorPane editor)

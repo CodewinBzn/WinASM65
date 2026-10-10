@@ -182,10 +182,15 @@ namespace WinASM65.Monitor
                             break;
                         }
 
-                        Require(parts, 3, "ROM LOAD <image>");
-                        if (!parts[1].Equals("LOAD", StringComparison.OrdinalIgnoreCase))
+                        if (parts.Length < 3
+                            || !parts[1].Equals("LOAD", StringComparison.OrdinalIgnoreCase))
                             throw new MonitorException("ROM expects LOAD <image>");
-                        output.AddRange(TransferRom(parts[2]));
+
+                        string imagePath = line.Substring(line.IndexOf(parts[1], StringComparison.Ordinal)
+                            + parts[1].Length).Trim();
+                        if (imagePath.Length >= 2 && imagePath[0] == '"' && imagePath[imagePath.Length - 1] == '"')
+                            imagePath = imagePath.Substring(1, imagePath.Length - 2);
+                        output.AddRange(TransferRom(imagePath));
                         break;
                     case "LOAD":
                         Require(parts, 3, "LOAD <unit> <address>");

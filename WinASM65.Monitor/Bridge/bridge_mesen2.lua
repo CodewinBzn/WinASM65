@@ -125,8 +125,8 @@ local function install_ram_watchpoint()
 end
 
 -- Formats and sends the accumulated RAM writes as one PUSH line, then
--- clears the buffer. Called from on_tick, which only fires while the
--- machine runs, so a stopped machine never sends a push.
+-- clears the buffer. Called once per on_tick while the machine runs, so
+-- changes arrive even when the monitor has no command waiting.
 --
 -- The payload is capped before formatting: a burst that outruns the cap is
 -- truncated, and the next tick sends the rest. Capping after building the
@@ -475,7 +475,23 @@ end
 -- dead socket looks exactly like a crashed monitor.
 local function dispatch(line)
   local tokens = {}
-  for token in line:gmatch("%S+") do tokens[#tokens + 1] = token end
+  local token = {}
+  local quoted = false
+  for index = 1, #line do
+    local character = line:sub(index, index)
+    if character == '"' then
+      quoted = not quoted
+    elseif not quoted and character:match("%s") then
+      if #token > 0 then
+        tokens[#tokens + 1] = table.concat(token)
+        token = {}
+      end
+    else
+      token[#token + 1] = character
+    end
+  end
+  if quoted then return fail("unterminated quoted argument") end
+  if #token > 0 then tokens[#tokens + 1] = table.concat(token) end
   if #tokens == 0 then return fail("empty command") end
 
   local command = tokens[1]:upper()
@@ -732,6 +748,10 @@ local function on_tick()
     log("monitor connected")
     return
   end
+
+  -- Drain writes made since the preceding frame even when no monitor command is
+  -- waiting. The receiver treats PUSH as an unsolicited update.
+  drain_ram_push()
 
   local line = client:receive("*l")
   if line == nil then return end

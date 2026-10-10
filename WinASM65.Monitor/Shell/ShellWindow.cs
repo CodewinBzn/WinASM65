@@ -31,7 +31,7 @@ namespace WinASM65.Monitor.Shell
     /// it, purely, from a width and a height; this class only puts panes where it
     /// is told.
     /// </summary>
-    public sealed class ShellWindow
+    public sealed class ShellWindow : IDisposable
     {
         public const int DefaultOrigin = 0x0800;
         public const int MaxRows = 4000;
@@ -69,6 +69,13 @@ namespace WinASM65.Monitor.Shell
         private int _sourceLoadVersion;
         private string _lastBuiltRomPath;
         private DesktopPortal _contextMenuPortal;
+        private readonly Action<IReadOnlyList<(int Address, byte Value)>> _ramChangedHandler;
+        private readonly object _ramUpdateLock = new object();
+        private readonly Dictionary<int, byte> _pendingRamChanges = new Dictionary<int, byte>();
+        private bool _ramUpdateQueued;
+        private bool _disposed;
+        private bool _actionInProgress;
+        private int _actionGeneration;
 
         public ShellWindow(MonitorSession session, ShellTheme theme, IListingSource listing, string directory, ConsoleWindowSystem windowSystem)
         {
@@ -92,7 +99,8 @@ namespace WinASM65.Monitor.Shell
             _tree.Activated += (sender, row) => OnTreeActivated(row);
             _tree.ContextRequested += OnTreeContextRequested;
             _sourceEditors.Control.MouseRightClick += OnEditorContextRequested;
-            _session.Backend.RamChanged += changes => OnRamChanged(changes);
+            _ramChangedHandler = OnRamChanged;
+            _session.Backend.RamChanged += _ramChangedHandler;
             _status = new StatusLine(_theme);
             _message = new MarkupControl(new List<string> { string.Empty })
             {
@@ -148,7 +156,7 @@ namespace WinASM65.Monitor.Shell
                 ShowTitle = true,
                 ShowInTaskbar = false,
             };
-            _treeWindow.AddControl(_tree.Control);
+            _treeWindow.AddControl(_tree.ScrollableControl);
 
             _editorWindow = new Window(windowSystem)
             {
@@ -182,7 +190,7 @@ namespace WinASM65.Monitor.Shell
                 ShowTitle = true,
                 ShowInTaskbar = false,
             };
-            _ramWindow.AddControl(_ram.Control);
+            _ramWindow.AddControl(_ram.ScrollableControl);
 
             _refusalWindow = new Window(windowSystem)
             {
@@ -204,6 +212,17 @@ namespace WinASM65.Monitor.Shell
             BindKeys();
         }
 
+        private void TransferRomWithFeedback(string path)
+        {
+            if (_actionInProgress)
+            {
+                PostMessage("An operation is already in progress.");
+                return;
+            }
+            RunWithProgress("Transferring ROM " + Path.GetFileName(path) + "...",
+                progress => string.Join(" ", _session.TransferRom(path)));
+        }
+
         public Window Window { get { return _mainWindow; } }
 
         public void RegisterWindows(ConsoleWindowSystem ws)
@@ -214,6 +233,17 @@ namespace WinASM65.Monitor.Shell
             ws.AddWindow(_editorWindow, activateWindow: true);
             ws.AddWindow(_ramWindow);
             ws.AddWindow(_refusalWindow);
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+            _sourceLoadVersion++;
+            _session.Backend.RamChanged -= _ramChangedHandler;
+            DismissContextMenu();
+            _sourceEditors.Dispose();
         }
 
         public ShellTheme Theme { get { return _theme; } }
@@ -430,11 +460,11 @@ namespace WinASM65.Monitor.Shell
                 return;
             }
 
-            string text = SourceEditor.TextView.Content;
-            _commands.Add("ASSEMBLE " + Path.GetFileName(_sourceFile));
-            
-            IReadOnlyList<string> answer = _session.Execute("ASSEMBLE " + Path.GetFileName(_sourceFile));
-            _messageText = "-- single file " + Path.GetFileName(_sourceFile) + " " + string.Join(" ", answer);
+            string sourcePath = Path.GetRelativePath(_directory, _sourceFile);
+            string command = EditorCommands.Assemble(sourcePath);
+            _commands.Add(command);
+            IReadOnlyList<string> answer = _session.Execute(command);
+            _messageText = "-- single file " + sourcePath + " " + string.Join(" ", answer);
         }
 
         public void BuildProject(string configFile)
@@ -488,11 +518,15 @@ namespace WinASM65.Monitor.Shell
             if (!governance.Governed)
             {
                 SaveAllSources();
+                if (_messageText.StartsWith("one or more sources could not be saved", StringComparison.Ordinal))
+                    return;
                 AssembleCurrentSource();
                 return;
             }
 
             SaveAllSources();
+            if (_messageText.StartsWith("one or more sources could not be saved", StringComparison.Ordinal))
+                return;
             ProjectBuildReport report = _session.Projects.Build(governance.Configuration);
             _commands.Add("BUILD " + governance.Configuration);
             _messageText = string.Join(" ", report.Answer);
@@ -504,8 +538,160 @@ namespace WinASM65.Monitor.Shell
             }
 
             _lastBuiltRomPath = report.Result.ImagePath;
-            IReadOnlyList<string> transfer = _session.TransferRom(report.Result.ImagePath);
-            _messageText = string.Join(" ", transfer);
+            try
+            {
+                IReadOnlyList<string> transfer = _session.TransferRom(report.Result.ImagePath);
+                _messageText = string.Join(" ", transfer);
+            }
+            catch (Exception ex)
+            {
+                _messageText = "ERR transferring ROM: " + ex.Message;
+            }
+        }
+
+        private void StartBuildAndTransfer()
+        {
+            if (_actionInProgress)
+            {
+                PostMessage("An operation is already in progress.");
+                return;
+            }
+            if (string.IsNullOrEmpty(_sourceFile))
+            {
+                PostMessage("ERR no source is open");
+                return;
+            }
+
+            ProjectGovernance governance = ProjectConfigLocator.Locate(_sourceFile, _directory);
+            if (!governance.Governed)
+            {
+                SaveAllSources();
+                if (!_messageText.StartsWith("saved ", StringComparison.Ordinal))
+                {
+                    PostMessage("ERR " + _messageText);
+                    return;
+                }
+                string sourcePath = Path.GetRelativePath(_directory, _sourceFile);
+                string command = EditorCommands.Assemble(sourcePath);
+                _commands.Add(command);
+                RunWithProgress("Assembling " + sourcePath + "...",
+                    progress => "-- single file " + sourcePath + " "
+                        + string.Join(" ", _session.Execute(command)));
+                return;
+            }
+
+            StartProjectBuild(governance.Configuration, true);
+        }
+
+        private void StartProjectBuild(string configFile, bool transferRom)
+        {
+            if (_actionInProgress)
+            {
+                PostMessage("An operation is already in progress.");
+                return;
+            }
+            SaveAllSources();
+            if (!_messageText.StartsWith("saved ", StringComparison.Ordinal))
+            {
+                PostMessage("ERR " + _messageText);
+                return;
+            }
+
+            _commands.Add("BUILD " + configFile);
+            string builtRomPath = null;
+            RunWithProgress("Building project " + configFile + "...", progress =>
+            {
+                ProjectBuildReport report = _session.Projects.Build(configFile);
+                if (!report.Succeeded || report.Result == null
+                    || string.IsNullOrEmpty(report.Result.ImagePath))
+                {
+                    return string.Join(" ", report.Answer);
+                }
+
+                builtRomPath = report.Result.ImagePath;
+                if (!transferRom)
+                    return string.Join(" ", report.Answer);
+
+                progress("Build complete; transferring ROM...");
+                IReadOnlyList<string> answer = _session.TransferRom(builtRomPath);
+                return string.Join(" ", answer);
+            }, () => _lastBuiltRomPath = builtRomPath);
+        }
+
+        private void StartAssembleCurrentSource()
+        {
+            if (_actionInProgress)
+            {
+                PostMessage("An operation is already in progress.");
+                return;
+            }
+            if (string.IsNullOrEmpty(_sourceFile))
+            {
+                PostMessage("ERR no source is open");
+                return;
+            }
+
+            SaveCurrentSource();
+            if (Message.StartsWith("ERR ", StringComparison.Ordinal))
+            {
+                PostMessage(Message);
+                return;
+            }
+
+            string sourcePath = Path.GetRelativePath(_directory, _sourceFile);
+            string command = EditorCommands.Assemble(sourcePath);
+            _commands.Add(command);
+            RunWithProgress("Assembling " + sourcePath + "...",
+                progress => "-- single file " + sourcePath + " "
+                    + string.Join(" ", _session.Execute(command)));
+        }
+
+        private void RunWithProgress(string initialMessage, Func<Action<string>, string> action,
+            Action completed = null)
+        {
+            if (_actionInProgress)
+            {
+                PostMessage("An operation is already in progress.");
+                return;
+            }
+
+            _actionInProgress = true;
+            int generation = ++_actionGeneration;
+            _loadingSpinner.IsSpinning = true;
+            PostMessage(initialMessage);
+
+            Task.Run(() => action(progress =>
+            {
+                if (_disposed)
+                    return;
+                _windowSystem.EnqueueOnUIThread(() =>
+                {
+                    if (!_disposed && generation == _actionGeneration)
+                        PostMessage(progress);
+                });
+            })).ContinueWith(task =>
+            {
+                if (_disposed)
+                    return;
+                _windowSystem.EnqueueOnUIThread(() =>
+                {
+                    if (_disposed || generation != _actionGeneration)
+                        return;
+
+                    _actionInProgress = false;
+                    _loadingSpinner.IsSpinning = false;
+                    if (task.IsFaulted)
+                    {
+                        PostMessage("ERR " + task.Exception.GetBaseException().Message);
+                    }
+                    else
+                    {
+                        completed?.Invoke();
+                        PostMessage(task.Result);
+                    }
+                    RefreshPanes();
+                });
+            }, TaskScheduler.Default);
         }
 
         public void ResumeMachine()
@@ -630,6 +816,7 @@ namespace WinASM65.Monitor.Shell
             _editorWindow?.Close();
             _ramWindow?.Close();
             _refusalWindow?.Close();
+            Dispose();
         }
 
         public void OpenSourceFile(string path)
@@ -671,7 +858,16 @@ namespace WinASM65.Monitor.Shell
             if (!File.Exists(fullPath))
                 return 4;
 
-            OpenSourceFile(fullPath);
+            SourceDocument document = new SourceDocument(_directory);
+            string problem;
+            string text = document.ReadText(fullPath, out problem);
+            if (problem != null)
+            {
+                PostMessage("ERR " + problem);
+                return 4;
+            }
+            OpenSourceAndList(fullPath, text);
+            PostMessage("Opened " + Path.GetFileName(fullPath));
             return 0;
         }
 
@@ -701,7 +897,8 @@ namespace WinASM65.Monitor.Shell
             _ram.InvalidateWindow(_ramWindow);
 
             // Refresh listing pane with current listing
-            if (_listing != null && SourceEditor != null)
+            if (_listing != null && SourceEditor != null
+                && SourceDocument.IsAssemblerSourceFile(_sourceFile))
             {
                 string sourceText = SourceEditor.TextView.Content;
                 var request = new ListingRequest(_sourceFile ?? "", 0x8000, 0);
@@ -753,6 +950,9 @@ namespace WinASM65.Monitor.Shell
                 _treeWindow.Height = paneHeight;
                 _tree.Control.Width = Math.Max(1, layout.TreeWidth - 2);
                 _tree.Control.Height = Math.Max(1, paneHeight - 2);
+                _tree.ScrollableControl.Width = Math.Max(1, layout.TreeWidth - 2);
+                _tree.ScrollableControl.Height = Math.Max(1, paneHeight - 2);
+                _tree.SetViewportWidth(Math.Max(1, layout.TreeWidth - 2));
             }
             else
             {
@@ -770,6 +970,7 @@ namespace WinASM65.Monitor.Shell
 
                 _sourceEditors.Control.Visible = true;
                 _sourceEditors.Control.Width = Math.Max(1, layout.EditorWidth - 2);
+                _listingPane.SetViewportWidth(Math.Max(1, layout.EditorWidth - 4));
                 int editorHeight = Math.Max(2, paneHeight - 2);
                 _sourceEditors.Control.Height = editorHeight;
                 ApplyActiveEditorLayout();
@@ -790,6 +991,8 @@ namespace WinASM65.Monitor.Shell
                 _ram.Control.Width = Math.Max(1, layout.RamWidth - 2);
                 int ramHeight = Math.Max(1, paneHeight - 2);
                 _ram.Control.Height = ramHeight;
+                _ram.ScrollableControl.Width = Math.Max(1, layout.RamWidth - 2);
+                _ram.ScrollableControl.Height = ramHeight;
                 _ram.SetContentWidth(Math.Max(1, layout.RamWidth - 3));
                 _ram.SetVisibleItems(ramHeight);
             }
@@ -824,12 +1027,44 @@ namespace WinASM65.Monitor.Shell
         public void PostMessage(string text)
         {
             _messageText = text ?? string.Empty;
-            _message.Text = _messageText;
+            string role = MessageHasError(_messageText) ? ThemeRole.Error
+                : MessageHasSuccess(_messageText) ? ThemeRole.Label : ThemeRole.Warning;
+            SharpConsoleUI.Color color = _theme.Foreground(role);
+            string tag = "[#" + color.R.ToString("X2", CultureInfo.InvariantCulture)
+                + color.G.ToString("X2", CultureInfo.InvariantCulture)
+                + color.B.ToString("X2", CultureInfo.InvariantCulture) + "]";
+            string cue = role == ThemeRole.Error ? "[ERR] "
+                : role == ThemeRole.Label ? "[OK] " : "[i] ";
+            _message.Text = tag + cue + EscapeMarkup(_messageText) + "[/]";
         }
 
         private void SetMessage(string text)
         {
-            _message.Text = text ?? string.Empty;
+            PostMessage(text);
+        }
+
+        private static bool MessageHasError(string text)
+        {
+            return text.StartsWith("ERR", StringComparison.OrdinalIgnoreCase)
+                || text.IndexOf(" ERR ", StringComparison.OrdinalIgnoreCase) >= 0
+                || text.IndexOf("failed", StringComparison.OrdinalIgnoreCase) >= 0
+                || text.IndexOf("could not", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool MessageHasSuccess(string text)
+        {
+            return text.StartsWith("OK", StringComparison.OrdinalIgnoreCase)
+                || text.IndexOf("OK ", StringComparison.OrdinalIgnoreCase) >= 0
+                || text.StartsWith("Opened ", StringComparison.OrdinalIgnoreCase)
+                || text.StartsWith("saved ", StringComparison.OrdinalIgnoreCase)
+                || text.StartsWith("state saved", StringComparison.OrdinalIgnoreCase)
+                || text.IndexOf("ROM replaced", StringComparison.OrdinalIgnoreCase) >= 0
+                || text.IndexOf("built", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static string EscapeMarkup(string text)
+        {
+            return (text ?? string.Empty).Replace("[", "[[").Replace("]", "]]");
         }
 
         private void BindKeys()
@@ -847,17 +1082,13 @@ namespace WinASM65.Monitor.Shell
                     case "F2": action = () => ToggleTree(); break;
                     case "F3": action = () => FocusEditor(); break;
                     case "F4": action = () => ToggleRamPane(); break;
-                    case "F5": action = () =>
-                    {
-                        BuildAndTransferCurrentProject();
-                        PostMessage(Message);
-                    }; break;
-                    case "F6": action = () => SaveAllSources(); break;
-                    case "F7": action = () => SaveState(); break;
-                    case "F8": action = () => ToggleBreakpoint(); break;
-                    case "F9": action = () => ResumeMachine(); break;
-                    case "F10": action = () => StepMachine(); break;
-                    case "Ctrl+S": action = () => SaveCurrentSource(); break;
+                    case "F5": action = () => StartBuildAndTransfer(); break;
+                    case "F6": action = () => { SaveAllSources(); PostMessage(Message); }; break;
+                    case "F7": action = () => { SaveState(); PostMessage(Message); }; break;
+                    case "F8": action = () => { ToggleBreakpoint(); PostMessage(Message); }; break;
+                    case "F9": action = () => { ResumeMachine(); PostMessage(Message); }; break;
+                    case "F10": action = () => { StepMachine(); PostMessage(Message); }; break;
+                    case "Ctrl+S": action = () => { SaveCurrentSource(); PostMessage(Message); }; break;
                     case "Ctrl+Q": action = () => RequestQuit(); break;
                 }
 
@@ -870,7 +1101,8 @@ namespace WinASM65.Monitor.Shell
 
         private void OnTreeActivated(FileTreeRow row)
         {
-            if (row == null || row.IsDirectory) return;
+            if (row == null || (row.Kind != FileTreeKind.Source && row.Kind != FileTreeKind.TextFile))
+                return;
             string path = row.Path;
             if (!File.Exists(path)) return;
 
@@ -880,8 +1112,8 @@ namespace WinASM65.Monitor.Shell
         private void OnTreeContextRequested(object sender, MouseEventArgs e)
         {
             FileTreeRow row = _tree.Selected;
-            if (row != null && row.Kind == FileTreeKind.Source)
-                ShowSourceContextMenu(row, e.AbsolutePosition);
+            if (row != null && (row.Kind == FileTreeKind.Source || row.Kind == FileTreeKind.Rom))
+                ShowSourceContextMenu(row, e.AbsolutePosition, _tree.ScrollableControl);
         }
 
         private void OnEditorContextRequested(object sender, MouseEventArgs e)
@@ -891,38 +1123,44 @@ namespace WinASM65.Monitor.Shell
 
             ShowSourceContextMenu(
                 new FileTreeRow(FileTreeKind.Source, Path.GetFileName(_sourceFile), _sourceFile),
-                e.AbsolutePosition);
+                e.AbsolutePosition, _sourceEditors.Control);
         }
 
-        private void ShowSourceContextMenu(FileTreeRow row, Point position)
+        private void ShowSourceContextMenu(FileTreeRow row, Point position, IWindowControl owner)
         {
             DismissContextMenu();
 
             string path = row.Path;
-            ProjectGovernance governance = ProjectConfigLocator.Locate(path, _directory);
-            MenuBuilder menuBuilder = Controls.Menu()
-                .Vertical()
-                .WithName("source-context-menu")
-                .AddItem("Assemble source", () => RunSourceAction(path, AssembleSourceFromContext));
+            bool isSource = row.Kind == FileTreeKind.Source;
+            bool isRom = row.Kind == FileTreeKind.Rom;
+            ProjectGovernance governance = isSource
+                ? ProjectConfigLocator.Locate(path, _directory)
+                : null;
+            MenuBuilder menuBuilder = Controls.Menu().Vertical().WithName("source-context-menu");
+            if (isSource)
+                menuBuilder.AddItem("Assemble source", () => RunSourceAction(path, StartAssembleCurrentSource));
 
-            if (governance.Governed)
+            if (isSource && governance.Governed)
             {
                 menuBuilder.AddItem("Build project", () => RunSourceAction(path, () =>
                 {
-                    SaveAllSources();
-                    if (!Message.StartsWith("one or more sources could not be saved", StringComparison.Ordinal))
-                        BuildProject(governance.Configuration);
-                    PostMessage(Message);
+                    StartProjectBuild(governance.Configuration, false);
                 }));
 
                 if (_session.Backend is IRomTransferTarget)
                 {
-                    menuBuilder.AddItem("Build + Transfer", () => RunSourceAction(path, () =>
-                    {
-                        BuildAndTransferCurrentProject();
-                        PostMessage(Message);
-                    }));
+                    menuBuilder.AddItem("Build + Transfer",
+                        () => RunSourceAction(path, StartBuildAndTransfer));
                 }
+            }
+
+            if (isRom && _session.Backend is IRomTransferTarget)
+            {
+                menuBuilder.AddItem("Transfer this ROM", () =>
+                {
+                    DismissContextMenu();
+                    TransferRomWithFeedback(path);
+                });
             }
 
             if (_lastBuiltRomPath != null && _session.Backend is IRomTransferTarget)
@@ -931,8 +1169,7 @@ namespace WinASM65.Monitor.Shell
                 menuBuilder.AddItem("Transfer last ROM", () =>
                 {
                     DismissContextMenu();
-                    IReadOnlyList<string> answer = _session.TransferRom(_lastBuiltRomPath);
-                    PostMessage(string.Join(" ", answer));
+                    TransferRomWithFeedback(_lastBuiltRomPath);
                 });
             }
 
@@ -940,30 +1177,40 @@ namespace WinASM65.Monitor.Shell
             int width = Math.Max(24, Math.Min(36, Math.Max(
                 "Assemble source".Length,
                 _lastBuiltRomPath == null ? "Build + Transfer".Length : "Transfer last ROM".Length) + 4));
-            int height = (governance.Governed ? 3 : 1)
+            int itemCount = (isSource ? 1 : 0)
+                + (isSource && governance.Governed ? (_session.Backend is IRomTransferTarget ? 2 : 1) : 0)
+                + (isRom && _session.Backend is IRomTransferTarget ? 1 : 0)
                 + (_lastBuiltRomPath != null && _session.Backend is IRomTransferTarget ? 2 : 0)
                 + 2;
+            int height = itemCount;
             int left = Math.Max(0, Math.Min(position.X, _layout.Width - width));
             int top = Math.Max(0, Math.Min(position.Y, _layout.Height - height));
             _contextMenuPortal = _windowSystem.DesktopPortalService.CreatePortal(
                 new DesktopPortalOptions(menu, new Rectangle(left, top, width, height),
-                    true, true, false, () => _contextMenuPortal = null, row == null ? _tree.Control : _sourceEditors.Control,
+                    true, true, false, () => _contextMenuPortal = null, owner,
                     null, null));
         }
 
         private void RunSourceAction(string path, Action action)
         {
             DismissContextMenu();
-            string fullPath = Path.GetFullPath(path);
-            if (SourceEditor != null && string.Equals(SourceEditor.SourceFile, fullPath,
-                StringComparison.OrdinalIgnoreCase))
+            try
             {
-                action();
-                PostMessage(Message);
-                return;
-            }
+                string fullPath = Path.GetFullPath(path);
+                if (SourceEditor != null && string.Equals(SourceEditor.SourceFile, fullPath,
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    action();
+                    PostMessage(Message);
+                    return;
+                }
 
-            OpenSourceWithFeedback(fullPath, action);
+                OpenSourceWithFeedback(fullPath, action);
+            }
+            catch (Exception ex)
+            {
+                PostMessage("ERR " + ex.Message);
+            }
         }
 
         private void OpenSourceWithFeedback(string path, Action afterOpen)
@@ -972,7 +1219,13 @@ namespace WinASM65.Monitor.Shell
             _loadingSpinner.IsSpinning = true;
             PostMessage("Loading " + Path.GetFileName(path));
 
-            Task.Run(() => File.ReadAllText(path)).ContinueWith(task =>
+            Task.Run(() =>
+            {
+                SourceDocument document = new SourceDocument(_directory);
+                string problem;
+                string text = document.ReadText(path, out problem);
+                return new Tuple<string, string>(text, problem);
+            }).ContinueWith(task =>
             {
                 _windowSystem.EnqueueOnUIThread(() =>
                 {
@@ -989,7 +1242,12 @@ namespace WinASM65.Monitor.Shell
 
                     try
                     {
-                        OpenSourceAndList(path, task.Result);
+                        if (task.Result.Item2 != null)
+                        {
+                            PostMessage("ERR loading " + Path.GetFileName(path) + ": " + task.Result.Item2);
+                            return;
+                        }
+                        OpenSourceAndList(path, task.Result.Item1);
                         if (afterOpen != null)
                             afterOpen();
                         else
@@ -1006,14 +1264,7 @@ namespace WinASM65.Monitor.Shell
 
         private void AssembleSourceFromContext()
         {
-            string fileName = Path.GetFileName(_sourceFile);
-            SaveCurrentSource();
-            if (Message.StartsWith("ERR ", StringComparison.Ordinal))
-                return;
-
-            _commands.Add(EditorCommands.Assemble(fileName));
-            IReadOnlyList<string> answer = _session.Execute(EditorCommands.Assemble(fileName));
-            _messageText = "-- single file " + fileName + " " + string.Join(" ", answer);
+            StartAssembleCurrentSource();
         }
 
         private void DismissContextMenu()
@@ -1032,14 +1283,19 @@ namespace WinASM65.Monitor.Shell
 
             ApplyActiveEditorLayout();
             _sourceFile = editor.SourceFile;
-            _listingPane.SetRows(_listing.Rows(new ListingRequest(_sourceFile, 0x8000, 0)
+            if (SourceDocument.IsAssemblerSourceFile(_sourceFile))
             {
-                SourceText = editor.TextView.Content,
-            }));
-            editor.SyncRowsFromListing(_listing.Rows(new ListingRequest(_sourceFile, 0x8000, 0)
+                IReadOnlyList<ListingRow> rows = _listing.Rows(new ListingRequest(_sourceFile, 0x8000, 0)
+                {
+                    SourceText = editor.TextView.Content,
+                });
+                _listingPane.SetRows(rows);
+                editor.SyncRowsFromListing(rows);
+            }
+            else
             {
-                SourceText = editor.TextView.Content,
-            }));
+                _listingPane.SetRows(new List<ListingRow>());
+            }
             RefreshPanes();
         }
 
@@ -1058,10 +1314,35 @@ namespace WinASM65.Monitor.Shell
 
         private void OnRamChanged(IReadOnlyList<(int Address, byte Value)> changes)
         {
+            if (_disposed || changes == null || changes.Count == 0)
+                return;
+            lock (_ramUpdateLock)
+            {
+                if (_disposed)
+                    return;
+                foreach ((int address, byte value) in changes)
+                    _pendingRamChanges[address] = value;
+                if (_ramUpdateQueued)
+                    return;
+                _ramUpdateQueued = true;
+            }
+
             _windowSystem.EnqueueOnUIThread(() =>
             {
-                _ram.ApplyChanges(changes);
-                _ram.InvalidateWindow(_ramWindow);
+                List<(int Address, byte Value)> latest;
+                lock (_ramUpdateLock)
+                {
+                    latest = new List<(int Address, byte Value)>(_pendingRamChanges.Count);
+                    foreach (KeyValuePair<int, byte> change in _pendingRamChanges)
+                        latest.Add((change.Key, change.Value));
+                    _pendingRamChanges.Clear();
+                    _ramUpdateQueued = false;
+                }
+                if (!_disposed && latest.Count > 0)
+                {
+                    _ram.ApplyChanges(latest);
+                    _ram.InvalidateWindow(_ramWindow);
+                }
             });
         }
 

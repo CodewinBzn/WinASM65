@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using SharpConsoleUI;
+using SharpConsoleUI.Builders;
 using SharpConsoleUI.Controls;
 using SharpConsoleUI.Events;
 
@@ -17,8 +19,10 @@ namespace WinASM65.Monitor.Shell
     public sealed class FileTreePane
     {
         private readonly ListControl _list;
+        private readonly IWindowControl _control;
         private readonly ShellTheme _theme;
         private readonly List<FileTreeRow> _rows = new List<FileTreeRow>();
+        private int _viewportWidth = 1;
 
         public FileTreePane(ShellTheme theme)
         {
@@ -28,14 +32,23 @@ namespace WinASM65.Monitor.Shell
             _list = new ListControl
             {
                 IsSelectable = true,
+                SelectOnRightClick = true,
                 Title = Title,
             };
+            _control = Controls.ScrollablePanel()
+                .AddControl(_list)
+                .WithVerticalScroll(ScrollMode.None)
+                .WithHorizontalScroll(ScrollMode.Scroll)
+                .WithScrollbar(true)
+                .Build();
 
             _list.ItemActivated += OnActivated;
             _list.MouseRightClick += OnRightClick;
         }
 
         public IWindowControl Control { get { return _list; } }
+
+        public IWindowControl ScrollableControl { get { return _control; } }
 
         public string Title { get; set; }
 
@@ -76,6 +89,9 @@ namespace WinASM65.Monitor.Shell
             }
 
             _list.StringItems = labels;
+            _list.Width = Math.Max(_viewportWidth, labels.Count == 0
+                ? _viewportWidth
+                : labels.Max(label => label.Length) + 2);
             if (_list.Items.Count > 0 && _list.SelectedIndex < 0)
                 _list.SelectedIndex = 0;
             _list.Invalidate();
@@ -91,6 +107,14 @@ namespace WinASM65.Monitor.Shell
                     return;
                 }
             }
+        }
+
+        public void SetViewportWidth(int width)
+        {
+            _viewportWidth = Math.Max(1, width);
+            _list.Width = Math.Max(_viewportWidth, _list.StringItems.Count == 0
+                ? _viewportWidth
+                : _list.StringItems.Max(label => label.Length) + 2);
         }
 
         private void OnActivated(object sender, ListItem e)

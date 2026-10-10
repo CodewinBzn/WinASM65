@@ -21,11 +21,14 @@ namespace WinASM65.Monitor.Shell
     /// job is to keep the gutter's contents and scroll position in step with what the
     /// editor buffer shows.
     /// </summary>
-    public sealed class SourceEditorPane
+    public sealed class SourceEditorPane : IDisposable
     {
         private readonly ShellTheme _theme;
         private readonly AssemblerListingSource _source;
         private readonly string _directory;
+        private readonly SourceDocument _document;
+        private readonly AssemblerSyntaxHighlighter _syntaxHighlighter;
+        private readonly JsonSyntaxHighlighter _jsonSyntaxHighlighter;
 
         internal readonly MultilineEditControl TextView;
         internal readonly SourceGutterRenderer Gutter;
@@ -36,6 +39,8 @@ namespace WinASM65.Monitor.Shell
         private readonly TimeSpan _debounceDelay = TimeSpan.FromMilliseconds(300);
         private CancellationTokenSource _debounceCancel;
         private ConsoleWindowSystem _windowSystem;
+        private bool _disposed;
+        private bool _assemblerDocument = true;
 
         public ConsoleWindowSystem WindowSystem
         {
@@ -78,13 +83,18 @@ namespace WinASM65.Monitor.Shell
             _theme = theme ?? ShellTheme.Default;
             _source = source;
             _directory = directory;
+            _document = new SourceDocument(directory);
+            _syntaxHighlighter = new AssemblerSyntaxHighlighter(_source, _theme);
+            _jsonSyntaxHighlighter = new JsonSyntaxHighlighter(_theme);
 
             Gutter = new SourceGutterRenderer(this, _theme);
 
             TextView = new MultilineEditControl(0)
             {
                 ForegroundColor = _theme.Foreground(ThemeRole.Default),
-                SyntaxHighlighter = new AssemblerSyntaxHighlighter(_source, _theme),
+                SyntaxHighlighter = _syntaxHighlighter,
+                HorizontalScrollbarVisibility = ScrollbarVisibility.Auto,
+                WrapMode = WrapMode.NoWrap,
             };
             TextView.ContentChanged += OnContentsChanged;
             TextView.AddGutterRenderer(Gutter);
@@ -121,6 +131,23 @@ namespace WinASM65.Monitor.Shell
         {
             SourceFile = sourceFile;
             IsDirty = false;
+            _assemblerDocument = SourceDocument.IsAssemblerSourceFile(sourceFile);
+            bool jsonDocument = string.Equals(Path.GetExtension(sourceFile), ".json", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(Path.GetExtension(sourceFile), ".jsonc", StringComparison.OrdinalIgnoreCase);
+            TextView.SyntaxHighlighter = _assemblerDocument ? _syntaxHighlighter
+                : jsonDocument ? _jsonSyntaxHighlighter : null;
+            _problem = null;
+            string fullPath = string.IsNullOrEmpty(sourceFile) ? null
+                : Path.GetFullPath(Path.IsPathRooted(sourceFile)
+                    ? sourceFile : Path.Combine(_directory, sourceFile));
+            if (fullPath != null && File.Exists(fullPath))
+            {
+                string fileText = _document.ReadText(fullPath, out string problem);
+                if (problem == null)
+                    text = fileText;
+                else
+                    _problem = problem;
+            }
 
             _suppressEvents = true;
             try
@@ -133,9 +160,10 @@ namespace WinASM65.Monitor.Shell
             }
 
             _rows = new List<EditorRow>();
-            _problem = null;
-
-            LexBufferIncrementally(0);
+            if (_assemblerDocument)
+                LexBufferIncrementally(0);
+            else
+                SyncPlainRows();
             Gutter.Invalidate();
             TextView.Invalidate();
         }
@@ -279,7 +307,7 @@ public void SyncRowsFromListing(IReadOnlyList<ListingRow> listingRows)
         /// </summary>
         private Task RecomputeRowsAsync()
         {
-            if (_source == null || string.IsNullOrEmpty(TextView.Content))
+            if (!_assemblerDocument || _source == null || string.IsNullOrEmpty(TextView.Content))
                 return Task.CompletedTask;
 
             string text = TextView.Content;
@@ -304,6 +332,8 @@ public void SyncRowsFromListing(IReadOnlyList<ListingRow> listingRows)
                 {
                     _windowSystem?.EnqueueOnUIThread(() =>
                     {
+                        if (_disposed)
+                            return;
                         for (int i = 0; i < _rows.Count && i < assembled.Count; i++)
                         {
                             _rows[i].Address = assembled[i].Address;
@@ -322,7 +352,7 @@ public void SyncRowsFromListing(IReadOnlyList<ListingRow> listingRows)
 
         private void OnContentsChanged(object sender, string e)
         {
-            if (_suppressEvents)
+            if (_suppressEvents || _disposed)
                 return;
 
             IsDirty = true;
@@ -332,12 +362,19 @@ public void SyncRowsFromListing(IReadOnlyList<ListingRow> listingRows)
             // The lexer is line-independent, so a keystroke on line N only needs
             // line N (and any shift from insertions/deletions). This is what
             // keeps scrolling and typing in a 6000-line file responsive.
-            LexBufferIncrementally(0);
+            if (_assemblerDocument)
+                LexBufferIncrementally(0);
+            else
+                SyncPlainRows();
             Gutter.Invalidate();
             TextView.Invalidate();
 
+            if (!_assemblerDocument)
+                return;
+
             // Delayed: full assembly runs after the user pauses, off the UI thread.
             _debounceCancel?.Cancel();
+            _debounceCancel?.Dispose();
             _debounceCancel = new CancellationTokenSource();
             CancellationToken token = _debounceCancel.Token;
 
@@ -353,6 +390,21 @@ public void SyncRowsFromListing(IReadOnlyList<ListingRow> listingRows)
                 {
                 }
             });
+        }
+
+        private void SyncPlainRows()
+        {
+            _rows.Clear();
+            for (int line = 0; line < TextView.LineCount; line++)
+            {
+                _rows.Add(new EditorRow
+                {
+                    LineNumber = line + 1,
+                    Address = -1,
+                    Bytes = new List<byte>(),
+                    Text = GetLineText(line),
+                });
+            }
         }
 
         private void OnTextChanged(object sender, EventArgs args)
@@ -403,14 +455,23 @@ public void SyncRowsFromListing(IReadOnlyList<ListingRow> listingRows)
             if (string.IsNullOrEmpty(SourceFile))
                 return new SaveResult(null, "no source is open.");
 
-            SourceDocument document = new SourceDocument(_directory);
             string problem;
-            bool ok = document.Write(SourceFile, TextView.Content, out problem);
+            bool ok = _document.Write(SourceFile, TextView.Content, out problem);
             if (!ok)
                 return new SaveResult(null, problem);
 
             IsDirty = false;
             return new SaveResult(SourceFile + " saved (" + _rows.Count + " lines)", null);
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+            _debounceCancel?.Cancel();
+            _debounceCancel?.Dispose();
+            _debounceCancel = null;
         }
 
         /// <summary>

@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using SharpConsoleUI;
+using SharpConsoleUI.Builders;
 using SharpConsoleUI.Controls;
 
 namespace WinASM65.Monitor.Shell
@@ -17,6 +19,7 @@ namespace WinASM65.Monitor.Shell
     public sealed class RamPane
     {
         private readonly ListControl _list;
+        private readonly IWindowControl _control;
         private readonly ShellTheme _theme;
         private readonly List<RamDumpRow> _rows = new List<RamDumpRow>();
         private readonly List<int> _faults = new List<int>();
@@ -33,9 +36,17 @@ namespace WinASM65.Monitor.Shell
                 IsSelectable = true,
                 Title = Title,
             };
+            _control = Controls.ScrollablePanel()
+                .AddControl(_list)
+                .WithVerticalScroll(ScrollMode.None)
+                .WithHorizontalScroll(ScrollMode.Scroll)
+                .WithScrollbar(true)
+                .Build();
         }
 
         public IWindowControl Control { get { return _list; } }
+
+        public IWindowControl ScrollableControl { get { return _control; } }
 
         public string Title { get; set; }
 
@@ -74,6 +85,9 @@ namespace WinASM65.Monitor.Shell
                 _labels.AddRange(FormatRows(row));
 
             _list.StringItems = new List<string>(_labels);
+            _list.Width = Math.Max(_contentWidth, _labels.Count == 0
+                ? _contentWidth
+                : _labels.Max(label => label.Length) + 1);
             _list.Invalidate();
         }
 
@@ -108,6 +122,9 @@ namespace WinASM65.Monitor.Shell
                 _labels.AddRange(FormatRows(row));
 
             _list.StringItems = new List<string>(_labels);
+            _list.Width = Math.Max(_contentWidth, _labels.Count == 0
+                ? _contentWidth
+                : _labels.Max(label => label.Length) + 1);
             _list.Invalidate();
         }
 

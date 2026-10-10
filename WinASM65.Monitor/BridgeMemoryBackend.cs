@@ -92,7 +92,10 @@ public CpuSnapshot ReadCpuState()
             if (string.IsNullOrWhiteSpace(imagePath))
                 throw new ArgumentException("An image path is required.", nameof(imagePath));
 
-            string response = _client.Send("ROM LOAD " + imagePath);
+            string protocolPath = imagePath.IndexOfAny(new[] { ' ', '\t', '"' }) >= 0
+                ? "\"" + imagePath.Replace("\"", "\\\"") + "\""
+                : imagePath;
+            string response = _client.Send("ROM LOAD " + protocolPath);
             if (!ProtocolClient.IsOk(response))
                 throw new MonitorException(ProtocolClient.ErrorOf(response));
         }

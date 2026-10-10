@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Linq;
+using System.Text;
 using SharpConsoleUI;
+using SharpConsoleUI.Controls;
 using SharpConsoleUI.Drivers;
 using WinASM65.Cpu;
 using WinASM65.Monitor.Abstractions;
@@ -162,6 +164,76 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
+        public void EditorUsesHorizontalScrollingForUnwrappedLongSourceLines()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                SourceEditorPane editor = new SourceEditorPane(ShellTheme.Default,
+                    new AssemblerListingSource(new Cpu6502(), temp.Path), temp.Path);
+                MultilineEditControl control = (MultilineEditControl)editor.Control;
+                Assert.AreEqual(WrapMode.NoWrap, control.WrapMode);
+                Assert.AreEqual(ScrollbarVisibility.Auto, control.HorizontalScrollbarVisibility);
+                editor.Dispose();
+            }
+        }
+
+        [TestMethod]
+        public void EditorCanSaveProjectConfigurationWithoutChangingEncodingOrLineEndings()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string path = System.IO.Path.Combine(temp.Path, "config.json");
+                Encoding encoding = new UnicodeEncoding(false, true);
+                byte[] preamble = encoding.GetPreamble();
+                byte[] content = encoding.GetBytes("{\r\n  \"name\": \"game\"\r\n}\r\n");
+                byte[] bytes = preamble.Concat(content).ToArray();
+                System.IO.File.WriteAllBytes(path, bytes);
+
+                SourceEditorPane editor = new SourceEditorPane(ShellTheme.Default,
+                    new AssemblerListingSource(new Cpu6502(), temp.Path), temp.Path);
+                editor.LoadSource(path, null);
+                MultilineEditControl control = (MultilineEditControl)editor.Control;
+                Assert.AreEqual("{\n  \"name\": \"game\"\n}\n",
+                    control.Content.Replace("\r\n", "\n"));
+                control.Content = control.Content.Replace("game", "edited");
+
+                SaveResult result = editor.Save();
+                Assert.IsTrue(result.Success, result.Problem);
+                byte[] saved = System.IO.File.ReadAllBytes(path);
+                CollectionAssert.AreEqual(preamble, saved.Take(preamble.Length).ToArray());
+                Assert.AreEqual("{\r\n  \"name\": \"edited\"\r\n}\r\n",
+                    encoding.GetString(saved, preamble.Length, saved.Length - preamble.Length));
+                editor.Dispose();
+            }
+        }
+
+        [TestMethod]
+        public void JsonEditorUsesSyntaxHighlightingForPropertiesValuesAndNumbers()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                SourceEditorPane editor = new SourceEditorPane(ShellTheme.Default,
+                    new AssemblerListingSource(new Cpu6502(), temp.Path), temp.Path);
+                editor.LoadSource("config.json", "{ \"name\": \"game\", \"count\": 42, \"enabled\": true }");
+
+                ISyntaxHighlighter highlighter = ((MultilineEditControl)editor.Control).SyntaxHighlighter;
+                Assert.IsInstanceOfType(highlighter, typeof(JsonSyntaxHighlighter));
+
+                IReadOnlyList<SyntaxToken> tokens = highlighter
+                    .Tokenize("{ \"name\": \"game\", \"count\": 42, \"enabled\": true }",
+                        0, SyntaxLineState.Initial).Item1;
+                Assert.IsTrue(tokens.Count >= 9);
+                Assert.AreEqual(ShellTheme.Default.Foreground(ThemeRole.Label),
+                    tokens.Single(token => token.StartIndex == 2).ForegroundColor);
+                Assert.AreEqual(ShellTheme.Default.Foreground(ThemeRole.Operand),
+                    tokens.Single(token => token.StartIndex == 10).ForegroundColor);
+                Assert.AreEqual(ShellTheme.Default.Foreground(ThemeRole.Number),
+                    tokens.Single(token => token.StartIndex == 27).ForegroundColor);
+                editor.Dispose();
+            }
+        }
+
+        [TestMethod]
         public void SaveRefusesPathOutsideDirectory()
         {
             using (TemporaryDirectory temp = new TemporaryDirectory())
@@ -212,6 +284,3 @@ namespace WinASM65.Monitor.Tests
         }
     }
 }
-
-
-
