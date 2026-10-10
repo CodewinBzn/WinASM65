@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 
@@ -38,6 +38,18 @@ namespace WinASM65.Monitor.Shell
         /// <c>ERR</c> cannot be mistaken for a monitor reply.
         /// </summary>
         public string Value { get; }
+
+        /// <summary>True for a section header (e.g. "sources/", "projects/").</summary>
+        public bool IsDirectory
+        {
+            get { return Kind == FileTreeKind.Section; }
+        }
+
+        /// <summary>The absolute path on disk. Empty for section headers.</summary>
+        public string Path
+        {
+            get { return Value ?? string.Empty; }
+        }
 
         public bool IsSelectable
         {

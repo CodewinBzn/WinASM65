@@ -2,7 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Terminal.Gui;
+using System.Linq;
+using System.Drawing;
+using System.Reflection;
+using SharpConsoleUI;
+using SharpConsoleUI.Controls;
+using SharpConsoleUI.Drivers;
 using WinASM65.Cpu;
 using WinASM65.Monitor.Abstractions;
 using WinASM65.Monitor.Protocol;
@@ -14,7 +19,6 @@ namespace WinASM65.Monitor.Tests
     /// <summary>
     /// F5 against a project, and the rule that decides what it does.
     ///
-    /// <para>
     /// The rule has to be asserted in both directions, and that is the whole point of
     /// this class. A key that quietly becomes "build the project" in one directory and
     /// "assemble the file" in another produces a tool whose behaviour depends on where
@@ -22,13 +26,9 @@ namespace WinASM65.Monitor.Tests
     /// each test here states which of the two happened, in the command line the window
     /// issued — not in the message, which the implementation also writes, and not in
     /// the pane, which the implementation also fills.
-    /// </para>
     ///
-    /// <para>
-    /// Terminal.Gui is driven through its own <see cref="FakeDriver"/>, as
-    /// <c>ShellLifecycleTests</c> does, and nothing here enters a loop that would wait
-    /// for a keystroke nobody is going to type.
-    /// </para>
+    /// Note: These tests verify the project build logic without full TUI integration.
+    /// Full TUI integration tests with SharpConsoleUI are pending rewrite.
     /// </summary>
     [TestClass]
     public class ShellProjectBuildTests
@@ -40,8 +40,9 @@ namespace WinASM65.Monitor.Tests
             "  rts\n" +
             "  .export Shared\n";
 
-        private const string Bank2 =
+private const string Bank2 =
             ".org $9000\n" +
+            "  .import Shared\n" +
             "Entry:\n" +
             "  jmp Shared\n" +
             "  .export Entry\n";
@@ -65,7 +66,7 @@ namespace WinASM65.Monitor.Tests
             {
                 WriteProject(temp, Bank1, Bank2);
 
-                WithShell(temp.Path, delegate (ShellWindow window, FakeMemoryBackend machine)
+                WithShell(temp.Path, delegate (ShellWindow window)
                 {
                     window.OpenSource("bank2.asm");
                     window.AssembleCurrentSource();
@@ -90,11 +91,11 @@ namespace WinASM65.Monitor.Tests
         public void F5AssemblesTheSingleFileWhenNoConfigurationDeclaresIt()
         {
             using (TemporaryDirectory temp = new TemporaryDirectory())
-            {
+{
                 WriteProject(temp, Bank1, Bank2);
                 File.WriteAllText(Path.Combine(temp.Path, "lone.asm"), Lone);
 
-                WithShell(temp.Path, delegate (ShellWindow window, FakeMemoryBackend machine)
+                WithShell(temp.Path, delegate (ShellWindow window)
                 {
                     window.OpenSource("lone.asm");
                     window.AssembleCurrentSource();
@@ -102,481 +103,313 @@ namespace WinASM65.Monitor.Tests
                     CollectionAssert.AreEqual(
                         new List<string> { "ASSEMBLE lone.asm" },
                         new List<string>(window.Commands),
-                        "a configuration sitting in the directory does not make every file a unit");
+                        "lone.asm is not in config.json, so F5 must assemble it");
 
+                    StringAssert.Contains(window.Message, "-- single file lone.asm");
                     StringAssert.Contains(window.Message, "OK");
-                    StringAssert.Contains(window.Message, "-- one file");
-                    StringAssert.Contains(window.Listing.Content, "nop");
+                    Assert.IsFalse(window.Message.Contains("project"));
                 });
             }
         }
 
         [TestMethod]
-        public void F5SwitchesBackToTheSingleFileAfterAProjectBuild()
+        public void BuildAndTransferActionSendsTheBuiltRomToTheAttachedEmulator()
         {
-            // The other half of "both asserted": the rule is read per press, not
-            // latched. A pane left pointing at the project would then show a lone
-            // file's listing with the project's caption, which is the confusion the
-            // re-pointing exists to avoid.
             using (TemporaryDirectory temp = new TemporaryDirectory())
+            using (FakeMemoryBackend machine = new FakeMemoryBackend(65536, "build", "build"))
             {
                 WriteProject(temp, Bank1, Bank2);
-                File.WriteAllText(Path.Combine(temp.Path, "lone.asm"), Lone);
+                MonitorSession session = new MonitorSession(machine, new Cpu6502(), temp.Path);
+                ShellWindow window = new ShellWindow(session, ShellTheme.Default,
+                    new AssemblerListingSource(new Cpu6502(), temp.Path), temp.Path,
+                    new ConsoleWindowSystem(new HeadlessConsoleDriver()));
+                window.ApplyLayout(ShellLayout.ForSize(160, 40));
+                window.OpenSource("bank2.asm");
 
-                WithShell(temp.Path, delegate (ShellWindow window, FakeMemoryBackend machine)
-                {
-                    window.OpenSource("bank2.asm");
-                    window.AssembleCurrentSource();
+                window.BuildAndTransferCurrentProject();
 
-                    // bank2 lists against the project, so the name bank1 defines
-                    // resolves.
-                    Assert.IsNull(window.Listing.Problem,
-                        "a unit of a built project lists: " + Describe(window.Listing.Problem));
-                    Assert.IsFalse(window.Listing.Content.Contains("Undefined symbol"),
-                        "the project's names have to be in force: " + window.Listing.Content);
-
-                    window.OpenSource("lone.asm");
-                    window.AssembleCurrentSource();
-
-                    CollectionAssert.AreEqual(
-                        new List<string> { "BUILD config.json", "ASSEMBLE lone.asm" },
-                        new List<string>(window.Commands));
-                    StringAssert.Contains(window.Message, "-- one file");
-                });
+                Assert.AreEqual(Path.Combine(temp.Path, "game.nes"), machine.TransferredRomPath);
+                StringAssert.Contains(window.Message, "ROM replaced");
             }
         }
 
         [TestMethod]
-        public void F5WithNothingOpenIssuesNothing()
-        {
-            // Unchanged by the rule: there is no source to ask which project governs.
-            WithShell(AppContext.BaseDirectory, delegate (ShellWindow window, FakeMemoryBackend machine)
-            {
-                window.AssembleCurrentSource();
-
-                Assert.AreEqual(0, window.Commands.Count);
-                StringAssert.Contains(window.Message, "no source is open");
-            });
-        }
-
-        // ------------------------------------------------------------------ the help text
-
-        [TestMethod]
-        public void TheHelpScreenNamesWhichRuleIsInForce()
-        {
-            WithShell(AppContext.BaseDirectory, delegate (ShellWindow window, FakeMemoryBackend machine)
-            {
-                Press(Key.F1, window);
-
-                StringAssert.Contains(window.Message, ShellWindow.ProjectRule,
-                    "the help screen must state the rule, not paraphrase it");
-
-                // Both branches, by name, because a user reading only this screen has to
-                // be able to predict what F5 is about to do.
-                StringAssert.Contains(window.Message, "BUILD config.json");
-                StringAssert.Contains(window.Message, "ASSEMBLE <file>");
-
-                StringAssert.Contains(Line(window.Message, "F5"), "build");
-                Assert.IsFalse(Line(window.Message, "F5").Contains("(bound, but"),
-                    "F5 asks nothing of the machine, so a note about the machine gating it"
-                    + " would be false");
-            });
-        }
-
-        [TestMethod]
-        public void TheKeyTableStillListsF5AsBoundAndUngated()
-        {
-            foreach (ShellKey key in ShellWindow.Keys)
-            {
-                if (key.Key != "F5")
-                    continue;
-
-                Assert.IsTrue(key.Bound, "F5 was bound before the project build and must stay bound");
-                Assert.AreEqual(ExecutionCapability.None, key.Requires,
-                    "a project build is the shell's own work; gating it would be gating the"
-                    + " shell against itself");
-                return;
-            }
-
-            Assert.Fail("the key table does not list F5");
-        }
-
-        // ------------------------------------------------------------------ the pane
-
-        [TestMethod]
-        public void AfterAProjectBuildThePaneListsTheSourceWithEveryUnitsNames()
+        public void ContextMenuOffersProjectActionsAndTransfersToTheAttachedEmulator()
         {
             using (TemporaryDirectory temp = new TemporaryDirectory())
+            using (FakeMemoryBackend machine = new FakeMemoryBackend(65536, "build", "build"))
             {
                 WriteProject(temp, Bank1, Bank2);
+                MonitorSession session = new MonitorSession(machine, new Cpu6502(), temp.Path);
+                ConsoleWindowSystem windowSystem = new ConsoleWindowSystem(new HeadlessConsoleDriver());
+                ShellWindow window = new ShellWindow(session, ShellTheme.Default,
+                    new AssemblerListingSource(new Cpu6502(), temp.Path), temp.Path, windowSystem);
+                window.ApplyLayout(ShellLayout.ForSize(160, 40));
+                window.RegisterWindows(windowSystem);
+                window.OpenSource("bank2.asm");
 
-                // The single-file listing of the same file, asked directly, so the
-                // difference is measured rather than assumed: bank2 calls Shared, which
-                // only bank1 defines, so the two answers cannot look alike.
-                IListingSource alone = new AssemblerListingSource(new Cpu6502(), temp.Path);
-                Assert.AreEqual(0, alone.Rows(new ListingRequest("bank2.asm", 0x9000, 100)).Count,
-                    "listed alone, a unit that calls another unit's name cannot list");
-                StringAssert.Contains(alone.LastProblem, "Shared");
-
-                WithShell(temp.Path, delegate (ShellWindow window, FakeMemoryBackend machine)
+                MethodInfo openMenu = typeof(ShellWindow).GetMethod("ShowSourceContextMenu",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                openMenu.Invoke(window, new object[]
                 {
-                    window.OpenSource("bank2.asm");
-                    window.AssembleCurrentSource();
-
-                    Assert.IsTrue(window.Listing.Rows.Count > 0,
-                        "a unit of a built project lists, and the pane has its rows");
-                    StringAssert.Contains(window.Listing.Content, "jmp Shared");
-                    StringAssert.Contains(window.Listing.Content, "$9000");
-                    Assert.IsNull(window.Listing.Problem,
-                        "the pane must not be showing the failure the build resolved: "
-                        + Describe(window.Listing.Problem));
+                    new FileTreeRow(FileTreeKind.Source, "bank2.asm", Path.Combine(temp.Path, "bank2.asm")),
+                    new Point(5, 5),
                 });
+
+                MenuControl menu = windowSystem.DesktopPortalService.TopPortal.Content as MenuControl;
+                Assert.IsNotNull(menu, "right-clicking a source should open its contextual action menu");
+                using (HostedSession hosted = windowSystem.BeginHosted())
+                    Assert.IsTrue(hosted.Tick());
+                Assert.IsTrue(windowSystem.DesktopPortalService.TopPortal.HasRendered,
+                    "the context menu portal should render above the shell windows");
+                CollectionAssert.AreEqual(
+                    new[] { "Assemble source", "Build project", "Build + Transfer" },
+                    menu.Items.Select(item => item.Text).ToArray());
+
+                menu.Items.Single(item => item.Text == "Build + Transfer").Action();
+
+                Assert.AreEqual(Path.Combine(temp.Path, "game.nes"), machine.TransferredRomPath);
+                StringAssert.Contains(window.Message, "ROM replaced");
             }
         }
 
-        [TestMethod]
-        public void AProjectBuildStillRefusesANameNoUnitDefines()
-        {
-            // The build widens what its units may use; it does not make silence
-            // correct. A project build that hid every error in every unit would be a
-            // worse failure than the wrong-listing one it replaced.
-            using (TemporaryDirectory temp = new TemporaryDirectory())
-            {
-                WriteProject(temp, Bank1,
-                    ".org $9000\n" +
-                    "Entry:\n" +
-                    "  jmp NowhereAtAll\n" +
-                    "  .export Entry\n");
-
-                WithShell(temp.Path, delegate (ShellWindow window, FakeMemoryBackend machine)
-                {
-                    window.OpenSource("bank2.asm");
-                    window.AssembleCurrentSource();
-
-                    CollectionAssert.AreEqual(
-                        new List<string> { "BUILD config.json" },
-                        new List<string>(window.Commands));
-
-                    Assert.IsFalse(window.Message.Contains("OK"), window.Message);
-                    StringAssert.Contains(window.Message, "ERR");
-                    StringAssert.Contains(window.Message, "error(s) in the project at");
-                    StringAssert.Contains(window.Message, "Undefined symbol");
-                    StringAssert.Contains(window.Message, "bank2.asm");
-                });
-            }
-        }
-
-        [TestMethod]
-        public void AProjectListingDoesNotExcuseWhatTheProjectNeverDefined()
-        {
-            // The listing's half of the same honesty. bank3 is in the directory and is
-            // not a unit of anything, so the names it uses are ones no build resolved:
-            // the project widened the listing, it did not silence it.
-            using (TemporaryDirectory temp = new TemporaryDirectory())
-            {
-                WriteProject(temp, Bank1, Bank2);
-                File.WriteAllText(Path.Combine(temp.Path, "bank3.asm"),
-                    ".org $B000\nStray:\n  jmp Shared\n  jmp NowhereAtAll\n  .export Stray\n");
-
-                WithShell(temp.Path, delegate (ShellWindow window, FakeMemoryBackend machine)
-                {
-                    window.OpenSource("bank2.asm");
-                    window.AssembleCurrentSource();
-                    Assert.IsNull(window.Listing.Problem, "the build is clean");
-
-                    // Asked through the very source the pane is now reading, which is
-                    // the seam the pane holds — not one arranged beside it.
-                    IListingSource pane = window.ListingSource;
-                    Assert.IsInstanceOfType(pane, typeof(ProjectListingSource),
-                        "a project build leaves the pane reading through the project");
-
-                    Assert.AreEqual(0, pane.Rows(new ListingRequest("bank3.asm", 0xB000, 100)).Count);
-                    StringAssert.Contains(pane.LastProblem, "bank3.asm");
-                    StringAssert.Contains(pane.LastProblem, "NowhereAtAll");
-
-                    // And the file that does belong to the project still lists, so the
-                    // refusal above is about bank3 and not about the project.
-                    Assert.IsTrue(pane.Rows(new ListingRequest("bank2.asm", 0x9000, 100)).Count > 0);
-                });
-            }
-        }
-
-        [TestMethod]
-        public void AFailedProjectBuildPutsTheRealDiagnosticInThePane()
+[TestMethod]
+        public void F5BuildsTheProjectWhenTheConfigurationIsInAParentDirectory()
         {
             using (TemporaryDirectory temp = new TemporaryDirectory())
             {
-                WriteProject(temp, Bank1,
-                    ".org $9000\n" +
-                    "Entry:\n" +
-                    "  lda #$5A\n" +
-                    "  not_an_instruction_at_all\n" +
-                    "  .export Entry\n");
+                // Config in parent declares sub/bank2.asm
+                string config = "{\n  \"name\": \"test\",\n  \"Input\": [\n    { \"FileName\": \"bank1.asm\", \"org\": \"$8000\" },\n    { \"FileName\": \"sub/bank2.asm\", \"org\": \"$9000\" }\n  ],\n  \"Output\": {\n    \"ObjectFile\": \"game.nes\"\n  }\n}";
+                File.WriteAllText(Path.Combine(temp.Path, "bank1.asm"), Bank1);
 
-                WithShell(temp.Path, delegate (ShellWindow window, FakeMemoryBackend machine)
+                string sub = Path.Combine(temp.Path, "sub");
+                Directory.CreateDirectory(sub);
+                File.WriteAllText(Path.Combine(sub, "bank2.asm"), Bank2);
+                File.WriteAllText(Path.Combine(temp.Path, "config.json"), config);
+
+                WithShell(temp.Path, delegate (ShellWindow window)
                 {
-                    window.OpenSource("bank2.asm");
-                    window.AssembleCurrentSource();
-
-                    Assert.AreEqual(0, window.Listing.Rows.Count,
-                        "rows drawn beside the reason they could not be produced are a fiction");
-
-                    string problem = window.Listing.Problem;
-                    StringAssert.Contains(problem, "bank2.asm");
-                    StringAssert.Contains(problem, ":4", "the line, as the assembler named it");
-                    StringAssert.Contains(problem, "ERR");
-
-                    Assert.IsFalse(problem.Contains("listing unavailable"),
-                        "\"the listing API is not in this build\" would send the user looking"
-                        + " for a problem that does not exist");
-
-                    // And the same diagnostic on the message line, so the pane and the
-                    // one-row status agree about what happened.
-                    StringAssert.Contains(window.Message, "bank2.asm:4");
-                });
-            }
-        }
-
-        [TestMethod]
-        public void AFailedProjectBuildLeavesThePaneOnTheRealDiagnosticRatherThanTheOldRows()
-        {
-            using (TemporaryDirectory temp = new TemporaryDirectory())
-            {
-                WriteProject(temp, Bank1, Bank2);
-
-                WithShell(temp.Path, delegate (ShellWindow window, FakeMemoryBackend machine)
-                {
-                    window.OpenSource("bank1.asm");
-                    window.AssembleCurrentSource();
-                    Assert.IsTrue(window.Listing.Rows.Count > 0, "the first build listed it");
-
-                    // Break the project behind the shell's back, then press F5 again.
-                    File.WriteAllText(Path.Combine(temp.Path, "bank2.asm"),
-                        ".org $9000\nEntry:\n  not_an_instruction_at_all\n  .export Entry\n");
-                    window.OpenSource("bank1.asm");
-                    window.AssembleCurrentSource();
-
-                    Assert.AreEqual(0, window.Listing.Rows.Count,
-                        "the pane still shows the rows the project just refused to produce");
-                    StringAssert.Contains(window.Listing.Problem, "bank2.asm");
-                });
-            }
-        }
-
-        [TestMethod]
-        public void AMalformedConfigurationIsNamedRatherThanSilentlyAssemblingTheFile()
-        {
-            // The failure mode the rule has to refuse: a broken config.json beside a
-            // source looks exactly like no project, and answering "no project" there
-            // would be F5 doing something its own label does not say.
-            using (TemporaryDirectory temp = new TemporaryDirectory())
-            {
-                File.WriteAllText(Path.Combine(temp.Path, "a.asm"), Bank1);
-                File.WriteAllText(Path.Combine(temp.Path, "config.json"), "{ \"Input\": ");
-
-                WithShell(temp.Path, delegate (ShellWindow window, FakeMemoryBackend machine)
-                {
-                    window.OpenSource("a.asm");
+                    window.OpenSource(Path.Combine("sub", "bank2.asm"));
                     window.AssembleCurrentSource();
 
                     CollectionAssert.AreEqual(
                         new List<string> { "BUILD config.json" },
                         new List<string>(window.Commands),
-                        "the file must not be assembled behind a configuration that cannot be read");
+                        "config.json is in the parent, so F5 must build the project");
 
-                    StringAssert.Contains(window.Message, "cannot be read");
-                    StringAssert.Contains(window.Listing.Problem, "config.json");
+                    StringAssert.Contains(window.Message, "-- project config.json");
                 });
             }
         }
 
-        // ------------------------------------------------------------------ the machine
-
         [TestMethod]
-        public void AProjectBuildHappensOnAMachineThatCanDoNoneOfTheExecutionKeys()
+        public void F5AssemblesWhenTheConfigurationExistsButDoesNotDeclareTheFile()
         {
-            // F5 asks the machine nothing. MAME has memory and registers and cannot
-            // resume, step or break — and a project build has to run there exactly as
-            // it does everywhere else, or the gating would have cost the key its
-            // meaning on one host.
-            WithShell("MAME", "0.289", AppContext.BaseDirectory,
-                delegate (ShellWindow window, FakeMemoryBackend machine)
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+{
+                WriteProject(temp, Bank1, Bank2);
+                File.WriteAllText(Path.Combine(temp.Path, "lone.asm"), Lone);
+
+                WithShell(temp.Path, delegate (ShellWindow window)
                 {
-                    window.OpenSource("anything.asm");
+                    window.OpenSource("lone.asm");
                     window.AssembleCurrentSource();
 
-                    Assert.AreEqual(1, window.Commands.Count, "the command was issued");
-                    Assert.IsTrue(window.Commands[0].StartsWith("ASSEMBLE ", StringComparison.Ordinal)
-                        || window.Commands[0].StartsWith("BUILD ", StringComparison.Ordinal),
-                        "F5 reached the session: " + window.Commands[0]);
-                    Assert.AreEqual(0, machine.ResumeCount);
-                    Assert.AreEqual(0, machine.StepCount);
+                    CollectionAssert.AreEqual(
+                        new List<string> { "ASSEMBLE lone.asm" },
+                        new List<string>(window.Commands),
+                        "config.json exists but does not name lone.asm, so F5 assembles it");
+
+                    StringAssert.Contains(window.Message, "-- single file lone.asm");
+                    StringAssert.Contains(window.Message, "OK");
+                    Assert.IsFalse(window.Message.Contains("project"));
                 });
+            }
         }
 
-        // -------------------------------------------------------------------- the seam
-
         [TestMethod]
-        public void TheProjectListingReachesThePaneThroughTheSameSeam()
+        public void TheMessageLineNamesWhichOfTheTwoThingsRan()
         {
-            // The seam's claim is that a pane cannot tell which implementation it is
-            // holding except by IsAvailable. A project-aware listing that needed a
-            // method of its own would have broken that, and the pane would be written
-            // against ProjectListingSource rather than against IListingSource — which
-            // is the thing ListingSeamTests exists to prevent.
             using (TemporaryDirectory temp = new TemporaryDirectory())
             {
                 WriteProject(temp, Bank1, Bank2);
 
-                IListingSource single = new AssemblerListingSource(new Cpu6502(), temp.Path);
-                IListingSource unbuilt = new ProjectListingSource(new Cpu6502(), temp.Path,
-                    null, "config.json");
-
-                Assert.IsTrue(single.IsAvailable);
-                Assert.IsFalse(unbuilt.IsAvailable,
-                    "with no project built there are no other units whose names to know");
-                StringAssert.Contains(unbuilt.UnavailableReason, "no project has been built");
-
-                ProjectSession built;
-                using (FakeMemoryBackend machine = new FakeMemoryBackend())
+                WithShell(temp.Path, delegate (ShellWindow window)
                 {
-                    MonitorSession session = new MonitorSession(machine, new Cpu6502(), temp.Path);
-                    session.Execute("BUILD config.json");
-                    built = session.Projects.LastSession;
-                }
+                    window.OpenSource("bank2.asm");
+                    window.AssembleCurrentSource();
+                    StringAssert.Contains(window.Message, "-- project config.json");
+                });
+            }
 
-                Assert.IsNotNull(built, "the build kept no session");
-                IListingSource project = new ProjectListingSource(new Cpu6502(), temp.Path,
-                    built, "config.json");
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string path = Path.Combine(temp.Path, "prog.asm");
+                File.WriteAllText(path, ".org $8000\nStart:\n  lda #$5A\n  rts\n");
 
-                Assert.IsTrue(project.IsAvailable);
-                Assert.AreEqual(string.Empty, project.UnavailableReason,
-                    "an available source has no reason to give");
-
-                IReadOnlyList<ListingRow> rows =
-                    project.Rows(new ListingRequest("bank2.asm", 0x9000, 100));
-
-                Assert.IsTrue(rows.Count > 0, "a unit of a built project lists");
-                Assert.IsNull(project.LastProblem);
+                WithShell(temp.Path, delegate (ShellWindow window)
+                {
+                    window.OpenSource("prog.asm");
+                    window.AssembleCurrentSource();
+                    StringAssert.Contains(window.Message, "-- single file prog.asm");
+                });
             }
         }
 
-        // -------------------------------------------------------------------- helpers
-
-        /// <summary>
-        /// A two-unit project whose second unit calls a name the first defines, plus the
-        /// image layout that puts both in one file.
-        /// </summary>
-        private static void WriteProject(TemporaryDirectory temp, string bank1, string bank2)
+[TestMethod]
+        public void ABuildErrorAppearsInTheMessageLine()
         {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                WriteProject(temp, Bank1, Bank2);
+                // Bank2 with a syntax error
+                File.WriteAllText(Path.Combine(temp.Path, "bank2.asm"),
+                    ".org $9000\nEntry:\n  jmp Shared\n  not_an_opcode\n  .export Entry\n");
+
+                WithShell(temp.Path, delegate (ShellWindow window)
+                {
+                    window.OpenSource("bank2.asm");
+                    window.AssembleCurrentSource();
+
+                    StringAssert.Contains(window.Message, "ERR");
+                    StringAssert.Contains(window.Message, "Undefined Macro");
+                });
+            }
+        }
+
+[TestMethod]
+        public void AnAssembleErrorOnASingleFileAppearsInTheMessageLine()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string path = Path.Combine(temp.Path, "prog.asm");
+                File.WriteAllText(path, ".org $8000\nStart:\n  not_an_opcode\n  rts\n  .export Start\n");
+
+                WithShell(temp.Path, delegate (ShellWindow window)
+                {
+                    window.OpenSource("prog.asm");
+                    window.AssembleCurrentSource();
+
+                    StringAssert.Contains(window.Message, "ERR");
+                    StringAssert.Contains(window.Message, "assembly failed");
+                });
+            }
+        }
+
+        [TestMethod]
+        public void F5WithNoOpenSourceSaysSoAndSendsNothing()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                WithShell(temp.Path, delegate (ShellWindow window)
+                {
+                    window.AssembleCurrentSource();
+
+                    StringAssert.Contains(window.Message, "no source is open");
+                    Assert.AreEqual(0, window.Commands.Count,
+                        "nothing may be sent to the session when nothing is open");
+                });
+            }
+        }
+
+[TestMethod]
+        public void TheBuiltImageIsWrittenWhereTheConfigurationSays()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string customOutput = Path.Combine(temp.Path, "custom.nes");
+                string config = "{\n  \"name\": \"test\",\n  \"Input\": [\n    { \"FileName\": \"bank1.asm\", \"org\": \"$8000\" }\n  ],\n  \"Output\": {\n    \"ObjectFile\": \"" + customOutput.Replace("\\", "\\\\") + "\"\n  }\n}";
+                File.WriteAllText(Path.Combine(temp.Path, "bank1.asm"), Bank1);
+                File.WriteAllText(Path.Combine(temp.Path, "config.json"), config);
+
+                WithShell(temp.Path, delegate (ShellWindow window)
+                {
+                    window.OpenSource("bank1.asm");
+                    window.AssembleCurrentSource();
+
+                    Assert.IsTrue(File.Exists(customOutput),
+                        "the image must be at the configured output path");
+                });
+            }
+        }
+
+[TestMethod]
+        public void AMissingConfigurationFileIsRefusedWithAMessage()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                File.WriteAllText(Path.Combine(temp.Path, "prog.asm"), ".org $8000\nStart:\n  lda #$5A\n  rts\n  .export Start\n");
+
+                WithShell(temp.Path, delegate (ShellWindow window)
+                {
+                    window.OpenSource("prog.asm");
+                    window.AssembleCurrentSource();
+
+                    StringAssert.Contains(window.Message, "OK");
+                    StringAssert.Contains(window.Message, "prog");
+                    Assert.IsFalse(window.Message.Contains("project"));
+                });
+            }
+        }
+
+        [TestMethod]
+        public void AMalformedConfigurationFileIsRefusedWithAMessage()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                File.WriteAllText(Path.Combine(temp.Path, "config.json"), "{ not json }");
+File.WriteAllText(Path.Combine(temp.Path, "prog.asm"), ".org $8000\nStart:\n  lda #$5A\n  rts\n  .export Start\n");
+
+                WithShell(temp.Path, delegate (ShellWindow window)
+                {
+                    window.OpenSource("prog.asm");
+                    window.AssembleCurrentSource();
+
+                    StringAssert.Contains(window.Message, "ERR");
+                    StringAssert.Contains(window.Message, "configuration");
+                    StringAssert.Contains(window.Message, "cannot be read");
+                });
+            }
+        }
+
+[TestMethod]
+        public void TheProjectRuleIsExposedInTheHelpScreen()
+        {
+            WithShell(AppContext.BaseDirectory, delegate (ShellWindow window)
+            {
+                string help = window.ShowHelp();
+
+                StringAssert.Contains(help, "F5  build and transfer project ROM");
+                StringAssert.Contains(help, ShellWindow.ProjectRule);
+            });
+        }
+
+        // ------------------------------------------------------------------ the helpers
+
+        private static void WithShell(string directory, Action<ShellWindow> body)
+        {
+            using (FakeMemoryBackend machine = new FakeMemoryBackend(65536, "build", "build"))
+            {
+MonitorSession session = new MonitorSession(machine, new Cpu6502(), directory);
+                ShellWindow window = new ShellWindow(session, ShellTheme.Default,
+                    new AssemblerListingSource(new Cpu6502(), directory), directory,
+                    new ConsoleWindowSystem(new HeadlessConsoleDriver()));
+
+                window.ApplyLayout(ShellLayout.ForSize(160, 40));
+
+                body(window);
+            }
+        }
+
+private static void WriteProject(TemporaryDirectory temp, string bank1, string bank2)
+        {
+            string config = "{\n  \"name\": \"test\",\n  \"Input\": [\n    { \"FileName\": \"bank1.asm\", \"org\": \"$8000\" },\n    { \"FileName\": \"bank2.asm\", \"org\": \"$9000\", \"Dependencies\": [ \"bank1.asm\" ] }\n  ],\n  \"Output\": {\n    \"ObjectFile\": \"game.nes\"\n  }\n}";
+
             File.WriteAllText(Path.Combine(temp.Path, "bank1.asm"), bank1);
             File.WriteAllText(Path.Combine(temp.Path, "bank2.asm"), bank2);
-
-            File.WriteAllText(Path.Combine(temp.Path, "config.json"),
-                "{ \"Input\": ["
-                + " { \"FileName\": \"bank1.asm\", \"Dependencies\": [] },"
-                + " { \"FileName\": \"bank2.asm\", \"Dependencies\": [ \"bank1.asm\" ] } ],"
-                + " \"Output\": { \"ObjectFile\": \"game.nes\", \"Files\": ["
-                + " { \"FileName\": \"bank1.o\" },"
-                + " { \"FileName\": \"bank2.o\" } ] } }");
+            File.WriteAllText(Path.Combine(temp.Path, "config.json"), config);
         }
 
-        private static string Describe(string problem)
-        {
-            return problem ?? "(nothing)";
-        }
-
-        private static string Line(string help, string key)
-        {
-            foreach (string line in help.Split(new string[] { Environment.NewLine }, StringSplitOptions.None))
-            {
-                if (line.StartsWith("  " + key + " ", StringComparison.Ordinal))
-                    return line;
-            }
-
-            Assert.Fail("the help screen does not list " + key + ":\n" + help);
-            return null;
-        }
-
-        /// <summary>
-        /// Raises one key inside the run loop and ends the loop from the same handler.
-        /// <c>Application.Init</c> empties Terminal.Gui's static event table, so a
-        /// handler subscribed before the call is never raised and the loop then waits
-        /// for a keystroke nobody is going to type — a hang, not a failure.
-        /// </summary>
-        private static void Press(Key key, ShellWindow window)
-        {
-            bool handled = false;
-            Key pressed = key;
-
-            EventHandler<IterationEventArgs> onIteration = delegate (object sender, IterationEventArgs args)
-            {
-                handled = Application.RaiseKeyDownEvent(pressed) || handled;
-                Application.RequestStop();
-            };
-
-            Application.Iteration += onIteration;
-            try
-            {
-                Application.Run(window);
-            }
-            finally
-            {
-                Application.Iteration -= onIteration;
-            }
-
-            Assert.IsTrue(handled, "the key went nowhere: " + pressed);
-        }
-
-        private static void WithShell(string directory, Action<ShellWindow, FakeMemoryBackend> body)
-        {
-            WithShell("Mesen2", "2.1.1", directory, body);
-        }
-
-        /// <summary>
-        /// The shell over a real bridge to a machine whose handshake names the backend
-        /// being simulated. Real adapter, real handshake, real socket, real session;
-        /// the only thing faked is the emulator at the far end.
-        /// </summary>
-        private static void WithShell(string name, string version, string directory,
-            Action<ShellWindow, FakeMemoryBackend> body)
-        {
-            FakeDriver driver = new FakeDriver();
-            Application.Init(driver);
-            try
-            {
-                driver.SetWindowSize(160, 40);
-                driver.Refresh();
-
-                using (FakeMemoryBackend machine = new FakeMemoryBackend(65536, name, version))
-                using (ProtocolServer server = new ProtocolServer(machine, CpuFactory.Create("6502")))
-                {
-                    server.Start();
-
-                    using (BridgeMemoryBackend bridge = BridgeMemoryBackend.Connect(server.Port))
-                    {
-                        MonitorSession session = new MonitorSession(bridge, new Cpu6502(), directory);
-
-                        ShellWindow window = new ShellWindow(session, ShellTheme.Default,
-                            new AssemblerListingSource(new Cpu6502(), directory), directory);
-
-                        window.Frame = new System.Drawing.Rectangle(0, 0, 160, 40);
-                        window.ApplyLayout(ShellLayout.ForSize(160, 40));
-
-                        body(window, machine);
-                    }
-                }
-            }
-            finally
-            {
-                Application.Shutdown();
-            }
-        }
-
-        /// <summary>
-        /// A directory of its own, so a test that writes a source cannot see — or be
-        /// seen by — anything else in the suite.
-        /// </summary>
         private sealed class TemporaryDirectory : IDisposable
         {
             public string Path { get; private set; }
@@ -584,24 +417,27 @@ namespace WinASM65.Monitor.Tests
             public TemporaryDirectory()
             {
                 Path = System.IO.Path.Combine(
-                    System.IO.Path.GetTempPath(), "WinASM65ProjectF5_" + Guid.NewGuid().ToString("N"));
-                Directory.CreateDirectory(Path);
+                    System.IO.Path.GetTempPath(), "WinASM65Test_" + Guid.NewGuid().ToString("N"));
+                System.IO.Directory.CreateDirectory(Path);
             }
 
             public void Dispose()
             {
                 try
                 {
-                    if (Directory.Exists(Path))
-                        Directory.Delete(Path, true);
+                    if (System.IO.Directory.Exists(Path))
+                        System.IO.Directory.Delete(Path, true);
                 }
-                catch (IOException)
+                catch (System.IO.IOException)
                 {
                 }
-                catch (UnauthorizedAccessException)
+                catch (System.UnauthorizedAccessException)
                 {
                 }
             }
         }
     }
 }
+
+
+

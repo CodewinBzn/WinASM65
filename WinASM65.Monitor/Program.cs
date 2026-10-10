@@ -34,6 +34,13 @@ namespace WinASM65.Monitor.Cli
 
         public static int Main(string[] args)
         {
+            // SharpConsoleUI renders Unicode directly. Windows consoles may still use
+            // a legacy code page (for example CP850), which turns accented characters
+            // and the UI's box-drawing glyphs into mojibake. Configure the process before
+            // any console driver or terminal control is created.
+            Console.InputEncoding = System.Text.Encoding.UTF8;
+            Console.OutputEncoding = new System.Text.UTF8Encoding(false);
+
             int port = DefaultPort;
             string mesenPath = null;
             string romPath = null;

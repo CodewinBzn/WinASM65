@@ -17,11 +17,11 @@ namespace WinASM65.Monitor.Tests
     public class RamDumpTests
     {
         [TestMethod]
-        public void TheWindowIsTheFirstTwoKilobytes()
+        public void TheWindowIsTheFirstSixteenKilobytes()
         {
             Assert.AreEqual(0x0000, RamDump.WindowStart);
-            Assert.AreEqual(0x07FF, RamDump.WindowEnd);
-            Assert.AreEqual(0x800, RamDump.WindowLength);
+            Assert.AreEqual(0x3FFF, RamDump.WindowEnd);
+            Assert.AreEqual(0x4000, RamDump.WindowLength);
         }
 
         [TestMethod]
@@ -32,7 +32,7 @@ namespace WinASM65.Monitor.Tests
             Assert.AreEqual(RamRegion.Stack, RamDump.RegionOf(0x0100));
             Assert.AreEqual(RamRegion.Stack, RamDump.RegionOf(0x01FF));
             Assert.AreEqual(RamRegion.Free, RamDump.RegionOf(0x0200));
-            Assert.AreEqual(RamRegion.Free, RamDump.RegionOf(0x07FF));
+            Assert.AreEqual(RamRegion.Free, RamDump.RegionOf(0x3FFF));
         }
 
         [TestMethod]
@@ -53,7 +53,7 @@ namespace WinASM65.Monitor.Tests
         {
             StringAssert.Contains(RamDump.DescribeRegion(RamRegion.ZeroPage), "$0000-$00FF");
             StringAssert.Contains(RamDump.DescribeRegion(RamRegion.Stack), "$0100-$01FF");
-            StringAssert.Contains(RamDump.DescribeRegion(RamRegion.Free), "$0200-$07FF");
+            StringAssert.Contains(RamDump.DescribeRegion(RamRegion.Free), "$0200-$3FFF");
         }
 
         [TestMethod]
@@ -113,7 +113,7 @@ namespace WinASM65.Monitor.Tests
             IReadOnlyList<RamDumpRow> rows = RamDump.Rows(memory, RamDump.WindowStart);
 
             Assert.AreEqual(RamDump.WindowLength / RamDump.BytesPerRow, rows.Count);
-            Assert.AreEqual(0x07F0, rows[rows.Count - 1].Address);
+            Assert.AreEqual(0x3FF0, rows[rows.Count - 1].Address);
         }
 
         [TestMethod]
@@ -137,14 +137,18 @@ namespace WinASM65.Monitor.Tests
         {
             IReadOnlyList<RamDumpRow> rows = RamDump.Window(delegate (int address, int length)
             {
-                if (address >= 0x0200)
+                // The bridge refuses by length: a read that would run past the end of
+                // the machine's memory is an error, not a short answer. That is the
+                // case the window asks about first, and it is what sends it back to
+                // asking row by row — which is the behaviour under test here.
+                if (address + length > 0x3E00)
                     throw new MonitorException("this machine has no RAM there");
                 byte[] memory = new byte[length];
                 Array.Copy(memory, memory, 0);
                 return memory;
             });
 
-            // The rows below $0200 still come back; the refusal does not take the
+            // The rows below $3E00 still come back; the refusal does not take the
             // pane, or the rows that were fine, with it.
             Assert.AreEqual(RamDump.WindowLength / RamDump.BytesPerRow, rows.Count);
 
@@ -155,7 +159,32 @@ namespace WinASM65.Monitor.Tests
                     faults++;
             }
 
-            Assert.AreEqual((RamDump.WindowEnd - 0x0200 + 1) / RamDump.BytesPerRow, faults);
+            Assert.AreEqual((RamDump.WindowEnd - 0x3E00 + 1) / RamDump.BytesPerRow, faults);
+        }
+
+        /// <summary>
+        /// The window is asked for in one piece, not one row at a time.
+        ///
+        /// A row at a time cost one blocking round trip to the bridge per row — 1024
+        /// of them for this window, on the thread that draws — so the shell froze for
+        /// the length of the read. The window is 16 KiB and the bridge caps a read at
+        /// 4 KiB, so it takes four reads at most: one per chunk, and one more only if
+        /// a refusal sends it back to the row-by-row probe.
+        /// </summary>
+        [TestMethod]
+        public void TheWindowIsAskedForInOnePiece()
+        {
+            int reads = 0;
+
+            IReadOnlyList<RamDumpRow> rows = RamDump.Window(delegate (int address, int length)
+            {
+                reads++;
+                return new byte[length];
+            });
+
+            Assert.AreEqual(RamDump.WindowLength / RamDump.BytesPerRow, rows.Count);
+            Assert.IsTrue(reads <= 4,
+                "the window asked the bridge " + reads + " times for " + rows.Count + " rows");
         }
 
         [TestMethod]
@@ -170,6 +199,73 @@ namespace WinASM65.Monitor.Tests
         {
             Assert.AreEqual(RamRegion.Free, RamDump.RegionOf(0x8000));
             Assert.AreEqual(RamRegion.Free, RamDump.RegionOf(0xFFFF));
+        }
+
+        /// <summary>
+        /// A push of byte changes is applied to the rows that hold them, and only
+        /// those rows come back. A one-byte change redraws one row, not the
+        /// whole window — which is the point of pushing rather than polling.
+        /// </summary>
+        [TestMethod]
+        public void ApplyChangesUpdatesOnlyTheRowsThatChanged()
+        {
+            IReadOnlyList<RamDumpRow> rows = RamDump.Window(delegate (int address, int length)
+            {
+                return new byte[length];
+            });
+
+            List<(int Address, byte Value)> changes = new List<(int Address, byte Value)>
+            {
+                (0x0042, 0xA9), // row 4, col 2
+                (0x0043, 0xA9), // same row
+                (0x0200, 0xEA), // row 32, col 0
+            };
+
+            IReadOnlyList<RamDumpRow> changed = RamDump.ApplyChanges(rows, changes);
+
+            Assert.AreEqual(2, changed.Count, "two rows changed, not three");
+            Assert.AreEqual(0x0040, changed[0].Address);
+            Assert.AreEqual(0x0200, changed[1].Address);
+            Assert.AreEqual(0xA9, changed[0].Bytes[2]);
+            Assert.AreEqual(0xA9, changed[0].Bytes[3]);
+            Assert.AreEqual(0xEA, changed[1].Bytes[0]);
+        }
+
+        /// <summary>
+        /// A change outside the window is ignored: the pane shows $0000-$3FFF and
+        /// has no row for an address above it.
+        /// </summary>
+        [TestMethod]
+        public void ApplyChangesIgnoresChangesOutsideTheWindow()
+        {
+            IReadOnlyList<RamDumpRow> rows = RamDump.Window(delegate (int address, int length)
+            {
+                return new byte[length];
+            });
+
+            List<(int Address, byte Value)> changes = new List<(int Address, byte Value)>
+            {
+                (0x4000, 0xFF),
+                (0xFFFF, 0xFF),
+            };
+
+            IReadOnlyList<RamDumpRow> changed = RamDump.ApplyChanges(rows, changes);
+
+            Assert.AreEqual(0, changed.Count);
+        }
+
+        /// <summary>
+        /// An empty push changes nothing and returns nothing.
+        /// </summary>
+        [TestMethod]
+        public void ApplyChangesWithNoChangesReturnsNothing()
+        {
+            IReadOnlyList<RamDumpRow> rows = RamDump.Window(delegate (int address, int length)
+            {
+                return new byte[length];
+            });
+
+            Assert.AreEqual(0, RamDump.ApplyChanges(rows, new List<(int Address, byte Value)>()).Count);
         }
     }
 }

@@ -66,7 +66,7 @@ namespace WinASM65.Monitor.Tests
             {
                 string result = RamEditing.WriteByte(backend, RamEditing.EditWindowEnd, 0x22);
 
-                Assert.AreEqual("OK $07FF", result);
+                Assert.AreEqual("OK $3FFF", result);
             }
         }
 
@@ -87,11 +87,11 @@ namespace WinASM65.Monitor.Tests
         {
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
-                string result = RamEditing.WriteByte(backend, 0x0800, 0x00);
+                string result = RamEditing.WriteByte(backend, 0x4000, 0x00);
 
                 StringAssert.StartsWith(result, MonitorProtocol.ErrPrefix);
                 StringAssert.Contains(result, "outside the editable window");
-                StringAssert.Contains(result, "$07FF");
+                StringAssert.Contains(result, "$3FFF");
             }
         }
 
@@ -199,7 +199,7 @@ namespace WinASM65.Monitor.Tests
             using (FakeMemoryBackend backend = new FakeMemoryBackend())
             {
                 byte[] data = new byte[] { 0x11, 0x22 };
-                string result = RamEditing.WriteBytes(backend, 0x07FF, data); // 0x07FF + 1 = 0x0800, exceeds
+                string result = RamEditing.WriteBytes(backend, 0x3FFF, data); // 0x3FFF + 2 - 1 = 0x4000, exceeds
 
                 StringAssert.StartsWith(result, MonitorProtocol.ErrPrefix);
                 StringAssert.Contains(result, "exceeds the editable window");

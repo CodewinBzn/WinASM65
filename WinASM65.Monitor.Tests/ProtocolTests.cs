@@ -317,19 +317,19 @@ namespace WinASM65.Monitor.Tests
 
                 using (ProtocolClient client = ProtocolClient.Connect(port))
                 {
-                    Assert.IsTrue(client.IsOk(client.Send("PING")), "PING must answer.");
-                    Assert.IsTrue(client.IsOk(client.Send("WRITE $8000 A90160")));
+                    Assert.IsTrue(ProtocolClient.IsOk(client.Send("PING")), "PING must answer.");
+                    Assert.IsTrue(ProtocolClient.IsOk(client.Send("WRITE $8000 A90160")));
                     Assert.AreEqual("A90160", ProtocolClient.PayloadOf(client.Send("READ $8000 3")));
 
                     string disasm = ProtocolClient.PayloadOf(client.Send("DISASM $8000 2"));
                     Assert.IsTrue(disasm.Contains("LDA #$01"), disasm);
 
-                    Assert.IsTrue(client.IsOk(client.Send("BREAK SET exec $8000")));
-                    Assert.IsTrue(client.IsOk(client.Send("PAUSE")));
+                    Assert.IsTrue(ProtocolClient.IsOk(client.Send("BREAK SET exec $8000")));
+                    Assert.IsTrue(ProtocolClient.IsOk(client.Send("PAUSE")));
                     Assert.AreEqual(1, backend.PauseCount);
 
                     string refused = client.Send("READ $8000 999999");
-                    Assert.IsFalse(client.IsOk(refused));
+                    Assert.IsFalse(ProtocolClient.IsOk(refused));
                     Assert.IsNotNull(ProtocolClient.ErrorOf(refused));
                 }
             }

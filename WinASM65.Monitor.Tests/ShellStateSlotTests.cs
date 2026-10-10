@@ -1,6 +1,8 @@
 using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Terminal.Gui;
+using System.Linq;
+using SharpConsoleUI;
+using SharpConsoleUI.Drivers;
 using WinASM65.Cpu;
 using WinASM65.Monitor.Shell;
 
@@ -18,36 +20,29 @@ namespace WinASM65.Monitor.Tests
     [TestClass]
     public class ShellStateSlotTests
     {
-        private static ShellWindow BuildWindow(FakeMemoryBackend machine)
+private static ShellWindow BuildWindow(FakeMemoryBackend machine)
         {
             return new ShellWindow(
                 new MonitorSession(machine, new Cpu6502(), AppContext.BaseDirectory),
                 ShellTheme.Default,
                 ListingSourceFactory.Create(),
-                AppContext.BaseDirectory);
+                AppContext.BaseDirectory,
+                new ConsoleWindowSystem(new HeadlessConsoleDriver()));
         }
 
         private static void WithShell(Action<ShellWindow, FakeMemoryBackend> body)
         {
-            FakeDriver driver = new FakeDriver();
-            Application.Init(driver);
-            try
+            IConsoleDriver driver = new HeadlessConsoleDriver();
+            using (HostedSession hosted = new ConsoleWindowSystem(driver).BeginHosted())
             {
-                driver.SetWindowSize(120, 24);
-                driver.Refresh();
-
+                                
                 using (FakeMemoryBackend machine = new FakeMemoryBackend())
                 {
                     ShellWindow window = BuildWindow(machine);
-                    window.Frame = new System.Drawing.Rectangle(0, 0, 120, 24);
                     window.ApplyLayout(ShellLayout.ForSize(120, 24));
 
                     body(window, machine);
                 }
-            }
-            finally
-            {
-                Application.Shutdown();
             }
         }
 
@@ -166,3 +161,6 @@ namespace WinASM65.Monitor.Tests
         }
     }
 }
+
+
+

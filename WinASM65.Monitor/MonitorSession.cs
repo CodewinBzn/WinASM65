@@ -72,8 +72,25 @@ namespace WinASM65.Monitor
             get { return _projects; }
         }
 
+        /// <summary>Replaces the emulator's cartridge image when the backend supports it.</summary>
+        public IReadOnlyList<string> TransferRom(string imagePath)
+        {
+            IRomTransferTarget target = _backend as IRomTransferTarget;
+            if (target == null)
+                return new[] { MonitorProtocol.ErrPrefix + " this emulator cannot replace its ROM" };
+
+            if (string.IsNullOrWhiteSpace(imagePath) || !System.IO.File.Exists(imagePath))
+                return new[] { MonitorProtocol.ErrPrefix + " the ROM image does not exist: " + imagePath };
+
+            target.TransferRom(imagePath);
+            return new[] { MonitorProtocol.OkPrefix + " ROM replaced from " + imagePath };
+        }
+
         /// <summary>Set once the user asks to leave, so the caller stops reading.</summary>
         public bool ShouldQuit { get; private set; }
+
+        /// <summary>Whether the machine is currently running.</summary>
+        public bool IsRunning { get; private set; }
 
         /// <summary>
         /// Runs one command line and returns what to print. Never throws for a bad
@@ -132,10 +149,12 @@ namespace WinASM65.Monitor
                         break;
                     case "RESUME":
                         _backend.Resume();
+                        IsRunning = true;
                         output.Add(MonitorProtocol.OkPrefix);
                         break;
                     case "STEP":
                         _backend.Step();
+                        IsRunning = false;
                         output.Add(MonitorProtocol.OkPrefix + " stepped");
                         break;
                     case "RESET":
@@ -156,6 +175,18 @@ namespace WinASM65.Monitor
                         Require(parts, 2, "BUILD <config.json>");
                         output.AddRange(_projects.Build(parts[1]).Answer);
                         break;
+                    case "ROM":
+                        if (parts.Length == 1)
+                        {
+                            output.AddRange(Rom());
+                            break;
+                        }
+
+                        Require(parts, 3, "ROM LOAD <image>");
+                        if (!parts[1].Equals("LOAD", StringComparison.OrdinalIgnoreCase))
+                            throw new MonitorException("ROM expects LOAD <image>");
+                        output.AddRange(TransferRom(parts[2]));
+                        break;
                     case "LOAD":
                         Require(parts, 3, "LOAD <unit> <address>");
                         output.Add(_library.Load(parts[1], ParseAddress(parts, 2, "LOAD <unit> <address>")));
@@ -166,9 +197,6 @@ namespace WinASM65.Monitor
                         break;
                     case "CPU":
                         output.AddRange(Cpu());
-                        break;
-                    case "ROM":
-                        output.AddRange(Rom());
                         break;
                     default:
                         output.Add(MonitorProtocol.ErrPrefix + " unknown command: " + parts[0]
@@ -209,6 +237,7 @@ namespace WinASM65.Monitor
                 "STATE SAVE | STATE LOAD <hex> capture and restore the machine",
                 "ASSEMBLE <source>             assemble once and keep the unit",
                 "BUILD <config.json>            build every unit of a project and write the image",
+                "ROM LOAD <image>              replace the cartridge image when supported",
                 "LOAD <unit> <addr>            relink, write, and read back",
                 "UNITS                         what has been assembled",
                 "HELP                          this list",

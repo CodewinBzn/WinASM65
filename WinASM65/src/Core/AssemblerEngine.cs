@@ -760,6 +760,9 @@ namespace WinASM65.Core
 
             while (_currentFile != null && !_stopAssembling)
             {
+                if (lineAware != null)
+                    lineAware.SetSource(_currentFile.FilePath);
+
                 string rawLine;
                 while (!_stopAssembling && (rawLine = _currentFile.ReadLine()) != null)
                 {
@@ -767,9 +770,14 @@ namespace WinASM65.Core
 
                     // A listing that tracks source lines has to be told where the
                     // line it is about to receive starts; one that only renders
-                    // never asks, so nothing is paid for it here.
+                    // never asks, so nothing is paid for it here. SetSource is
+                    // called inside the inner loop as well, because .include
+                    // swaps _currentFile without re-entering the outer loop.
                     if (lineAware != null)
+                    {
+                        lineAware.SetSource(_currentFile.FilePath);
                         lineAware.StartLine(_currentFile.CurrentLineNumber + 1);
+                    }
 
                     _listingService.PrintLine(originalLine);
 

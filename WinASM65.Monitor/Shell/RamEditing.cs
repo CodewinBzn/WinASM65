@@ -1,14 +1,14 @@
-using System;
+﻿using System;
 using WinASM65.Monitor.Protocol;
 
 namespace WinASM65.Monitor.Shell
 {
     /// <summary>
-    /// In-place editing of the RAM pane's live window ($0000-$07FF).
+    /// In-place editing of the RAM pane's live window ($0000-$3FFF).
     ///
-    /// The editable address set is exactly the RAM pane window: $0000-$07FF
-    /// (2 KiB). This includes the zero page ($0000-$00FF), the stack
-    /// ($0100-$01FF), and ordinary RAM ($0200-$07FF). All three regions are
+    /// The editable address set is exactly the RAM pane window: $0000-$3FFF
+    /// (16 KiB). This includes the zero page ($0000-$00FF), the stack
+    /// ($0100-$01FF), and ordinary RAM ($0200-$3FFF). All three regions are
     /// fully writable; the region markers exist only for display.
     ///
     /// Every failure is a string, never an exception. A pane must not be able
@@ -21,14 +21,19 @@ namespace WinASM65.Monitor.Shell
         /// <summary>First editable address (inclusive), matches <see cref="RamDump.WindowStart"/>.</summary>
         public const int EditWindowStart = RamDump.WindowStart;
 
-        /// <summary>Last editable address (inclusive), matches <see cref="RamDump.WindowEnd"/>.</summary>
+        /// <summary>Last editable address (inclusive), matches <see cref="RamDump.WindowEnd"/>.
+        ///
+        /// Sixteen kilobytes: the pane shows $0000-$3FFF and nothing outside it
+        /// can be edited, because the pane has no row for an address above it
+        /// and editing through it would change a byte the user cannot see.
+        /// </summary>
         public const int EditWindowEnd = RamDump.WindowEnd;
 
         /// <summary>
         /// Writes a single byte to the live machine and verifies it took effect.
         /// </summary>
         /// <param name="backend">The memory backend to write through.</param>
-        /// <param name="address">Address in the range $0000-$07FF.</param>
+        /// <param name="address">Address in the range $0000-$3FFF.</param>
         /// <param name="value">Byte value to write.</param>
         /// <returns>
         /// "OK $XXXX" on success (XXXX is the address in hex).
@@ -85,7 +90,7 @@ namespace WinASM65.Monitor.Shell
         /// Writes multiple consecutive bytes to the live machine and verifies they took effect.
         /// </summary>
         /// <param name="backend">The memory backend to write through.</param>
-        /// <param name="address">Starting address in the range $0000-$07FF.</param>
+        /// <param name="address">Starting address in the range $0000-$3FFF.</param>
         /// <param name="values">Bytes to write. Must not be null or empty.</param>
         /// <returns>
         /// "OK $XXXX N byte(s)" on success.

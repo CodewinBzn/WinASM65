@@ -18,6 +18,7 @@ namespace WinASM65.Output
         private readonly int _value;
         private readonly string _text;
         private readonly bool _isSourceLine;
+        private readonly string _sourceName;
 
         public ListingFragment(string text)
         {
@@ -33,18 +34,20 @@ namespace WinASM65.Output
             _text = string.Empty;
         }
 
-        public ListingFragment(int sourceLineNumber)
+        public ListingFragment(int sourceLineNumber, string sourceName)
         {
             _type = LineType.NONE;
             _value = sourceLineNumber;
             _text = string.Empty;
             _isSourceLine = true;
+            _sourceName = sourceName;
         }
 
         public LineType Type { get { return _type; } }
         public int Value { get { return _value; } }
         public string Text { get { return _text; } }
         public bool IsSourceLine { get { return _isSourceLine; } }
+        public string SourceName { get { return _sourceName; } }
     }
 
     /// <summary>
@@ -67,6 +70,7 @@ namespace WinASM65.Output
             int memoryIndex = 0;
             int currentAddress = 0;
             int lineNumber = 0;
+            string currentSource = null;
 
             for (int i = 0; i < lines.Count; i++)
             {
@@ -75,11 +79,12 @@ namespace WinASM65.Output
                     continue;
 
                 lineNumber = SourceLineNumber(fragments, lineNumber);
+                currentSource = SourceNameOf(fragments, currentSource);
                 string text = ConcatText(fragments);
 
                 if (!HasKind(fragments))
                 {
-                    rows.Add(new ListingRow(ListingRowKind.Text, lineNumber, null, null, null, text));
+                    rows.Add(new ListingRow(ListingRowKind.Text, lineNumber, currentSource, null, null, null, text));
                     continue;
                 }
 
@@ -93,22 +98,22 @@ namespace WinASM65.Output
                     {
                         case LineType.ORG:
                             currentAddress = (ushort)fragment.Value;
-                            rows.Add(new ListingRow(ListingRowKind.Origin, lineNumber, currentAddress, null, null, text));
+                            rows.Add(new ListingRow(ListingRowKind.Origin, lineNumber, currentSource, currentAddress, null, null, text));
                             break;
 
                         case LineType.LABEL:
-                            rows.Add(new ListingRow(ListingRowKind.Label, lineNumber,
+                            rows.Add(new ListingRow(ListingRowKind.Label, lineNumber, currentSource,
                                 (ushort)fragment.Value, null, null, text));
                             break;
 
                         case LineType.RES:
                         case LineType.CONST:
                             rows.Add(new ListingRow(fragment.Type == LineType.RES ? ListingRowKind.Reserve : ListingRowKind.Constant,
-                                lineNumber, null, fragment.Value, null, text));
+                                lineNumber, currentSource, null, fragment.Value, null, text));
                             break;
 
                         case LineType.INST:
-                            AppendInstructionRows(rows, fragment.Value, text, lineNumber, ref currentAddress, ref memoryIndex, memory);
+                            AppendInstructionRows(rows, fragment.Value, text, lineNumber, currentSource, ref currentAddress, ref memoryIndex, memory);
                             break;
                     }
                 }
@@ -118,7 +123,7 @@ namespace WinASM65.Output
         }
 
         private static void AppendInstructionRows(List<ListingRow> rows, int byteCount, string text, int lineNumber,
-            ref int currentAddress, ref int memoryIndex, byte[] memory)
+            string sourceName, ref int currentAddress, ref int memoryIndex, byte[] memory)
         {
             List<byte> rowBytes = new List<byte>(BytesPerRow);
             bool textPlaced = false;
@@ -138,7 +143,7 @@ namespace WinASM65.Output
                 // is one line of source however many cells it occupies.
                 string rowText = textPlaced ? null : text;
                 textPlaced = true;
-                rows.Add(new ListingRow(ListingRowKind.Instruction, lineNumber, currentAddress - rowBytes.Count, null,
+                rows.Add(new ListingRow(ListingRowKind.Instruction, lineNumber, sourceName, currentAddress - rowBytes.Count, null,
                     rowBytes.ToArray(), rowText));
                 rowBytes.Clear();
             }
@@ -146,7 +151,7 @@ namespace WinASM65.Output
             if (rowBytes.Count == 0 && textPlaced)
                 return;
 
-            rows.Add(new ListingRow(ListingRowKind.Instruction, lineNumber, currentAddress - rowBytes.Count, null,
+            rows.Add(new ListingRow(ListingRowKind.Instruction, lineNumber, sourceName, currentAddress - rowBytes.Count, null,
                 rowBytes.ToArray(), textPlaced ? null : text));
         }
 
@@ -177,6 +182,16 @@ namespace WinASM65.Output
             {
                 if (fragments[i].IsSourceLine)
                     return fragments[i].Value;
+            }
+            return fallback;
+        }
+
+        private static string SourceNameOf(IReadOnlyList<ListingFragment> fragments, string fallback)
+        {
+            for (int i = 0; i < fragments.Count; i++)
+            {
+                if (fragments[i].IsSourceLine && fragments[i].SourceName != null)
+                    return fragments[i].SourceName;
             }
             return fallback;
         }

@@ -62,7 +62,7 @@ namespace WinASM65.Monitor.Tests
             Assert.AreEqual(ShellLayoutMode.Overlay, ShellLayout.ForSize(80, TallEnough).Mode);
 
             ShellLayout atEighty = ShellLayout.ForSize(80, TallEnough);
-            Assert.AreEqual(ShellLayout.RightColumnWidth, atEighty.RightPaneWidth);
+            Assert.AreEqual(ShellLayout.CompactRightColumnWidth, atEighty.RightPaneWidth);
             Assert.IsFalse(atEighty.RightPaneIsColumn, "an overlay is not a column");
             Assert.IsFalse(atEighty.TreeIsColumn);
         }
@@ -99,6 +99,8 @@ namespace WinASM65.Monitor.Tests
             Assert.AreEqual(ShellLayoutMode.Full, atOneTwenty.Mode);
             Assert.AreEqual(ShellLayout.TreeColumnWidth, atOneTwenty.TreeWidth);
             Assert.AreEqual(ShellLayout.RightColumnWidth, atOneTwenty.RightPaneWidth);
+            Assert.AreEqual(0, atOneTwenty.ListingWidth);
+            Assert.AreEqual(ShellLayout.RightColumnWidth, atOneTwenty.RamWidth);
             Assert.IsTrue(atOneTwenty.TreeIsColumn);
             Assert.IsTrue(atOneTwenty.RightPaneIsColumn);
         }

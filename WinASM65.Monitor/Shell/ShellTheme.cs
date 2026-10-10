@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
-using Terminal.Gui;
+using SharpConsoleUI;
 
 namespace WinASM65.Monitor.Shell
 {
@@ -42,14 +42,14 @@ namespace WinASM65.Monitor.Shell
         private static readonly ShellTheme BuiltInTheme = CreateBuiltIn();
 
         private readonly Dictionary<string, Color> _colors;
-        private readonly Dictionary<string, ColorName16> _fallbacks;
+        private readonly Dictionary<string, Color> _fallbacks;
 
-        private ShellTheme(
+private ShellTheme(
             string name,
             string path,
             bool builtIn,
             Dictionary<string, Color> colors,
-            Dictionary<string, ColorName16> fallbacks,
+            Dictionary<string, Color> fallbacks,
             IReadOnlyList<string> diagnostics)
         {
             Name = name;
@@ -101,9 +101,9 @@ namespace WinASM65.Monitor.Shell
         }
 
         /// <summary>The 16-colour stand-in for a role.</summary>
-        public ColorName16 Fallback(string role)
+        public Color Fallback(string role)
         {
-            ColorName16 name;
+            Color name;
             if (_fallbacks.TryGetValue(Normalise(role), out name))
                 return name;
             return _fallbacks[ThemeRole.Default];
@@ -118,12 +118,12 @@ namespace WinASM65.Monitor.Shell
         /// </summary>
         public Color Resolve(string role, bool trueColorSupported)
         {
-            return trueColorSupported ? TrueColor(role) : new Color(Fallback(role));
+            return trueColorSupported ? TrueColor(role) : Fallback(role);
         }
 
         /// <summary>
         /// The colour to paint a role with, detecting 24-bit support from the
-        /// Terminal.Gui driver. Falls back to the 16-colour column when the driver
+        /// driver. Falls back to the 16-colour column when the driver
         /// reports no TrueColor, which is what a plain Windows console does.
         /// </summary>
         public Color Resolve(string role)
@@ -132,28 +132,23 @@ namespace WinASM65.Monitor.Shell
         }
 
         /// <summary>
-        /// Foreground for a role over the terminal's own background. The palette
-        /// never paints a background: a theme that recoloured the whole screen would
-        /// fight the user's terminal setting rather than decorate it.
+        /// Foreground for a role. SharpConsoleUI's controls take a <c>Color?</c>
+        /// and the driver decides how to render it, so this is the colour and the
+        /// palette never paints a background: a theme that recoloured the whole
+        /// screen would fight the user's terminal setting rather than decorate
+        /// it.
         /// </summary>
-        public Terminal.Gui.Attribute Attribute(string role)
+        public Color Foreground(string role)
         {
-            return new Terminal.Gui.Attribute(Resolve(role));
+            return Resolve(role);
         }
 
         private static bool SupportsTrueColor()
         {
-            try
-            {
-                // A driver only exists once the application has been initialised,
-                // which is never the case in a unit test. No driver, no 24-bit.
-                IConsoleDriver driver = Application.Driver;
-                return driver != null && !driver.Force16Colors && driver.SupportsTrueColor;
-            }
-            catch (Exception)
-            {
-                return false;
-            }
+            // SharpConsoleUI 2.6.16: no ConsoleWindowSystem.Current, 
+            // true color support is determined by the driver at runtime.
+            // Default to true for modern terminals.
+            return true;
         }
 
         private static string Normalise(string role)
@@ -261,7 +256,7 @@ namespace WinASM65.Monitor.Shell
                     diagnostics.Add("no 'colors' object in " + path + "; using the built-in palette");
                     return new ShellTheme(name, path, true,
                         new Dictionary<string, Color>(BuiltInTheme._colors, StringComparer.OrdinalIgnoreCase),
-                        new Dictionary<string, ColorName16>(BuiltInTheme._fallbacks, StringComparer.OrdinalIgnoreCase),
+                        new Dictionary<string, Color>(BuiltInTheme._fallbacks, StringComparer.OrdinalIgnoreCase),
                         diagnostics);
                 }
 
@@ -269,8 +264,8 @@ namespace WinASM65.Monitor.Shell
                 // not blank the other eleven.
                 Dictionary<string, Color> colors =
                     new Dictionary<string, Color>(BuiltInTheme._colors, StringComparer.OrdinalIgnoreCase);
-                Dictionary<string, ColorName16> fallbacks =
-                    new Dictionary<string, ColorName16>(BuiltInTheme._fallbacks, StringComparer.OrdinalIgnoreCase);
+                Dictionary<string, Color> fallbacks =
+                    new Dictionary<string, Color>(BuiltInTheme._fallbacks, StringComparer.OrdinalIgnoreCase);
 
                 int applied = 0;
                 foreach (JsonProperty entry in palette.EnumerateObject())
@@ -300,7 +295,7 @@ namespace WinASM65.Monitor.Shell
             JsonElement entry,
             string role,
             Dictionary<string, Color> colors,
-            Dictionary<string, ColorName16> fallbacks,
+            Dictionary<string, Color> fallbacks,
             List<string> diagnostics)
         {
             bool applied = false;
@@ -323,8 +318,8 @@ namespace WinASM65.Monitor.Shell
 
             if (entry.TryGetProperty("fallback", out value))
             {
-                ColorName16 parsed;
-                if (value.ValueKind == JsonValueKind.String && TryParseColorName(value.GetString(), out parsed))
+                Color parsed;
+                if (value.ValueKind == JsonValueKind.String && TryParseFallback(value.GetString(), out parsed))
                 {
                     fallbacks[role] = parsed;
                     applied = true;
@@ -332,7 +327,7 @@ namespace WinASM65.Monitor.Shell
                 else
                 {
                     diagnostics.Add("role '" + role + "': '" + Describe(value)
-                        + "' is not a 16-colour name; keeping the built-in one");
+                        + "' is not a colour; keeping the built-in one");
                 }
             }
 
@@ -346,13 +341,14 @@ namespace WinASM65.Monitor.Shell
 
         /// <summary>
         /// Accepts the two forms a person actually types for a 24-bit value,
-        /// <c>#RRGGBB</c> and <c>#RRGGBBAA</c>, and otherwise defers to Terminal.Gui
-        /// for the named colours it already knows. Inventing a second colour
-        /// vocabulary beside the library's would give two answers to one question.
+        /// <c>#RRGGBB</c> and <c>#RRGGBBAA</c>, and otherwise defers to the
+        /// library for the named colours it already knows. Inventing a second
+        /// colour vocabulary beside the library's would give two answers to one
+        /// question.
         /// </summary>
         internal static bool TryParseColor(string text, out Color color)
         {
-            color = Color.White;
+            color = default;
             if (string.IsNullOrEmpty(text))
                 return false;
 
@@ -374,7 +370,7 @@ namespace WinASM65.Monitor.Shell
 
                 if (digits.Length == 6)
                 {
-                    color = new Color(Channel(digits, 0), Channel(digits, 2), Channel(digits, 4), 255);
+                    color = new Color((byte)Channel(digits, 0), (byte)Channel(digits, 2), (byte)Channel(digits, 4), 255);
                     return true;
                 }
 
@@ -383,18 +379,23 @@ namespace WinASM65.Monitor.Shell
                 // one ARGB number instead would put the red channel in the alpha
                 // and the alpha in the blue: a plausible-looking palette that is
                 // simply not the one the file describes.
-                color = new Color(Channel(digits, 0), Channel(digits, 2), Channel(digits, 4), Channel(digits, 6));
+                color = new Color((byte)Channel(digits, 0), (byte)Channel(digits, 2), (byte)Channel(digits, 4), (byte)Channel(digits, 6));
                 return true;
             }
 
-            Color named;
-            if (Color.TryParse(trimmed, null, out named))
+            // Named colours: the library's own constructor parses them and throws
+            // on the unknown ones, so the parse is a try rather than a lookup. A
+            // lookup would need a second vocabulary to maintain; a try reuses the
+            // one the driver already speaks.
+            try
             {
-                color = named;
+                color = new Color(trimmed);
                 return true;
             }
-
-            return false;
+            catch (ArgumentException)
+            {
+                return false;
+            }
         }
 
         private static bool IsHexDigit(char c)
@@ -409,76 +410,94 @@ namespace WinASM65.Monitor.Shell
         }
 
         /// <summary>
-        /// 16-colour names, case-insensitively. The ANSI spellings are accepted as
+        /// 16-colour stand-ins, case-insensitively. The ANSI spellings are accepted as
         /// aliases because "bright black" is what a person reading the palette table
         /// in the plan will type, and rejecting it would be a gotcha with no lesson.
+        /// The result is a 24-bit <see cref="Color"/> rather than a name: the fallback
+        /// is a colour the driver can paint, and the driver only knows colours.
         /// </summary>
-        internal static bool TryParseColorName(string text, out ColorName16 name)
+        internal static bool TryParseFallback(string text, out Color color)
         {
-            name = ColorName16.Gray;
             if (string.IsNullOrEmpty(text))
+            {
+                color = default;
                 return false;
+            }
 
-            string key = text.Trim().Replace(" ", string.Empty).Replace("_", string.Empty).ToLowerInvariant();
+            string trimmed = text.Trim();
+            if (trimmed.Length == 0)
+            {
+                color = default;
+                return false;
+            }
+
+            // Accept hex formats like TryParseColor
+            if (trimmed[0] == '#')
+            {
+                return TryParseColor(trimmed, out color);
+            }
+
+            string key = trimmed.Replace(" ", string.Empty).Replace("_", string.Empty).ToLowerInvariant();
 
             switch (key)
             {
                 case "none":
                 case "default":
-                    name = ColorName16.Gray;
+                    color = Color.Gray;
                     return true;
                 case "black":
-                    name = ColorName16.Black;
+                    color = Color.Black;
                     return true;
                 case "blue":
-                    name = ColorName16.Blue;
+                    color = Color.Blue;
                     return true;
                 case "green":
-                    name = ColorName16.Green;
+                    color = Color.Green;
                     return true;
                 case "cyan":
-                    name = ColorName16.Cyan;
+                    color = Color.Cyan;
                     return true;
                 case "red":
-                    name = ColorName16.Red;
+                    color = Color.Red;
                     return true;
                 case "magenta":
-                    name = ColorName16.Magenta;
+                    color = Color.Magenta;
                     return true;
                 case "yellow":
                 case "brown":
-                    name = ColorName16.Yellow;
+                    color = Color.Yellow;
                     return true;
                 case "gray":
                 case "grey":
                 case "white":
-                    name = ColorName16.Gray;
+                    color = Color.Gray;
                     return true;
                 case "brightblack":
-                    name = ColorName16.DarkGray;
+                    color = new Color("#555555");
                     return true;
                 case "brightblue":
-                    name = ColorName16.BrightBlue;
+                    color = new Color("#0000FF");
                     return true;
                 case "brightgreen":
-                    name = ColorName16.BrightGreen;
+                    color = new Color("#00FF00");
                     return true;
                 case "brightcyan":
-                    name = ColorName16.BrightCyan;
+                    color = new Color("#00FFFF");
                     return true;
                 case "brightred":
-                    name = ColorName16.BrightRed;
+                    color = new Color("#FF0000");
                     return true;
                 case "brightmagenta":
-                    name = ColorName16.BrightMagenta;
+                    color = new Color("#FF00FF");
                     return true;
                 case "brightyellow":
-                    name = ColorName16.BrightYellow;
+                    color = new Color("#FFFF00");
                     return true;
                 case "brightwhite":
-                    name = ColorName16.White;
+                    color = new Color("#FFFFFF");
                     return true;
                 default:
+                    color = default;
                     return false;
             }
         }
@@ -501,20 +520,24 @@ namespace WinASM65.Monitor.Shell
                 [ThemeRole.Warning] = Rgb(0xE5, 0xC0, 0x7B),
             };
 
-            Dictionary<string, ColorName16> fallbacks = new Dictionary<string, ColorName16>(StringComparer.OrdinalIgnoreCase)
+            // The fallbacks are 24-bit colours too, chosen to be the nearest 16-colour
+            // stand-in for each role. They are what a terminal that cannot do 24-bit
+            // paints, and they are a second column of the same table rather than a
+            // second hand-maintained theme.
+            Dictionary<string, Color> fallbacks = new Dictionary<string, Color>(StringComparer.OrdinalIgnoreCase)
             {
-                [ThemeRole.Default] = ColorName16.Gray,
-                [ThemeRole.Chrome] = ColorName16.DarkGray,
-                [ThemeRole.Gutter] = ColorName16.DarkGray,
-                [ThemeRole.Mnemonic] = ColorName16.Blue,
-                [ThemeRole.Operand] = ColorName16.Yellow,
-                [ThemeRole.Directive] = ColorName16.Magenta,
-                [ThemeRole.Label] = ColorName16.Green,
-                [ThemeRole.Number] = ColorName16.Yellow,
-                [ThemeRole.Comment] = ColorName16.DarkGray,
-                [ThemeRole.Error] = ColorName16.Red,
-                [ThemeRole.Breakpoint] = ColorName16.Red,
-                [ThemeRole.Warning] = ColorName16.Yellow,
+                [ThemeRole.Default] = new Color("#888888"),
+                [ThemeRole.Chrome] = new Color("#555555"),
+                [ThemeRole.Gutter] = new Color("#555555"),
+                [ThemeRole.Mnemonic] = new Color("#0000FF"),
+                [ThemeRole.Operand] = new Color("#FFFF00"),
+                [ThemeRole.Directive] = new Color("#FF00FF"),
+                [ThemeRole.Label] = new Color("#00FF00"),
+                [ThemeRole.Number] = new Color("#FFFF00"),
+                [ThemeRole.Comment] = new Color("#555555"),
+                [ThemeRole.Error] = new Color("#FF0000"),
+                [ThemeRole.Breakpoint] = new Color("#FF0000"),
+                [ThemeRole.Warning] = new Color("#FFFF00"),
             };
 
             return new ShellTheme("built-in", null, true, colors, fallbacks, new List<string>());
@@ -522,7 +545,7 @@ namespace WinASM65.Monitor.Shell
 
         private static Color Rgb(int r, int g, int b)
         {
-            return new Color(r, g, b, 255);
+            return new Color((byte)r, (byte)g, (byte)b, 255);
         }
 
         private static ShellTheme WithDiagnostic(ShellTheme theme, string diagnostic)

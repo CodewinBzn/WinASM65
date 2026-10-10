@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -140,7 +140,29 @@ namespace WinASM65.Monitor.Shell
                 return NoRows;
             }
 
-            if (request == null || string.IsNullOrEmpty(request.SourceFile))
+            if (request == null)
+            {
+                _problem = "no listing request was made.";
+                return NoRows;
+            }
+
+            // A text request names source text in memory rather than a file.
+            // The editor uses this to re-derive its columns on every keystroke
+            // without writing to disk.
+            if (!string.IsNullOrEmpty(request.SourceText))
+            {
+                SourceListing textListing = _service.ListSourceText(request.SourceText, request.SourceFile);
+
+                if (textListing == null)
+                {
+                    _problem = "the listing service answered nothing for the in-memory source.";
+                    return NoRows;
+                }
+
+                return RowsOf(textListing, request.SourceFile ?? SourceListingService.DefaultSourceName, request.MaxRows);
+            }
+
+            if (string.IsNullOrEmpty(request.SourceFile))
             {
                 _problem = "no source file was named, so there is nothing to list.";
                 return NoRows;
@@ -208,6 +230,126 @@ namespace WinASM65.Monitor.Shell
         }
 
         /// <summary>
+        /// One <see cref="EditorRow"/> per line of <paramref name="sourceText"/>,
+        /// derived from an in-memory assembly of that text.
+        ///
+        /// The editor shows every line of the buffer, including comments, blanks
+        /// and lines that fail to assemble — each with its own line number, and
+        /// each carrying whatever address and bytes the assembler actually
+        /// produced for it. A line the assembler never emitted still appears,
+        /// with no address and no bytes, and with the diagnostic the assembler
+        /// reported against it, if any.
+        ///
+        /// <paramref name="sourceName"/> is the full path of the source being edited.
+        /// It is handed to the assembler as the file name so that <c>.include</c>
+        /// directives in the buffer resolve relative to the source's directory,
+        /// not the process's current directory — without it a banked file that
+        /// pulls in shared equates would list as all errors and no bytes.
+        ///
+        /// This is not on <see cref="IListingSource"/>: the seam stays four
+        /// members wide, and this method does the join the seam deliberately
+        /// does not — the editor needs one row per buffer line, which the seam
+        /// was cut to refuse.
+        /// </summary>
+        public IReadOnlyList<EditorRow> EditorRows(string sourceText, string sourceName, int origin)
+        {
+            _problem = null;
+
+            if (!IsAvailable)
+            {
+                _problem = NoCpuReason;
+                return new EditorRow[0];
+            }
+
+            if (string.IsNullOrEmpty(sourceText))
+            {
+                _problem = "no source text was given.";
+                return new EditorRow[0];
+            }
+
+            List<string> lines = SplitSource(sourceText);
+            SourceListing listing = _service.ListSourceText(sourceText, sourceName);
+
+            List<EditorRow> rows = new List<EditorRow>();
+            for (int i = 0; i < lines.Count; i++)
+            {
+                rows.Add(new EditorRow
+                {
+                    LineNumber = i + 1,
+                    Address = -1,
+                    Bytes = new List<byte>(),
+                    Cycles = null,
+                    Text = lines[i],
+                    Problem = null,
+                });
+            }
+
+            if (listing == null)
+            {
+                _problem = "the listing service answered nothing for the in-memory source.";
+                return rows;
+            }
+
+            if (!listing.Success)
+            {
+                // The assembly failed, but the editor still shows every line.
+                // Each error diagnostic is attached to the row its line number
+                // names, so the user can see which line to fix. Lines that have
+                // no diagnostic stay clean.
+                string description = Describe(listing, SourceListingService.DefaultSourceName);
+
+                foreach (Diagnostic diagnostic in listing.Assembly.Diagnostics)
+                {
+                    if (diagnostic == null ||
+                        diagnostic.Severity != DiagnosticSeverity.Error)
+                        continue;
+
+                    int line = diagnostic.Location.LineNumber;
+                    if (line > 0 && line <= rows.Count)
+                        rows[line - 1].Problem = diagnostic.Message;
+                }
+
+                _problem = description;
+                return rows;
+            }
+
+            // Build a map from source line number to the first ListingRow
+            // that carries it — the first row of an instruction has the address
+            // and the source text; continuation rows carry bytes only.
+            //
+            // Only rows whose SourceName matches the file being edited are
+            // considered: an .include directive pulls in a file whose line
+            // numbers restart at 1 and would otherwise collide with the main
+            // file's — byLine[2] would pick up the included file's line 2
+            // instead of the main file's, and the wrong address and bytes would
+            // be shown for every line after the first include.
+            Dictionary<int, ListingRow> byLine = new Dictionary<int, ListingRow>();
+            foreach (ListingRow row in Translate(listing, 0))
+            {
+                if (row.SourceName == null || !row.SourceName.Equals(sourceName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (row.LineNumber > 0 && !byLine.ContainsKey(row.LineNumber))
+                    byLine[row.LineNumber] = row;
+            }
+
+            for (int i = 0; i < lines.Count; i++)
+            {
+                EditorRow editorRow = rows[i];
+                ListingRow listingRow;
+                if (byLine.TryGetValue(editorRow.LineNumber, out listingRow))
+                {
+                    editorRow.Address = listingRow.Address;
+                    editorRow.Bytes = listingRow.Bytes;
+                    editorRow.Cycles = listingRow.Cycles;
+                    editorRow.SetTokens(listingRow.Tokens);
+                }
+            }
+
+            return rows;
+        }
+
+        /// <summary>
         /// Copies the library's rows into the shell's, in display order and under the
         /// ceiling the request asked for.
         /// </summary>
@@ -239,6 +381,7 @@ namespace WinASM65.Monitor.Shell
             ListingRow translated = new ListingRow
             {
                 LineNumber = row.LineNumber,
+                SourceName = row.SourceName,
 
                 // The shell's absent address is -1 and the library's is null. Both say
                 // "this line emits nothing at no address"; a comment line must never be
@@ -303,6 +446,17 @@ namespace WinASM65.Monitor.Shell
         /// which is why the pane draws it as a row of bytes and nothing else rather
         /// than repeating the line above it.
         /// </summary>
+        /// <summary>
+        /// Tokenises <paramref name="text"/> into role-tagged runs for syntax
+        /// highlighting. Fast: no assembly, no disk I/O. The caller may hold the
+        /// result across edits because tokens are only invalidated by the source
+        /// text they came from.
+        /// </summary>
+        public IList<ListingToken> LexLine(string text)
+        {
+            return Lex(text);
+        }
+
         private List<ListingToken> Lex(string text)
         {
             List<ListingToken> tokens = new List<ListingToken>();
@@ -444,6 +598,42 @@ namespace WinASM65.Monitor.Shell
         private string Resolve(string sourceFile)
         {
             return Path.IsPathRooted(sourceFile) ? sourceFile : Path.Combine(_directory, sourceFile);
+        }
+
+        /// <summary>
+        /// Splits source text into lines, keeping one entry per line and dropping
+        /// the trailing empty element that a final line ending produces — so the
+        /// row count matches the visible line count of the buffer. Blank lines in
+        /// the middle are kept, because the editor shows them and the gutter must
+        /// number them.
+        /// </summary>
+        private static List<string> SplitSource(string sourceText)
+        {
+            if (string.IsNullOrEmpty(sourceText))
+                return new List<string>();
+
+            List<string> lines = new List<string>();
+
+            string[] parts = sourceText.Split(new[] { '\r', '\n' },
+                StringSplitOptions.None);
+
+            for (int i = 0; i < parts.Length; i++)
+            {
+                // A "\r\n" pair produces two adjacent empty strings after splitting
+                // on '\r' and '\n' separately — skip the second of a CRLF pair.
+                if (parts[i].Length == 0 && i + 1 < parts.Length &&
+                    parts[i + 1].Length == 0)
+                    continue;
+
+                // Drop only the trailing empty element that a final line ending
+                // produces: "a\nb\n" becomes ["a","b"], not ["a","b",""].
+                if (parts[i].Length == 0 && i == parts.Length - 1)
+                    continue;
+
+                lines.Add(parts[i]);
+            }
+
+            return lines;
         }
     }
 }

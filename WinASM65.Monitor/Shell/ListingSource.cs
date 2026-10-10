@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using WinASM65.Cpu;
@@ -14,6 +14,16 @@ namespace WinASM65.Monitor.Shell
             Origin = origin;
             MaxRows = maxRows;
         }
+
+        /// <summary>
+        /// Source text to assemble in place of <see cref="SourceFile"/>.
+        ///
+        /// When this is set the request names text rather than a path, and the
+        /// listing is produced in memory: the editor re-derives its columns on
+        /// every keystroke without writing to disk, which is what keeps the
+        /// address column honest to the buffer.
+        /// </summary>
+        public string SourceText { get; set; }
 
         /// <summary>The source to list. Absolute or relative to the session's directory.</summary>
         public string SourceFile { get; }
@@ -75,6 +85,12 @@ namespace WinASM65.Monitor.Shell
         /// <summary>Source line number, or 0 for a line that emits no bytes.</summary>
         public int LineNumber { get; set; }
 
+        /// <summary>
+        /// The name of the source file this row came from. Null when the listing
+        /// service does not track source files.
+        /// </summary>
+        public string SourceName { get; set; }
+
         /// <summary>Address of the first byte, or -1 for a line that emits no bytes.</summary>
         public int Address { get; set; }
 
@@ -100,6 +116,60 @@ namespace WinASM65.Monitor.Shell
         }
 
         /// <summary>Builds the rows' tokens from their source text.</summary>
+        public void SetTokens(IEnumerable<ListingToken> tokens)
+        {
+            _tokens.Clear();
+            if (tokens == null)
+                return;
+            _tokens.AddRange(tokens);
+        }
+    }
+
+    /// <summary>
+    /// One buffer line as the editor shows it: line number, the bytes the line
+    /// assembled to, and the line's own text and diagnostic.
+    ///
+    /// <see cref="ListingRow"/> cannot key the editor: its <see cref="ListingRow.LineNumber"/>
+    /// is the line the assembler reported, and an assembly that fails entirely
+    /// reports none at all. An editor must show every line of the buffer, so it
+    /// keeps its own number, keyed by position, and carries the line's diagnostic
+    /// whether the assembler produced a row for it or not.
+    /// </summary>
+    public sealed class EditorRow
+    {
+        private readonly List<ListingToken> _tokens = new List<ListingToken>();
+
+        /// <summary>The buffer line this row is, 1-based. Never 0.</summary>
+        public int LineNumber { get; set; }
+
+        /// <summary>Address of the first byte, or -1 when the line emits nothing.</summary>
+        public int Address { get; set; }
+
+        /// <summary>Bytes emitted by this row. Never null.</summary>
+        public IList<byte> Bytes { get; set; }
+
+        /// <summary>Documented cycles, or null when the instruction has no documented cost.</summary>
+        public int? Cycles { get; set; }
+
+        /// <summary>The source line verbatim, for the text column.</summary>
+        public string Text { get; set; }
+
+        /// <summary>A diagnostic for this line, or null when it is clean.</summary>
+        public string Problem { get; set; }
+
+        /// <summary>The source split into role-tagged runs, for the source column.</summary>
+        public IList<ListingToken> Tokens
+        {
+            get { return _tokens; }
+        }
+
+        /// <summary>True for a line that emits nothing: a comment, a blank, an equ.</summary>
+        public bool EmitsBytes
+        {
+            get { return Address >= 0 && Bytes != null && Bytes.Count > 0; }
+        }
+
+        /// <summary>Builds the row's tokens from its source text.</summary>
         public void SetTokens(IEnumerable<ListingToken> tokens)
         {
             _tokens.Clear();

@@ -58,6 +58,14 @@ namespace WinASM65.Output
         /// belongs to, numbered from one.
         /// </summary>
         void StartLine(int lineNumber);
+
+        /// <summary>
+        /// Announces the source file the next <see cref="StartLine"/> belongs to.
+        /// Called when the assembler enters or leaves an <c>.include</c> directive,
+        /// so a sink that tracks files can distinguish rows from the main source
+        /// from rows pulled in by an include.
+        /// </summary>
+        void SetSource(string sourceName);
     }
 
     /// <summary>
