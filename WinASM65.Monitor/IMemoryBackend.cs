@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace WinASM65.Monitor
 {
@@ -48,10 +49,26 @@ namespace WinASM65.Monitor
 
         void ClearBreakpoints();
 
-        /// <summary>Captures the full machine state, so it can be restored later.</summary>
+/// <summary>Captures the full machine state, so it can be restored later.</summary>
         byte[] SaveState();
 
         void LoadState(byte[] state);
+
+        /// <summary>
+        /// Fires when the machine changes RAM, so a pane that displays it can
+        /// refresh without polling.
+        ///
+        /// The bridge fires this on its receiver thread, so a handler that
+        /// blocks would delay the next push. The RAM pane's handler copies the
+        /// bytes and posts the draw to the UI thread, which is the whole job.
+        /// </summary>
+        event Action<IReadOnlyList<(int Address, byte Value)>> RamChanged;
+    }
+
+    /// <summary>Optional capability for hosts that can replace their cartridge image.</summary>
+    public interface IRomTransferTarget
+    {
+        void TransferRom(string imagePath);
     }
 
     /// <summary>Breakpoint kind.</summary>

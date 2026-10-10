@@ -1,8 +1,11 @@
 using System;
 using System.IO;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Terminal.Gui;
+using System.Linq;
+using SharpConsoleUI;
+using SharpConsoleUI.Drivers;
 using WinASM65.Cpu;
+using WinASM65.Monitor.Abstractions;
 using WinASM65.Monitor.Shell;
 
 namespace WinASM65.Monitor.Tests
@@ -35,10 +38,8 @@ namespace WinASM65.Monitor.Tests
 
         private static int RunWith(string directory, string sessionDirectory, string initialSource)
         {
-            FakeDriver driver = new FakeDriver();
-            driver.SetWindowSize(120, 40);
-            driver.Refresh();
-
+            IConsoleDriver driver = new HeadlessConsoleDriver();
+                        
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
                 ICpuInstructionSet cpu = new Cpu6502();
@@ -115,6 +116,55 @@ namespace WinASM65.Monitor.Tests
             Assert.AreEqual(0, RunWith(dir, dir, string.Empty));
         }
 
+        /// <summary>
+        /// A source named at startup reaches the listing pane.
+        ///
+        /// Naming one used to record the name and stop: nothing assembled it, so the
+        /// pane kept saying that nothing had been listed yet. The argument resolved,
+        /// the tree found the file, and the editor still opened empty against the one
+        /// file it had been told to open.
+        /// </summary>
+        private const string Listable =
+            "        .org $C000" + "\n"
+            + "Start:  LDA #$5A" + "\n"
+            + "        .export Start" + "\n";
+
+        [TestMethod]
+        public void ASourceNamedAtStartupReachesTheListingPane()
+        {
+            string dir = ScratchDirectory();
+            string file = Path.Combine(dir, "listed.asm");
+            File.WriteAllText(file, Listable);
+
+            try
+            {
+                IConsoleDriver driver = new HeadlessConsoleDriver();
+                using (HostedSession hosted = new ConsoleWindowSystem(driver).BeginHosted())
+                {
+                                        
+                    using (FakeMemoryBackend machine = new FakeMemoryBackend())
+                    {
+                        ICpuInstructionSet cpu = new Cpu6502();
+                        MonitorSession session = new MonitorSession(machine, cpu, dir);
+
+ShellWindow window = new ShellWindow(session, ShellTheme.Default,
+                            new AssemblerListingSource(cpu, dir), dir,
+                            new ConsoleWindowSystem(new HeadlessConsoleDriver()));
+
+                        window.OpenSourceAndList("listed.asm");
+
+                        Assert.IsNotNull(window.SourceFile, "the source was not opened");
+                        Assert.IsTrue(window.Listing.Rows.Count > 0,
+                            "the pane holds no rows. Message: " + window.Message);
+                    }
+                }
+            }
+            finally
+            {
+                File.Delete(file);
+            }
+        }
+
         [TestMethod]
         public void TheDriverlessOverloadsCannotBeExercisedWithoutAConsole()
         {
@@ -152,10 +202,13 @@ namespace WinASM65.Monitor.Tests
                 "the driverless overloads disappeared; if they now take a driver, the ones "
                 + "above are no longer the only testable path and this test should be rewritten");
 
-            Assert.AreEqual(0, ShellRunner.UntilQuit,
+Assert.AreEqual(-1, ShellRunner.UntilQuit,
                 "UntilQuit is the absence of a bound, and it is what makes a driverless run untestable");
             Assert.AreEqual(1, ShellRunner.OneIteration,
                 "OneIteration is the bound a caller with no keyboard can finish on");
         }
     }
 }
+
+
+

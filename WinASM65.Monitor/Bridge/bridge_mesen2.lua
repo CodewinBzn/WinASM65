@@ -83,6 +83,83 @@ local STOP_REPORT_SECONDS = 8
 
 local ADDRESS_MAX = 0xFFFF
 
+-- The RAM range the watchpoint covers. NES CPU RAM is $0000-$FFFF; the
+-- watchpoint is installed over all of it because a write anywhere in that
+-- range is a change the monitor may want to show, and narrowing it would
+-- mean guessing which part the user cares about.
+local RAM_WATCH_START = 0x0000
+local RAM_WATCH_END = 0xFFFF
+
+-- Dirty buffer for push-based RAM updates. Every write while the machine
+-- runs lands here; on_tick drains it into one PUSH RAM line. Keyed by
+-- address so a write to the same address twice between ticks costs one
+-- entry, not two: the latest value is the only one worth sending.
+local ramDirty = {}
+local ramDirtyCount = 0
+
+-- Largest number of byte changes a single PUSH line may carry. Mirrors
+-- MonitorProtocol.MaxPushPayload on the monitor side; the bridge checks
+-- its own count before formatting so a burst cannot produce a line the
+-- monitor would refuse.
+local MAX_PUSH = 4096
+
+-- The single owner of the RAM dirty buffer. Installed once at start and
+-- never removed: it is a fixed cost per CPU write, and the buffer is only
+-- drained while a monitor is connected, so an idle machine pays for the
+-- callback and nothing else.
+local function install_ram_watchpoint()
+  local ok, id = pcall(function()
+    return emu.addMemoryCallback(function(accessed, value)
+      -- Observation, not interception: returning a value here would replace
+      -- the byte being written and the emulated program would silently stop
+      -- writing there. Nothing is returned, so the write proceeds.
+      ramDirty[accessed] = value
+      ramDirtyCount = ramDirtyCount + 1
+    end, emu.callbackType.write, RAM_WATCH_START, RAM_WATCH_END,
+      emu.cpuType.nes, emu.memType.nesMemory)
+  end)
+
+  if not ok then
+    log("RAM watchpoint refused: " .. tostring(id))
+  end
+end
+
+-- Formats and sends the accumulated RAM writes as one PUSH line, then
+-- clears the buffer. Called from on_tick, which only fires while the
+-- machine runs, so a stopped machine never sends a push.
+--
+-- The payload is capped before formatting: a burst that outruns the cap is
+-- truncated, and the next tick sends the rest. Capping after building the
+-- string would allocate the whole thing first, which is the failure mode
+-- the cap exists to prevent.
+local function drain_ram_push()
+  if ramDirtyCount == 0 or client == nil then
+    return
+  end
+
+  local parts = {}
+  local sent = 0
+  for address, value in pairs(ramDirty) do
+    if sent >= MAX_PUSH then
+      break
+    end
+    parts[#parts + 1] = "$" .. string.format("%04X", address) .. ":" .. string.format("%02X", value)
+    sent = sent + 1
+  end
+
+  -- Whatever was left behind is sent on the next tick. The cap is a
+  -- bandwidth bound, not a correctness one: a byte that is not in this
+  -- line is in the next, and the monitor applies them in order.
+  ramDirty = {}
+  ramDirtyCount = 0
+
+  local line = "PUSH RAM " .. table.concat(parts, " ")
+  local sent_ok = client:send(line .. "\n")
+  if not sent_ok then
+    log("PUSH send failed; RAM updates for this tick are lost")
+  end
+end
+
 local function fail(text)
   return "ERR " .. text
 end
@@ -459,6 +536,12 @@ local function dispatch(line)
   end
 
   if command == "ROM" then
+    if #tokens == 3 and tokens[2]:upper() == "LOAD" then
+      local image_path = tokens[3]
+      local ok, message = pcall(emu.loadRom, image_path)
+      if not ok then return fail("ROM load refused by the emulator: " .. tostring(message)) end
+      return "OK ROM loaded from " .. image_path
+    end
     return rom_line()
   end
 
@@ -722,6 +805,12 @@ local function on_tick()
     return
   end
 
+  -- The machine ran this tick and every write that landed is in ramDirty.
+  -- Send it now, while the machine is still broken: the socket is
+  -- non-blocking and the monitor's receiver thread reads it whenever it
+  -- arrives. A push sent after resume would race the next tick's drain.
+  drain_ram_push()
+
   emu.resume()
 end
 
@@ -756,6 +845,7 @@ local function start()
 
   emu.addEventCallback(on_tick, emu.eventType.inputPolled)
   emu.addEventCallback(serve_stopped, emu.eventType.codeBreak)
+  install_ram_watchpoint()
   log(NAME .. " " .. VERSION .. " bridge listening on 127.0.0.1:" .. port)
 end
 

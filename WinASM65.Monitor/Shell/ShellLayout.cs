@@ -48,7 +48,7 @@ namespace WinASM65.Monitor.Shell
     /// <summary>
     /// The breakpoints, as a decision about a width and a height.
     ///
-    /// This is a pure function of the terminal size, with no Terminal.Gui type in
+    /// This is a pure function of the terminal size, with no UI framework type in
     /// it, for two reasons. It is the part of the shell with the most arithmetic
     /// and the least tolerance for being wrong - a pane one column too wide wraps
     /// the code, and the code is the one thing that must never wrap - and it has
@@ -59,9 +59,9 @@ namespace WinASM65.Monitor.Shell
     ///
     /// | columns | layout                                            |
     /// |---------|---------------------------------------------------|
-    /// | &gt;= 120  | file tree (28) + editor + right pane (34)        |
-    /// | 100-119 | tree collapsed to a 3-cell drawer               |
-    /// | 80-99   | right pane becomes a toggled overlay            |
+    /// | &gt;= 120  | file tree (24) + editor (56) + RAM (40)        |
+    /// | 100-119 | tree drawer (3) + editor + RAM (34)             |
+    /// | 80-99   | right pane (34) becomes a toggled overlay        |
     /// | &lt; 80    | editor and listing full width                   |
     /// | &lt; 60    | minimum-width message, not a broken layout      |
     ///
@@ -84,13 +84,16 @@ namespace WinASM65.Monitor.Shell
         public const int AbsoluteMinimum = 60;
 
         /// <summary>Columns for the file tree in <see cref="ShellLayoutMode.Full"/>.</summary>
-        public const int TreeColumnWidth = 28;
+        public const int TreeColumnWidth = 24;
 
         /// <summary>Columns for the collapsed tree drawer.</summary>
         public const int CollapsedTreeWidth = 3;
 
         /// <summary>Columns for the right pane in <see cref="ShellLayoutMode.Full"/>.</summary>
-        public const int RightColumnWidth = 34;
+        public const int RightColumnWidth = 40;
+
+        /// <summary>Minimum width of the right pane in the narrower modes.</summary>
+        public const int CompactRightColumnWidth = 34;
 
         /// <summary>Rows taken by the status line and the message line.</summary>
         public const int StatusLines = 2;
@@ -152,6 +155,48 @@ namespace WinASM65.Monitor.Shell
             }
         }
 
+        /// <summary>Rows available for panes (height minus status/message lines).</summary>
+        public int PaneHeight
+        {
+            get { return Math.Max(0, Height - StatusLines); }
+        }
+
+        /// <summary>Height for tree pane.</summary>
+        public int TreeHeight { get { return PaneHeight; } }
+
+        /// <summary>X position of editor.</summary>
+        public int EditorX { get { return TreeWidth; } }
+
+        /// <summary>X position of tree pane (always 0).</summary>
+        public int TreeX { get { return 0; } }
+
+        /// <summary>Height of editor pane.</summary>
+        public int EditorHeight { get { return PaneHeight; } }
+
+        /// <summary>The standalone listing pane is folded into the editor gutter.</summary>
+        public int ListingWidth { get { return 0; } }
+
+        /// <summary>X position reserved for the folded listing pane.</summary>
+        public int ListingX { get { return TreeWidth + EditorWidth; } }
+
+        /// <summary>Height of listing pane.</summary>
+        public int ListingHeight { get { return PaneHeight; } }
+
+        /// <summary>Width of the RAM pane, which owns the full right column.</summary>
+        public int RamWidth { get { return RightPaneWidth; } }
+
+        /// <summary>X position of RAM pane.</summary>
+        public int RamX { get { return TreeWidth + EditorWidth; } }
+
+        /// <summary>Height of RAM pane.</summary>
+        public int RamHeight { get { return PaneHeight; } }
+
+        /// <summary>The refusal message as a single string.</summary>
+        public string RefusalMessage
+        {
+            get { return string.Join("\n", RefusalLines()); }
+        }
+
         /// <summary>The decision for a terminal of this size.</summary>
         public static ShellLayout ForSize(int width, int height)
         {
@@ -162,10 +207,10 @@ namespace WinASM65.Monitor.Shell
                 return new ShellLayout(width, height, ShellLayoutMode.Full, TreeColumnWidth, RightColumnWidth);
 
             if (width >= MediumMinimum)
-                return new ShellLayout(width, height, ShellLayoutMode.CollapsedTree, CollapsedTreeWidth, RightColumnWidth);
+                return new ShellLayout(width, height, ShellLayoutMode.CollapsedTree, CollapsedTreeWidth, CompactRightColumnWidth);
 
             if (width >= NarrowMinimum)
-                return new ShellLayout(width, height, ShellLayoutMode.Overlay, 0, RightColumnWidth);
+                return new ShellLayout(width, height, ShellLayoutMode.Overlay, 0, CompactRightColumnWidth);
 
             return new ShellLayout(width, height, ShellLayoutMode.FullWidth, 0, 0);
         }

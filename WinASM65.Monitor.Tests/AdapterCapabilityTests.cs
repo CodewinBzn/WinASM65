@@ -474,6 +474,12 @@ namespace WinASM65.Monitor.Tests
             public byte[] SaveState() { return new byte[0]; }
             public void LoadState(byte[] state) { }
             public void Dispose() { }
+
+            #pragma warning disable CS0067 // The event is part of the interface; a
+            // backend that never changes memory has nothing to fire, and the
+            // warning is about the member rather than the choice not to use it.
+            public event Action<IReadOnlyList<(int Address, byte Value)>> RamChanged;
+            #pragma warning restore CS0067
         }
 
         /// <summary>

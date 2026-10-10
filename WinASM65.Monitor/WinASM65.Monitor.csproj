@@ -34,14 +34,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Terminal.Gui v2. Pinned deliberately: the v2 API moves and the plan
-         forbids opportunistic upgrades.
-         2.0.0 is the pin because it is the only v2 release that carries a net8.0
-         asset. Every later v2 (2.1.0 through 2.5.0, and every 2.0.0-rc / 2.0.0-beta)
-         ships lib/net10.0 only, so on net8.0 restore fails with NU1202. Moving the
-         whole solution to net10.0 is not this task's to decide. Revisit when the
-         solution's target framework moves, and only then, never opportunistically. -->
-    <PackageReference Include="Terminal.Gui" Version="2.0.0" />
+    <!-- SharpConsoleUI. Pinned deliberately: the API moves and the plan forbids
+         opportunistic upgrades.
+         2.6.16 is the pin because it is the latest release that carries a net8.0
+         asset. Later releases ship lib/net10.0 only, so on net8.0 restore fails
+         with NU1202. Moving the whole solution to net10.0 is not this task's
+         to decide. Revisit when the solution's target framework moves, and only
+         then, never opportunistically. -->
+    <PackageReference Include="SharpConsoleUI" Version="2.6.16" />
   </ItemGroup>
 
   <ItemGroup>

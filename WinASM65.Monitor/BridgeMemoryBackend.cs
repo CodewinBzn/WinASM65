@@ -19,7 +19,7 @@ namespace WinASM65.Monitor
     /// backend that swallowed it would turn "this host has no emu.pause" into a
     /// generic failure, which is the one thing the protocol forbids.
     /// </summary>
-    public sealed class BridgeMemoryBackend : IMemoryBackend, ICpuStateSource, IRomInfoSource, IExecutionAdapter
+public sealed class BridgeMemoryBackend : IMemoryBackend, ICpuStateSource, IRomInfoSource, IRomTransferTarget, IExecutionAdapter
     {
         private readonly ProtocolClient _client;
 
@@ -29,15 +29,22 @@ namespace WinASM65.Monitor
         private readonly ExecutionCapability _capabilities;
         private readonly IReadOnlyList<MemoryRegion> _regions;
 
+        // A copy of the machine's RAM, kept so a PUSH RAM line can be applied
+        // without re-reading. The pane reads from this through the event's
+        // payload, never from this array directly, so the cache is the bridge's
+        // private bookkeeping and the pane always sees a consistent snapshot.
+        private readonly byte[] _cache;
+        private const int CacheBase = 0x0000;
+
         // Reads the registers through the bridge's CPU command.
-//
+        //
 // Implemented as part of ICpuStateSource rather than IMemoryBackend: memory access
 // and processor state are different capabilities, and a backend able to do the
 // first is not thereby able to do the second.
 public CpuSnapshot ReadCpuState()
         {
             string response = _client.Send("CPU");
-            if (!_client.IsOk(response))
+            if (!ProtocolClient.IsOk(response))
                 throw new MonitorException(ProtocolClient.ErrorOf(response));
 
             string payload = ProtocolClient.PayloadOf(response);
@@ -75,9 +82,19 @@ public CpuSnapshot ReadCpuState()
         public string ReadRomInfo()
         {
             string response = _client.Send("ROM");
-            if (!_client.IsOk(response))
+            if (!ProtocolClient.IsOk(response))
                 throw new MonitorException(ProtocolClient.ErrorOf(response));
             return ProtocolClient.PayloadOf(response);
+        }
+
+        public void TransferRom(string imagePath)
+        {
+            if (string.IsNullOrWhiteSpace(imagePath))
+                throw new ArgumentException("An image path is required.", nameof(imagePath));
+
+            string response = _client.Send("ROM LOAD " + imagePath);
+            if (!ProtocolClient.IsOk(response))
+                throw new MonitorException(ProtocolClient.ErrorOf(response));
         }
 
         private static int ParseHex(string text)
@@ -106,7 +123,7 @@ public CpuSnapshot ReadCpuState()
             // come from: hard-coding them would let the monitor run against a host it
             // was never measured against.
             string response = _client.Send("PING");
-            if (!client.IsOk(response))
+            if (!ProtocolClient.IsOk(response))
                 throw new MonitorException("the bridge refused the handshake: " + ProtocolClient.ErrorOf(response));
 
             string banner = ProtocolClient.PayloadOf(response);
@@ -136,6 +153,51 @@ public CpuSnapshot ReadCpuState()
                 new MemoryRegion(FlatRegionName, 0x0000, FlatRegionLength,
                     _capabilities.HasFlag(ExecutionCapability.MemoryWrite), false, 1)
             };
+
+            // A private copy of RAM, so a push can be applied without a read.
+            // The pane never reads this directly: it gets the changes through
+            // RamChanged and applies them to its own rows. The cache exists so
+            // the pane can show a byte that the machine wrote without the
+            // monitor having asked for it — which is the whole point of the
+            // push, and which a read-based pane would miss entirely.
+            _cache = new byte[FlatRegionLength];
+
+            // The client's receiver thread fires PushReceived for every
+            // unsolicited PUSH RAM line. Forwarding it here lets the shell
+            // subscribe to one event on the backend it already holds, and the
+            // backend owns the translation from protocol to the (address,
+            // value) pairs the pane can apply directly.
+            _client.PushReceived += OnPushReceived;
+        }
+
+        private void OnPushReceived(string payload)
+        {
+            if (string.IsNullOrEmpty(payload))
+                return;
+
+            List<(int Address, byte Value)> changes;
+            if (!MonitorProtocol.TryParsePushRam(payload, out changes))
+            {
+                // A malformed push is a protocol violation, not a byte update.
+                // The bridge sent something the monitor cannot apply, so the
+                // pane keeps its last known good state and the user sees a
+                // frozen window rather than a wrong one.
+                return;
+            }
+
+            // Apply to the cache here, on the receiver thread, so the pane
+            // reads consistent bytes when it draws. The pane's own handler
+            // only copies the list and posts a draw.
+            foreach ((int address, byte value) in changes)
+            {
+                int offset = address - CacheBase;
+                if (offset < 0 || offset >= _cache.Length)
+                    continue;
+
+                _cache[offset] = value;
+            }
+
+            RamChanged?.Invoke(changes);
         }
 
         /// <summary>Connects to a bridge listening on 127.0.0.1.</summary>
@@ -160,6 +222,13 @@ public CpuSnapshot ReadCpuState()
         {
             get { return true; }
         }
+
+        /// <summary>
+        /// The bridge pushes RAM changes while the machine runs, so the pane can
+        /// refresh without polling. Subscribed by the shell; the bridge fires
+        /// it on its receiver thread and the handler posts the draw to the UI.
+        /// </summary>
+        public event Action<IReadOnlyList<(int Address, byte Value)>> RamChanged;
 
         /// <summary>
         /// Bytes per request. MesenCE kills a Lua script that stays too long in a
@@ -206,6 +275,18 @@ public CpuSnapshot ReadCpuState()
             byte[] bytes;
             if (!MonitorProtocol.TryParseHex(ProtocolClient.PayloadOf(response), out bytes))
                 throw new MonitorException("the bridge answered READ with something that is not hex");
+
+            // A read is also a statement about what RAM is, so the cache is
+            // kept in sync with it. Without this, a push applied to the cache
+            // would be overwritten by the next read, and the pane would show
+            // a byte the machine wrote only if no one asked for it first.
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                int offset = address + i - CacheBase;
+                if (offset >= 0 && offset < _cache.Length)
+                    _cache[offset] = bytes[i];
+            }
+
             return bytes;
         }
 
@@ -229,6 +310,18 @@ public CpuSnapshot ReadCpuState()
 
                 Expect(_client.Send("WRITE $" + (address + done).ToString("X4")
                     + " " + MonitorProtocol.ToHex(chunk)), "WRITE");
+
+                // The cache is updated here rather than from the push: the
+                // push only carries changes the machine made, and a write the
+                // monitor made is not a change the machine made. Keeping the
+                // cache in sync with both is what lets the pane apply either
+                // without re-reading.
+                for (int i = 0; i < take; i++)
+                {
+                    int offset = address + done + i - CacheBase;
+                    if (offset >= 0 && offset < _cache.Length)
+                        _cache[offset] = chunk[i];
+                }
 
                 done += take;
             }
@@ -294,7 +387,7 @@ public CpuSnapshot ReadCpuState()
 
         private void Expect(string response, string what)
         {
-            if (_client.IsOk(response))
+            if (ProtocolClient.IsOk(response))
                 return;
 
             // The bridge's own words, kept whole. "PAUSE unavailable on this host" is

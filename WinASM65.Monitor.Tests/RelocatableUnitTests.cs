@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinASM65.Core;
 using WinASM65.Cpu;
+using WinASM65.Monitor;
 using WinASM65.Monitor.Protocol;
 
 namespace WinASM65.Monitor.Tests
@@ -420,6 +422,12 @@ namespace WinASM65.Monitor.Tests
             public byte[] SaveState() { return _inner.SaveState(); }
             public void LoadState(byte[] state) { _inner.LoadState(state); }
             public void Dispose() { _inner.Dispose(); }
+
+            public event Action<IReadOnlyList<(int Address, byte Value)>> RamChanged
+            {
+                add { _inner.RamChanged += value; }
+                remove { _inner.RamChanged -= value; }
+            }
         }
     }
 }

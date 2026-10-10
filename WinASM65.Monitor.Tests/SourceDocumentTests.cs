@@ -1,0 +1,174 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using WinASM65.Monitor.Shell;
+
+namespace WinASM65.Monitor.Tests
+{
+    [TestClass]
+    public class SourceDocumentTests
+    {
+        [TestMethod]
+        public void ReadsALineForEachLineInTheFile()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string name = "prog.asm";
+                File.WriteAllText(Path.Combine(temp.Path, name),
+                    ".org $8000\n  lda #$5A\n  rts\n");
+
+                SourceDocument doc = new SourceDocument(temp.Path);
+                string problem;
+                IReadOnlyList<string> lines = doc.Read(name, out problem);
+
+                Assert.AreEqual(null, problem, "a readable file has no problem");
+                Assert.AreEqual(3, lines.Count);
+                Assert.AreEqual(".org $8000", lines[0]);
+                Assert.AreEqual("  lda #$5A", lines[1]);
+                Assert.AreEqual("  rts", lines[2]);
+            }
+        }
+
+        [TestMethod]
+        public void MissingFileIsAProblemNotAnException()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                SourceDocument doc = new SourceDocument(temp.Path);
+                string problem;
+                IReadOnlyList<string> lines = doc.Read("no-such-file.asm", out problem);
+
+                Assert.AreEqual(0, lines.Count);
+                Assert.IsNotNull(problem);
+                Assert.IsTrue(problem.Contains("no such source"));
+            }
+        }
+
+        [TestMethod]
+        public void APathEscapingTheDirectoryIsRefused()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                SourceDocument doc = new SourceDocument(temp.Path);
+                string problem;
+                IReadOnlyList<string> lines = doc.Read(@"..\..\..\..\etc\passwd", out problem);
+
+                Assert.AreEqual(0, lines.Count);
+                Assert.IsNotNull(problem);
+                Assert.IsTrue(problem.Contains("outside"));
+            }
+        }
+
+        [TestMethod]
+        public void WritePreservesCRLFLineEndings()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string name = "prog.asm";
+                string path = Path.Combine(temp.Path, name);
+                File.WriteAllText(path, ".org $8000\r\n  lda #$5A\r\n  rts\r\n", Encoding.UTF8);
+
+                SourceDocument doc = new SourceDocument(temp.Path);
+                string problem;
+                doc.Read(name, out problem);
+
+                string newText = ".org $8000\n  lda #$01\n  rts\n";
+                bool written = doc.Write(name, newText, out problem);
+
+                Assert.IsTrue(written, "the write was refused: " + problem ?? "(null)");
+                Assert.IsNull(problem);
+
+                byte[] bytes = File.ReadAllBytes(path);
+                string written2 = Encoding.UTF8.GetString(bytes);
+                Assert.IsTrue(written2.Contains("\r\n"), "CRLF was not preserved: [" + written2 + "]");
+                Assert.IsFalse(written2.Contains(" lda #$01\r\n") == false, "content did not round-trip");
+            }
+        }
+
+        [TestMethod]
+        public void WriteRefusesMixedLineEndings()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string name = "prog.asm";
+                string path = Path.Combine(temp.Path, name);
+                File.WriteAllText(path, ".org $8000\r\n  lda #$5A\n  rts\r\n", Encoding.UTF8);
+
+                SourceDocument doc = new SourceDocument(temp.Path);
+                string readProblem;
+                IReadOnlyList<string> lines = doc.Read(name, out readProblem);
+
+                Assert.IsNotNull(readProblem, "mixed endings on read should be refused");
+                Assert.AreEqual(0, lines.Count);
+            }
+        }
+
+        [TestMethod]
+        public void WriteRefusesAPathEscapingTheDirectory()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string name = "escaped.asm";
+                File.WriteAllText(Path.Combine(temp.Path, name), ".org $8000\n  rts\n");
+
+                SourceDocument doc = new SourceDocument(temp.Path);
+                string problem;
+                bool written = doc.Write(@"..\..\..\..\tmp\" + name, "test\n", out problem);
+
+                Assert.IsFalse(written);
+                Assert.IsNotNull(problem);
+                Assert.IsTrue(problem.Contains("outside"));
+            }
+        }
+
+        [TestMethod]
+        public void AnUnchangedBufferWritesNothing()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string name = "prog.asm";
+                string content = ".org $8000\n  rts\n";
+                string path = Path.Combine(temp.Path, name);
+                File.WriteAllText(path, content, Encoding.UTF8);
+
+                SourceDocument doc = new SourceDocument(temp.Path);
+                string problem;
+                doc.Read(name, out problem);
+
+                string problem2;
+                bool written = doc.Write(name, content, out problem2);
+
+                Assert.IsTrue(written);
+            }
+        }
+
+        private sealed class TemporaryDirectory : IDisposable
+        {
+            public string Path { get; private set; }
+
+            public TemporaryDirectory()
+            {
+                Path = System.IO.Path.Combine(
+                    System.IO.Path.GetTempPath(), "WinASM65Doc_" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(Path);
+            }
+
+            public void Dispose()
+            {
+                try
+                {
+                    if (Directory.Exists(Path))
+                        Directory.Delete(Path, true);
+                }
+                catch (IOException)
+                {
+                }
+                catch (UnauthorizedAccessException)
+                {
+                }
+            }
+        }
+    }
+}

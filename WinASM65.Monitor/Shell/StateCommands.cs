@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using WinASM65.Monitor.Protocol;
 
 namespace WinASM65.Monitor.Shell

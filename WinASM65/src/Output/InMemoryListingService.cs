@@ -24,6 +24,8 @@ namespace WinASM65.Output
         /// <summary>Always true: this sink has nothing to switch off.</summary>
         public bool IsEnabled { get; set; }
 
+        private string _currentSource;
+
         public InMemoryListingService()
         {
             IsEnabled = true;
@@ -34,14 +36,20 @@ namespace WinASM65.Output
         {
             _lines.Clear();
             _current = null;
+            _currentSource = null;
             Rows = new List<ListingRow>();
+        }
+
+        public void SetSource(string sourceName)
+        {
+            _currentSource = sourceName;
         }
 
         public void StartLine(int lineNumber)
         {
             CommitLine();
             _current = new List<ListingFragment>();
-            _current.Add(new ListingFragment(lineNumber));
+            _current.Add(new ListingFragment(lineNumber, _currentSource));
         }
 
         public void PrintLine(string line)

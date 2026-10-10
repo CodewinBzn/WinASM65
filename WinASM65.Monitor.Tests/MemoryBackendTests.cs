@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using WinASM65.Monitor;
 using WinASM65.Monitor.Abstractions;
 
 namespace WinASM65.Monitor.Tests
@@ -23,9 +24,16 @@ namespace WinASM65.Monitor.Tests
     /// measured build and check what the shell does with it. Left as literals they
     /// would make every backend in this suite unmeasured by accident.
     /// </summary>
-    public class FakeMemoryBackend : IMemoryBackend, IExecutionAdapter
+    public class FakeMemoryBackend : IMemoryBackend, IRomTransferTarget, IExecutionAdapter
     {
         private readonly byte[] _memory;
+
+        /// <summary>
+        /// Fires when a write lands, so a push-driven pane can be tested without
+        /// a bridge. The fake is synchronous: the event fires from the write
+        /// itself, which is what the bridge's receiver thread does too.
+        /// </summary>
+        public event Action<IReadOnlyList<(int Address, byte Value)>> RamChanged;
 
         /// <summary>
         /// What a byte array with no processor can honestly claim.
@@ -70,6 +78,9 @@ namespace WinASM65.Monitor.Tests
         /// phantom entry when the emulator refuses.</summary>
         public bool RejectBreakpoints { get; set; }
 
+        /// <summary>Records the cartridge image supplied by a ROM-capable host.</summary>
+        public string TransferredRomPath { get; private set; }
+
         /// <summary>Virtual so a test can substitute a machine that misbehaves in a
         /// specific way — a short answer, a refusal — which is how the defences are
         /// tested rather than assumed.</summary>
@@ -90,6 +101,16 @@ namespace WinASM65.Monitor.Tests
                 throw new ArgumentNullException("bytes");
             CheckRange(address, bytes.Length);
             Array.Copy(bytes, 0, _memory, address, bytes.Length);
+
+            // A write is a change the machine made, so the pane that follows
+            // the push gets to know about it. The fake fires synchronously,
+            // which is what the bridge's receiver thread does too: the event
+            // carries the changes that just happened and nothing else.
+            List<(int Address, byte Value)> changes = new List<(int Address, byte Value)>();
+            for (int i = 0; i < bytes.Length; i++)
+                changes.Add((address + i, bytes[i]));
+
+            RamChanged?.Invoke(changes);
         }
 
         public void Pause()
@@ -148,6 +169,13 @@ namespace WinASM65.Monitor.Tests
             Array.Copy(state, _memory, state.Length);
         }
 
+        public void TransferRom(string imagePath)
+        {
+            if (string.IsNullOrWhiteSpace(imagePath) || !System.IO.File.Exists(imagePath))
+                throw new MonitorException("ROM image does not exist: " + imagePath);
+            TransferredRomPath = imagePath;
+        }
+
         public void Dispose()
         {
             Disposed = true;
@@ -183,7 +211,13 @@ namespace WinASM65.Monitor.Tests
 
         public ExecutionCapability Capabilities
         {
-            get { return DeclaredCapabilities; }
+            get
+            {
+                ExecutionCapability measured = ExecutionCapabilities.For(EmulatorName, EmulatorVersion);
+                if (measured != ExecutionCapability.None)
+                    return measured;
+                return DeclaredCapabilities;
+            }
         }
 
         public IReadOnlyList<MemoryRegion> Regions

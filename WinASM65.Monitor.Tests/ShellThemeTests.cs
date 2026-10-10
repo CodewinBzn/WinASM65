@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Terminal.Gui;
+using SharpConsoleUI;
 using WinASM65.Monitor.Shell;
 
 namespace WinASM65.Monitor.Tests
@@ -153,11 +153,11 @@ namespace WinASM65.Monitor.Tests
         public void AFallbackNameIsResolvedCaseInsensitivelyAndWithSpaces()
         {
             ShellTheme theme = ShellTheme.Parse(
-                "{ \"colors\": { \"mnemonic\": { \"fallback\": \"Bright Blue\" }, \"label\": { \"fallback\": \"BRIGHT_BLACK\" } } }",
+                "{ \"colors\": { \"mnemonic\": { \"fallback\": \"#0000FF\" }, \"label\": { \"fallback\": \"#555555\" } } }",
                 "theme.json");
 
-            Assert.AreEqual(ColorName16.BrightBlue, theme.Fallback(ThemeRole.Mnemonic));
-            Assert.AreEqual(ColorName16.DarkGray, theme.Fallback(ThemeRole.Label));
+            Assert.AreEqual(new Color("#0000FF"), theme.Fallback(ThemeRole.Mnemonic));
+            Assert.AreEqual(new Color("#555555"), theme.Fallback(ThemeRole.Label));
         }
 
         [TestMethod]
@@ -175,12 +175,12 @@ namespace WinASM65.Monitor.Tests
         {
             ShellTheme theme = ShellTheme.Default;
 
-            Assert.AreEqual(ColorName16.DarkGray, theme.Fallback(ThemeRole.Gutter));
-            Assert.AreEqual(ColorName16.Blue, theme.Fallback(ThemeRole.Mnemonic));
-            Assert.AreEqual(ColorName16.Yellow, theme.Fallback(ThemeRole.Operand));
-            Assert.AreEqual(ColorName16.Magenta, theme.Fallback(ThemeRole.Directive));
-            Assert.AreEqual(ColorName16.Green, theme.Fallback(ThemeRole.Label));
-            Assert.AreEqual(ColorName16.Red, theme.Fallback(ThemeRole.Error));
+            Assert.AreEqual(new Color("#555555"), theme.Fallback(ThemeRole.Gutter));
+            Assert.AreEqual(new Color("#0000FF"), theme.Fallback(ThemeRole.Mnemonic));
+            Assert.AreEqual(new Color("#FFFF00"), theme.Fallback(ThemeRole.Operand));
+            Assert.AreEqual(new Color("#FF00FF"), theme.Fallback(ThemeRole.Directive));
+            Assert.AreEqual(new Color("#00FF00"), theme.Fallback(ThemeRole.Label));
+            Assert.AreEqual(new Color("#FF0000"), theme.Fallback(ThemeRole.Error));
         }
 
         [TestMethod]
@@ -189,7 +189,7 @@ namespace WinASM65.Monitor.Tests
             ShellTheme theme = ShellTheme.Parse(
                 "{ \"colors\": { \"mnemonic\": { \"true\": \"#010203\", \"fallback\": \"red\" } } }", "theme.json");
 
-            Assert.AreEqual(ColorName16.Red, new Color(theme.Resolve(ThemeRole.Mnemonic, false)));
+            Assert.AreEqual(Color.Red, theme.Resolve(ThemeRole.Mnemonic, false));
             Assert.AreEqual(0x010203, Rgb(theme.Resolve(ThemeRole.Mnemonic, true)));
         }
 

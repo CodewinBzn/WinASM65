@@ -43,6 +43,13 @@ namespace WinASM65.Output
         /// </summary>
         public int LineNumber { get; private set; }
 
+        /// <summary>
+        /// The name (full path for files, the in-memory name for buffers) of the
+        /// source file this row came from. Null when the listing service that
+        /// produced it does not track source files.
+        /// </summary>
+        public string SourceName { get; private set; }
+
         public ListingRowKind Kind { get; private set; }
 
         /// <summary>
@@ -71,9 +78,16 @@ namespace WinASM65.Output
 
         public ListingRow(ListingRowKind kind, int lineNumber, int? address, int? value,
             IReadOnlyList<byte> bytes, string text)
+            : this(kind, lineNumber, null, address, value, bytes, text)
+        {
+        }
+
+        public ListingRow(ListingRowKind kind, int lineNumber, string sourceName, int? address, int? value,
+            IReadOnlyList<byte> bytes, string text)
         {
             Kind = kind;
             LineNumber = lineNumber;
+            SourceName = sourceName;
             Address = address;
             Value = value;
             Bytes = bytes ?? new byte[0];

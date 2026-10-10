@@ -197,6 +197,33 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
+        public void RomLoadTransfersAnExistingImage()
+        {
+            using (FakeMemoryBackend machine = new FakeMemoryBackend())
+            {
+                string image = WriteSource("game.nes", "NES image");
+
+                string answer = Only(Session(machine).Execute("ROM LOAD " + image));
+
+                Assert.AreEqual("OK ROM replaced from " + image, answer);
+                Assert.AreEqual(image, machine.TransferredRomPath);
+            }
+        }
+
+        [TestMethod]
+        public void RomLoadRefusesAMissingImageWithoutCallingTheHost()
+        {
+            using (FakeMemoryBackend machine = new FakeMemoryBackend())
+            {
+                string answer = Only(Session(machine).Execute("ROM LOAD " + Path.Combine(_directory, "missing.nes")));
+
+                StringAssert.StartsWith(answer, "ERR");
+                StringAssert.Contains(answer, "does not exist");
+                Assert.IsNull(machine.TransferredRomPath);
+            }
+        }
+
+        [TestMethod]
         public void AnInvalidAddressIsRefusedWithoutKillingTheSession()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())

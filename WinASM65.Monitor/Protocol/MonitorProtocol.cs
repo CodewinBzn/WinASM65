@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 
 namespace WinASM65.Monitor.Protocol
@@ -20,6 +21,7 @@ namespace WinASM65.Monitor.Protocol
     {
         public const string OkPrefix = "OK";
         public const string ErrPrefix = "ERR";
+        public const string PrefixPush = "PUSH";
 
         // Beyond these, the Lua bridge blocks the emulator. These caps are covered
         // by tests: they are part of the contract, not a mere guard rail.
@@ -34,6 +36,16 @@ namespace WinASM65.Monitor.Protocol
         /// to kill it. The bound is a contract, so it is tested like the others.
         /// </summary>
         public const int MaxLoadLength = 16 * 1024;
+
+        /// <summary>
+        /// Largest number of byte changes a single <c>PUSH RAM</c> line may carry.
+        ///
+        /// The bridge batches writes per tick and caps its payload to this before
+        /// sending, so the monitor never receives a line it cannot parse. The cap
+        /// is a bandwidth bound, not a correctness one: bytes left over are sent
+        /// on the next tick.
+        /// </summary>
+        public const int MaxPushPayload = 4096;
 
         /// <summary>
         /// Protocol address bound. The notion belongs to the machine's memory space
@@ -154,6 +166,59 @@ namespace WinASM65.Monitor.Protocol
             if (c >= 'a' && c <= 'f')
                 return c - 'a' + 10;
             return -1;
+        }
+
+        /// <summary>
+        /// Parses the payload of an unsolicited <c>PUSH RAM</c> line from the bridge.
+        ///
+        /// The line is <c>PUSH RAM $addr:byte $addr:byte ...</c>. Each token names an
+        /// address and the byte now at it; the monitor applies them to its cached
+        /// dump without re-reading. A malformed token — a missing colon, a non-hex
+        /// half, an address outside the space — is refused rather than silently
+        /// skipped, because a push that arrives with a bad entry is a push the
+        /// monitor cannot trust and dropping only the bad entry would leave the
+        /// rest looking complete.
+        /// </summary>
+        public static bool TryParsePushRam(string payload,
+            out List<(int Address, byte Value)> changes)
+        {
+            changes = null;
+            if (string.IsNullOrEmpty(payload))
+                return false;
+
+            string[] tokens = payload.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            List<(int Address, byte Value)> result = new List<(int Address, byte Value)>();
+
+            for (int i = 0; i < tokens.Length; i++)
+            {
+                string token = tokens[i];
+                int colon = token.IndexOf(':');
+                if (colon <= 0 || colon >= token.Length - 1)
+                    return false;
+
+                string addressPart = token.Substring(0, colon);
+                string valuePart = token.Substring(colon + 1);
+
+                int address;
+                if (!TryParseAddress(addressPart, out address))
+                    return false;
+
+                if (valuePart.Length != 2)
+                    return false;
+
+                int hi = HexValue(valuePart[0]);
+                int lo = HexValue(valuePart[1]);
+                if (hi < 0 || lo < 0)
+                    return false;
+
+                result.Add((address, (byte)((hi << 4) | lo)));
+            }
+
+            if (result.Count > MaxPushPayload)
+                return false;
+
+            changes = result;
+            return true;
         }
     }
 }

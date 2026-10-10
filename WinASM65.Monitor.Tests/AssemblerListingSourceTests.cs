@@ -443,6 +443,206 @@ namespace WinASM65.Monitor.Tests
             return Name;
         }
 
+        // ---------------------------------------------------------------- editor rows
+
+        [TestMethod]
+        public void EditorRowsProducesOneRowPerBufferLine()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                AssemblerListingSource source = new AssemblerListingSource(new Cpu6502(), temp.Path);
+                IReadOnlyList<EditorRow> rows = source.EditorRows(Programme, "prog.asm", 0x8000);
+
+                string[] lines = Programme.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                Assert.AreEqual(lines.Length, rows.Count,
+                    "one editor row per source line, no phantom extra at the end");
+
+                Assert.AreEqual(1, rows[0].LineNumber, "line numbers start at 1");
+                Assert.AreEqual(7, rows[6].LineNumber);
+            }
+        }
+
+        [TestMethod]
+        public void EditorRowsCarriesAddressAndBytesFromAssembly()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                AssemblerListingSource source = new AssemblerListingSource(new Cpu6502(), temp.Path);
+                IReadOnlyList<EditorRow> rows = source.EditorRows(Programme, "prog.asm", 0x8000);
+
+                // Line 4 is "  lda #$5A      ; load a constant"
+                EditorRow lda = rows[3];
+                Assert.AreEqual("$8000", "$" + lda.Address.ToString("X4"), "the first instruction lands at the .org");
+                Assert.AreEqual(2, lda.Bytes.Count, "lda #imm is two bytes");
+                Assert.AreEqual(0xA9, lda.Bytes[0]);
+                Assert.AreEqual(0x5A, lda.Bytes[1]);
+                Assert.IsTrue(lda.EmitsBytes);
+
+                // Line 2 is a comment — no address, no bytes
+                EditorRow comment = rows[1];
+                Assert.AreEqual(-1, comment.Address, "a comment has no address, not $0000");
+                Assert.AreEqual(0, comment.Bytes.Count);
+                Assert.IsFalse(comment.EmitsBytes);
+            }
+        }
+
+        [TestMethod]
+        public void EditorRowsAttachesDiagnosticsToAssemblyFailure()
+        {
+            const string BadSource =
+                ".org $8000\n" +
+                "  lda #$5A\n" +
+                "  not_an_instruction\n" +
+                "  rts\n";
+
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                AssemblerListingSource source = new AssemblerListingSource(new Cpu6502(), temp.Path);
+                IReadOnlyList<EditorRow> rows = source.EditorRows(BadSource, "bad.asm", 0x8000);
+
+                Assert.AreEqual(4, rows.Count, "all lines show even when assembly fails");
+
+                // Every row carries no address/bytes on failure
+                foreach (EditorRow row in rows)
+                    Assert.AreEqual(-1, row.Address, "a failed assembly gives no addresses");
+
+                // Line 3 has the error
+                Assert.IsFalse(string.IsNullOrEmpty(rows[2].Problem),
+                    "the failing line carries the assembler's diagnostic");
+            }
+        }
+
+        [TestMethod]
+        public void EditorRowsHandlesEmptySource()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                AssemblerListingSource source = new AssemblerListingSource(new Cpu6502(), temp.Path);
+                IReadOnlyList<EditorRow> rows = source.EditorRows(string.Empty, "empty.asm", 0x8000);
+
+                Assert.AreEqual(0, rows.Count, "empty source yields no rows");
+                Assert.IsTrue(source.IsAvailable, "the source is still available");
+            }
+        }
+
+        [TestMethod]
+        public void EditorRowsPreservesLineNumbersAcrossBlanksAndComments()
+        {
+            const string WithBlanks =
+                ".org $8000\n" +
+                "\n" +
+                "; comment\n" +
+                "\n" +
+                "  lda #$5A\n";
+
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                AssemblerListingSource source = new AssemblerListingSource(new Cpu6502(), temp.Path);
+                IReadOnlyList<EditorRow> rows = source.EditorRows(WithBlanks, "blanks.asm", 0x8000);
+
+                Assert.AreEqual(5, rows.Count, "five lines including blanks");
+                Assert.AreEqual(1, rows[0].LineNumber);
+                Assert.AreEqual(2, rows[1].LineNumber);
+                Assert.AreEqual(5, rows[4].LineNumber);
+
+                // The lda on line 5 should have the address
+                Assert.AreEqual(0x8000, rows[4].Address, "the instruction carries the .org address");
+            }
+        }
+
+        [TestMethod]
+        public void TextRequestProducesRowsViaListingRequest()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                AssemblerListingSource source = new AssemblerListingSource(new Cpu6502(), temp.Path);
+                ListingRequest request = new ListingRequest(null, 0x8000, 0);
+                request.SourceText = Programme;
+
+                IReadOnlyList<ListingRow> rows = source.Rows(request);
+                Assert.IsTrue(rows.Count > 0, "a text request assembles in memory");
+
+                ListingRow lda = RowAtLine(rows, 4);
+                Assert.AreEqual(0x8000, lda.Address);
+                Assert.AreEqual(0xA9, lda.Bytes[0]);
+            }
+        }
+
+        [TestMethod]
+        public void EditorRowsExcludesIncludedFileRowsBySourceName()
+        {
+            // A multi-line include whose line numbers overlap with the main file.
+            // Without filtering by SourceName, the included file's lines (numbered
+            // 1, 2, 3, ...) steal the main file's line numbers in the byLine
+            // dictionary, and the wrong address/bytes are shown for main file lines.
+            const string IncludeText =
+                ".org $C000\n" +
+                "  inc $02\n" +      // included line 2 — collides with main file line 2
+                "  dec $02\n" +      // included line 3 — collides with main file line 3
+                "  nop\n";           // included line 4 — collides with main file line 4
+
+            const string ProgramText =
+                ".include \"inc.asm\"\n" +  // main line 1
+                ".org $8000\n" +            // main line 2 — .org, no bytes
+                "  lda #$5A\n" +            // main line 3 — lda immediate
+                "  rts\n";                  // main line 4 — rts
+
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string incFile = System.IO.Path.Combine(temp.Path, "inc.asm");
+                string mainFile = System.IO.Path.Combine(temp.Path, "main.asm");
+                File.WriteAllText(incFile, IncludeText);
+
+                AssemblerListingSource source = new AssemblerListingSource(new Cpu6502(), temp.Path);
+                IReadOnlyList<EditorRow> rows = source.EditorRows(ProgramText, mainFile, 0x8000);
+
+                Assert.AreEqual(4, rows.Count);
+
+                // Main line 2 — .org $8000 sets the origin (shown in gutter)
+                Assert.AreEqual(0x8000, rows[1].Address, "line 2 is .org, origin shown");
+                Assert.AreEqual(0, rows[1].Bytes.Count, "line 2 emits no bytes");
+
+                // Main line 3 — lda #$5A at $8000
+                Assert.AreEqual(0x8000, rows[2].Address, "line 3 lda assembled at $8000");
+                Assert.AreEqual(2, rows[2].Bytes.Count, "lda #imm is two bytes");
+                Assert.AreEqual(0xA9, rows[2].Bytes[0], "opcode is LDA #$xx");
+                Assert.AreEqual(0x5A, rows[2].Bytes[1], "operand is 0x5A");
+
+                // Main line 4 — rts at $8002
+                Assert.AreEqual(0x8002, rows[3].Address, "line 4 rts assembled at $8002");
+                Assert.AreEqual(1, rows[3].Bytes.Count, "rts is one byte");
+                Assert.AreEqual(0x60, rows[3].Bytes[0], "opcode is RTS");
+            }
+        }
+
+        [TestMethod]
+        public void EditorRowsResolvesIncludesViaSourceName()
+        {
+            const string Equates = "foo = $5A\n";
+            const string ProgramText = ".org $8000\n  lda #foo\n  rts\n";
+
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string equFile = System.IO.Path.Combine(temp.Path, "inc.asm");
+                string mainFile = System.IO.Path.Combine(temp.Path, "main.asm");
+                File.WriteAllText(equFile, Equates);
+                // Source text includes "inc.asm" — without the sourceName carrying
+                // the directory path, the include cannot be resolved and the row
+                // shows no bytes.
+                string sourceText = ".include \"inc.asm\"\n" + ProgramText;
+
+                AssemblerListingSource source = new AssemblerListingSource(new Cpu6502(), temp.Path);
+                IReadOnlyList<EditorRow> rows = source.EditorRows(sourceText, mainFile, 0x8000);
+
+                EditorRow lda = rows[2]; // ".org $8000\n  lda #foo\n  rts\n"
+                Assert.AreEqual(0x8000, lda.Address, "the include resolved and the lda assembled");
+                Assert.AreEqual(2, lda.Bytes.Count, "lda #imm is two bytes");
+                Assert.AreEqual(0xA9, lda.Bytes[0]);
+                Assert.AreEqual(0x5A, lda.Bytes[1]);
+                Assert.IsTrue(lda.EmitsBytes);
+            }
+        }
+
         /// <summary>
         /// A directory of its own, so a test that writes a source cannot see — or be
         /// seen by — anything the rest of the suite is doing.

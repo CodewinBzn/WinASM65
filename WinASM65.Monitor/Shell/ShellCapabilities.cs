@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using WinASM65.Monitor.Abstractions;
 
 namespace WinASM65.Monitor.Shell
@@ -7,7 +7,7 @@ namespace WinASM65.Monitor.Shell
     /// The sentences the shell uses to say that this machine cannot do what a key
     /// would do.
     ///
-    /// One owner for this wording, and no Terminal.Gui in it, for the same reason
+    /// One owner for this wording, and no UI framework in it, for the same reason
     /// <see cref="ShellLayout"/> keeps its arithmetic free of views: a refusal the
     /// user reads is a claim, and a claim has to be assertable without a terminal.
     /// <see cref="ExecutionCapabilities"/> owns the facts; this owns only how the
