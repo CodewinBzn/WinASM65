@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace WinASM65.Monitor.Shell
 {
@@ -14,7 +15,13 @@ namespace WinASM65.Monitor.Shell
         Source,
 
         /// <summary>A unit that has been assembled and kept by the library.</summary>
-        Unit
+        Unit,
+
+        /// <summary>A ROM image that can be transferred to a connected emulator.</summary>
+        Rom,
+
+        /// <summary>A project text/configuration file that can be edited.</summary>
+        TextFile
     }
 
     /// <summary>One row of the file tree.</summary>
@@ -81,6 +88,12 @@ namespace WinASM65.Monitor.Shell
         /// in a given file is the listing's answer to report, not the tree's to
         /// pre-judge by hiding the file.
         private static readonly string[] SourceExtensions = { ".asm", ".s", ".inc", ".65", ".nas" };
+        private static readonly HashSet<string> ExcludedDirectories = new HashSet<string>(
+            new[] { ".git", ".vs", ".vscode", ".tmp", "bin", "obj", "node_modules",
+                ".kilo", ".idea", ".cache", ".gradle", ".next", ".terraform", ".pytest_cache",
+                "TestResults", "packages", "artifacts", "coverage", "dist", "TempInspect",
+                "SharpConsoleUI.Temp" },
+            StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// How many files are listed. The tree is a navigation aid, not a file
@@ -110,13 +123,23 @@ namespace WinASM65.Monitor.Shell
                 directory = Directory.GetCurrentDirectory();
 
             List<string> sources;
+            List<string> textFiles;
+            List<string> romFiles;
             try
             {
                 sources = SourceFiles(directory, out problem);
+                textFiles = TextFiles(directory, out string textProblem);
+                romFiles = RomFiles(directory, out string romProblem);
+                if (problem == null)
+                    problem = textProblem;
+                if (problem == null)
+                    problem = romProblem;
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
             {
                 sources = new List<string>();
+                textFiles = new List<string>();
+                romFiles = new List<string>();
                 problem = "cannot read " + directory + ": " + ex.Message;
             }
 
@@ -128,7 +151,23 @@ namespace WinASM65.Monitor.Shell
             else
             {
                 foreach (string path in sources)
-                    rows.Add(new FileTreeRow(FileTreeKind.Source, Path.GetFileName(path), path));
+                    rows.Add(new FileTreeRow(FileTreeKind.Source, Path.GetRelativePath(directory, path), path));
+            }
+
+            if (textFiles.Count > 0)
+            {
+                rows.Add(Section("project files"));
+                foreach (string path in textFiles)
+                    rows.Add(new FileTreeRow(FileTreeKind.TextFile,
+                        Path.GetRelativePath(directory, path), path));
+            }
+
+            if (romFiles.Count > 0)
+            {
+                rows.Add(Section("ROM images"));
+                foreach (string path in romFiles)
+                    rows.Add(new FileTreeRow(FileTreeKind.Rom,
+                        Path.GetRelativePath(directory, path), path));
             }
 
             IReadOnlyList<RelocatableUnit> units =
@@ -162,30 +201,136 @@ namespace WinASM65.Monitor.Shell
         {
             problem = null;
             List<string> found = new List<string>();
-
-            // EnumerationOptions exists on net8.0 and is what keeps a slow or huge
-            // directory from turning the first paint into a stall.
-            EnumerationOptions options = new EnumerationOptions
+            if (!Directory.Exists(directory))
             {
-                RecurseSubdirectories = false,
-                IgnoreInaccessible = true,
-                MatchCasing = MatchCasing.CaseInsensitive,
-                MaxRecursionDepth = 1,
-            };
-
-            foreach (string path in Directory.EnumerateFiles(directory, "*", options))
+                problem = "cannot read " + directory + ": directory does not exist";
+                return found;
+            }
+            try
             {
-                if (IsSource(path))
-                    found.Add(path);
-                if (found.Count >= MaxSources)
+                foreach (string path in EnumerateProjectFiles(directory))
                 {
-                    problem = "listing the first " + MaxSources + " source files only";
-                    break;
+                    if (!IsSource(path))
+                        continue;
+                    found.Add(path);
+                    if (found.Count >= MaxSources)
+                    {
+                        problem = "listing the first " + MaxSources + " source files only";
+                        break;
+                    }
                 }
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                problem = "cannot read " + directory + ": " + ex.Message;
             }
 
             found.Sort(StringComparer.OrdinalIgnoreCase);
             return found;
+        }
+
+        private static List<string> TextFiles(string directory, out string problem)
+        {
+            problem = null;
+            List<string> found = new List<string>();
+            try
+            {
+                foreach (string path in EnumerateProjectFiles(directory))
+                {
+                    if (!SourceDocument.IsEditableTextFile(path) || IsSource(path))
+                        continue;
+                    found.Add(path);
+                    if (found.Count >= MaxSources)
+                    {
+                        problem = "listing the first " + MaxSources + " project text files only";
+                        break;
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                problem = "cannot list project text files: " + ex.Message;
+            }
+            found.Sort(StringComparer.OrdinalIgnoreCase);
+            return found;
+        }
+
+        private static List<string> RomFiles(string directory, out string problem)
+        {
+            problem = null;
+            List<string> found = new List<string>();
+            try
+            {
+                foreach (string path in EnumerateProjectFiles(directory))
+                {
+                    string extension = Path.GetExtension(path);
+                    if (!string.Equals(extension, ".nes", StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals(extension, ".bin", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    found.Add(path);
+                    if (found.Count >= MaxSources)
+                    {
+                        problem = "listing the first " + MaxSources + " ROM images only";
+                        break;
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                problem = "cannot list project ROM images: " + ex.Message;
+            }
+            found.Sort(StringComparer.OrdinalIgnoreCase);
+            return found;
+        }
+
+        private static IEnumerable<string> EnumerateProjectFiles(string directory)
+        {
+            Stack<string> pending = new Stack<string>();
+            pending.Push(directory);
+            while (pending.Count > 0)
+            {
+                string current = pending.Pop();
+                IEnumerable<string> files;
+                IEnumerable<string> directories;
+                try
+                {
+                    files = Directory.EnumerateFiles(current).ToArray();
+                    directories = Directory.EnumerateDirectories(current).ToArray();
+                }
+                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+                {
+                    continue;
+                }
+                foreach (string file in files)
+                {
+                    if (!IsReparsePoint(file))
+                        yield return file;
+                }
+                foreach (string subdirectory in directories)
+                {
+                    string name = Path.GetFileName(subdirectory);
+                    if (ExcludedDirectories.Contains(name) || IsReparsePoint(subdirectory))
+                        continue;
+                    pending.Push(subdirectory);
+                }
+            }
+        }
+
+        private static bool IsReparsePoint(string path)
+        {
+            try
+            {
+                return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+            }
+            catch (IOException)
+            {
+                return true;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return true;
+            }
         }
 
         private static bool IsSource(string path)

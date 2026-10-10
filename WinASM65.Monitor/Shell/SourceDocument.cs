@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace WinASM65.Monitor.Shell
@@ -26,6 +27,30 @@ namespace WinASM65.Monitor.Shell
         private readonly string _directory;
         private Encoding _encoding;
         private LineEnding _lineEnding;
+        private bool _trailingNewline;
+        private bool _refuseWrite;
+        private byte[] _preamble = new byte[0];
+
+        private static readonly HashSet<string> EditableExtensions = new HashSet<string>(
+            new[] { ".asm", ".s", ".inc", ".65", ".nas", ".json", ".jsonc", ".txt", ".md",
+                ".mdx", ".rst", ".cfg", ".ini", ".yaml", ".yml", ".xml", ".lua", ".bat",
+                ".cmd", ".ps1", ".sh", ".py", ".c", ".h", ".cc", ".cpp", ".hpp", ".js",
+                ".jsx", ".mjs", ".ts", ".tsx", ".html", ".css", ".scss", ".csv", ".toml",
+                ".sln", ".csproj", ".props", ".targets", ".editorconfig", ".gitignore",
+                ".gitattributes", ".dockerignore", ".config", ".resx", ".xaml", ".sql",
+                ".go", ".rs", ".java", ".kt", ".rb", ".php", ".cs", ".fs", ".fsproj",
+                ".gradle", ".properties", ".lock", ".env", ".example", ".log", ".mk",
+                ".make", ".vue", ".svelte", ".pl", ".manifest" },
+            StringComparer.OrdinalIgnoreCase);
+        private static readonly HashSet<string> AssemblerExtensions = new HashSet<string>(
+            new[] { ".asm", ".s", ".inc", ".65", ".nas" }, StringComparer.OrdinalIgnoreCase);
+        private static readonly HashSet<string> EditableDotFiles = new HashSet<string>(
+            new[] { ".gitignore", ".gitattributes", ".dockerignore", ".editorconfig" },
+            StringComparer.OrdinalIgnoreCase);
+        private static readonly HashSet<string> EditableExtensionlessFiles = new HashSet<string>(
+            new[] { "makefile", "dockerfile", "readme", "license", "changelog", "authors",
+                "contributors", "copying", "notice", "justfile", "procfile" },
+            StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// How the loaded file ends its lines. Stored so a write can reproduce it,
@@ -72,19 +97,33 @@ namespace WinASM65.Monitor.Shell
         /// </summary>
         public IReadOnlyList<string> Read(string sourceFile, out string problem)
         {
+            string text = ReadText(sourceFile, out problem);
+            return text == null ? new string[0] : SplitLines(text);
+        }
+
+        /// <summary>Reads a supported project text file, normalizing its line endings
+        /// for the editor while remembering the original encoding and newline style.</summary>
+        public string ReadText(string sourceFile, out string problem)
+        {
             problem = null;
 
             string path = Resolve(sourceFile);
             if (path == null)
             {
                 problem = sourceFile + " is outside the directory being edited; refusing to read it.";
-                return new string[0];
+                return null;
+            }
+
+            if (!IsEditableTextFile(path))
+            {
+                problem = sourceFile + " is not a supported project text file.";
+                return null;
             }
 
             if (!File.Exists(path))
             {
                 problem = "no such source: " + sourceFile;
-                return new string[0];
+                return null;
             }
 
             byte[] bytes;
@@ -95,26 +134,46 @@ namespace WinASM65.Monitor.Shell
             catch (IOException ex)
             {
                 problem = "cannot read " + sourceFile + ": " + ex.Message;
-                return new string[0];
+                return null;
             }
             catch (UnauthorizedAccessException ex)
             {
                 problem = "cannot read " + sourceFile + ": " + ex.Message;
-                return new string[0];
+                return null;
             }
 
             _encoding = DetectEncoding(bytes);
-
-            string content = _encoding.GetString(bytes);
+            _preamble = DetectPreamble(bytes);
+            string content;
+            try
+            {
+                content = _encoding.GetString(bytes, _preamble.Length, bytes.Length - _preamble.Length);
+            }
+            catch (DecoderFallbackException)
+            {
+                _encoding = Encoding.Latin1;
+                content = _encoding.GetString(bytes, _preamble.Length, bytes.Length - _preamble.Length);
+            }
+            if (content.Any(character => character == '\0'
+                || (char.IsControl(character) && character != '\r' && character != '\n' && character != '\t')))
+            {
+                _refuseWrite = true;
+                problem = sourceFile + " appears to be binary; refusing to edit it.";
+                return null;
+            }
             _lineEnding = DetectLineEnding(content);
+            _trailingNewline = content.EndsWith("\n", StringComparison.Ordinal)
+                || content.EndsWith("\r", StringComparison.Ordinal);
 
             if (_lineEnding == LineEnding.Mixed)
             {
+                _refuseWrite = true;
                 problem = sourceFile + " mixes line endings; refusing to remember a style to write back.";
-                return new string[0];
+                return null;
             }
 
-            return SplitLines(content);
+            _refuseWrite = false;
+            return content.Replace("\r\n", "\n").Replace("\r", "\n");
         }
 
         /// <summary>
@@ -136,6 +195,16 @@ namespace WinASM65.Monitor.Shell
                 problem = sourceFile + " is outside the directory being edited; refusing to write it.";
                 return false;
             }
+            if (!IsEditableTextFile(path))
+            {
+                problem = sourceFile + " is not a supported project text file.";
+                return false;
+            }
+            if (_refuseWrite)
+            {
+                problem = sourceFile + " was refused when read; refusing to overwrite it.";
+                return false;
+            }
 
             LineEnding detected = DetectLineEnding(text ?? string.Empty);
             if (detected == LineEnding.Mixed)
@@ -150,7 +219,17 @@ namespace WinASM65.Monitor.Shell
             // file. Fall back to the detected ending when the file had none.
             LineEnding ending = _lineEnding != LineEnding.None ? _lineEnding : detected;
 
-            byte[] bytes = _encoding.GetBytes(ApplyEnding(text ?? string.Empty, ending));
+            string content = text ?? string.Empty;
+            if (_trailingNewline && content.Length > 0
+                && !content.EndsWith("\n", StringComparison.Ordinal)
+                && !content.EndsWith("\r", StringComparison.Ordinal))
+            {
+                content += "\n";
+            }
+            byte[] encoded = _encoding.GetBytes(ApplyEnding(content, ending));
+            byte[] bytes = new byte[_preamble.Length + encoded.Length];
+            Buffer.BlockCopy(_preamble, 0, bytes, 0, _preamble.Length);
+            Buffer.BlockCopy(encoded, 0, bytes, _preamble.Length, encoded.Length);
 
             try
             {
@@ -171,6 +250,21 @@ namespace WinASM65.Monitor.Shell
             return true;
         }
 
+        public static bool IsEditableTextFile(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return false;
+            string name = Path.GetFileName(path);
+            return EditableDotFiles.Contains(name) || EditableExtensionlessFiles.Contains(name)
+                || EditableExtensions.Contains(Path.GetExtension(path));
+        }
+
+        public static bool IsAssemblerSourceFile(string path)
+        {
+            return !string.IsNullOrEmpty(path)
+                && AssemblerExtensions.Contains(Path.GetExtension(path));
+        }
+
         /// <summary>
         /// Resolves <paramref name="sourceFile"/> against the session directory,
         /// refusing paths that escape it. Returns null when the path is outside
@@ -182,22 +276,55 @@ namespace WinASM65.Monitor.Shell
                 return null;
 
             string fullPath;
-            if (Path.IsPathRooted(sourceFile))
+            try
             {
-                fullPath = Path.GetFullPath(sourceFile);
+                if (Path.IsPathRooted(sourceFile))
+                    fullPath = Path.GetFullPath(sourceFile);
+                else
+                    fullPath = Path.GetFullPath(Path.Combine(_directory, sourceFile));
             }
-            else
+            catch (Exception ex) when (ex is ArgumentException || ex is NotSupportedException
+                || ex is PathTooLongException)
             {
-                fullPath = Path.GetFullPath(Path.Combine(_directory, sourceFile));
+                return null;
             }
 
             string dirRoot = Path.GetFullPath(_directory);
+            string rootWithSeparator = dirRoot.TrimEnd(Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
 
             // Path.GetFullPath normalises casing and separators on Windows, so a
             // StartsWith check at the end of a directory separator is what keeps
             // "C:\proj\evil" from matching "C:\project".
-            if (!fullPath.StartsWith(dirRoot, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(fullPath, dirRoot, StringComparison.OrdinalIgnoreCase)
+                && !fullPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
                 return null;
+
+            // Do not let a project-local symlink redirect the editor outside its root.
+            string relative = Path.GetRelativePath(dirRoot, fullPath);
+            string current = dirRoot;
+            string[] segments = relative.Split(new[] { Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 0; i < segments.Length; i++)
+            {
+                current = Path.Combine(current, segments[i]);
+                FileSystemInfo info = i == segments.Length - 1
+                    ? (FileSystemInfo)new FileInfo(current)
+                    : new DirectoryInfo(current);
+                try
+                {
+                    if (info.Exists && (info.Attributes & FileAttributes.ReparsePoint) != 0)
+                        return null;
+                }
+                catch (IOException)
+                {
+                    return null;
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    return null;
+                }
+            }
 
             return fullPath;
         }
@@ -205,7 +332,7 @@ namespace WinASM65.Monitor.Shell
         private static Encoding DetectEncoding(byte[] bytes)
         {
             if (bytes == null || bytes.Length == 0)
-                return Encoding.UTF8;
+                return new UTF8Encoding(false, true);
 
             if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
                 return new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
@@ -213,12 +340,23 @@ namespace WinASM65.Monitor.Shell
             if (bytes.Length >= 2)
             {
                 if (bytes[0] == 0xFF && bytes[1] == 0xFE)
-                    return Encoding.Unicode;
+                    return new UnicodeEncoding(false, true, true);
                 if (bytes[0] == 0xFE && bytes[1] == 0xFF)
-                    return Encoding.BigEndianUnicode;
+                    return new UnicodeEncoding(true, true, true);
             }
 
-            return Encoding.UTF8;
+            return new UTF8Encoding(false, true);
+        }
+
+        private static byte[] DetectPreamble(byte[] bytes)
+        {
+            if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+                return new byte[] { 0xEF, 0xBB, 0xBF };
+            if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
+                return new byte[] { 0xFF, 0xFE };
+            if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
+                return new byte[] { 0xFE, 0xFF };
+            return new byte[0];
         }
 
         private static LineEnding DetectLineEnding(string text)

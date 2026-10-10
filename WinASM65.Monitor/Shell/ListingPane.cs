@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using SharpConsoleUI;
+using SharpConsoleUI.Builders;
 using SharpConsoleUI.Controls;
 
 namespace WinASM65.Monitor.Shell
@@ -17,6 +19,7 @@ namespace WinASM65.Monitor.Shell
     public sealed class ListingPane
     {
         private readonly ListControl _list;
+        private readonly IWindowControl _control;
         private readonly ShellTheme _theme;
         private readonly IListingSource _source;
         private readonly List<ListingRow> _rows = new List<ListingRow>();
@@ -31,9 +34,17 @@ namespace WinASM65.Monitor.Shell
                 IsSelectable = true,
                 Title = "listing",
             };
+            _control = Controls.ScrollablePanel()
+                .AddControl(_list)
+                .WithVerticalScroll(ScrollMode.None)
+                .WithHorizontalScroll(ScrollMode.Scroll)
+                .WithScrollbar(true)
+                .Build();
         }
 
         public IWindowControl Control { get { return _list; } }
+
+        public IWindowControl ScrollableControl { get { return _control; } }
 
         public IReadOnlyList<ListingRow> Rows { get { return _rows; } }
 
@@ -61,9 +72,22 @@ namespace WinASM65.Monitor.Shell
             }
 
             _list.StringItems = labels;
+            _list.Width = Math.Max(_viewportWidth, labels.Count == 0
+                ? _viewportWidth
+                : labels.Max(label => label.Length) + 1);
             if (_list.Items.Count > 0 && _list.SelectedIndex < 0)
                 _list.SelectedIndex = 0;
             _list.Invalidate();
+        }
+
+        private int _viewportWidth = 1;
+
+        public void SetViewportWidth(int width)
+        {
+            _viewportWidth = Math.Max(1, width);
+            _list.Width = Math.Max(_viewportWidth, _list.StringItems.Count == 0
+                ? _viewportWidth
+                : _list.StringItems.Max(label => label.Length) + 1);
         }
     }
 }

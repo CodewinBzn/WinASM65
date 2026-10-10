@@ -113,6 +113,28 @@ private const string Bank2 =
         }
 
         [TestMethod]
+        public void F5AssemblesTheSelectedNestedSourceByItsProjectRelativePath()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                Directory.CreateDirectory(Path.Combine(temp.Path, "src"));
+                File.WriteAllText(Path.Combine(temp.Path, "src", "standalone.asm"),
+                    ".org $A000\nAlone: nop\n.export Alone\n");
+
+                WithShell(temp.Path, delegate (ShellWindow window)
+                {
+                    window.OpenSource(Path.Combine("src", "standalone.asm"));
+                    window.AssembleCurrentSource();
+
+                    CollectionAssert.AreEqual(
+                        new[] { EditorCommands.Assemble(Path.Combine("src", "standalone.asm")) },
+                        new List<string>(window.Commands));
+                    StringAssert.Contains(window.Message, "OK");
+                });
+            }
+        }
+
+        [TestMethod]
         public void BuildAndTransferActionSendsTheBuiltRomToTheAttachedEmulator()
         {
             using (TemporaryDirectory temp = new TemporaryDirectory())
@@ -150,16 +172,24 @@ private const string Bank2 =
 
                 MethodInfo openMenu = typeof(ShellWindow).GetMethod("ShowSourceContextMenu",
                     BindingFlags.Instance | BindingFlags.NonPublic);
+                FieldInfo treeField = typeof(ShellWindow).GetField("_tree",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                FileTreePane tree = (FileTreePane)treeField.GetValue(window);
                 openMenu.Invoke(window, new object[]
                 {
                     new FileTreeRow(FileTreeKind.Source, "bank2.asm", Path.Combine(temp.Path, "bank2.asm")),
                     new Point(5, 5),
+                    tree.ScrollableControl,
                 });
 
                 MenuControl menu = windowSystem.DesktopPortalService.TopPortal.Content as MenuControl;
                 Assert.IsNotNull(menu, "right-clicking a source should open its contextual action menu");
                 using (HostedSession hosted = windowSystem.BeginHosted())
-                    Assert.IsTrue(hosted.Tick());
+                {
+                    for (int tick = 0; tick < 5
+                        && !windowSystem.DesktopPortalService.TopPortal.HasRendered; tick++)
+                        Assert.IsTrue(hosted.Tick());
+                }
                 Assert.IsTrue(windowSystem.DesktopPortalService.TopPortal.HasRendered,
                     "the context menu portal should render above the shell windows");
                 CollectionAssert.AreEqual(
@@ -167,6 +197,17 @@ private const string Bank2 =
                     menu.Items.Select(item => item.Text).ToArray());
 
                 menu.Items.Single(item => item.Text == "Build + Transfer").Action();
+
+                using (HostedSession hosted = windowSystem.BeginHosted())
+                {
+                    DateTime deadline = DateTime.UtcNow.AddSeconds(5);
+                    while (DateTime.UtcNow < deadline
+                        && !window.Message.Contains("ROM replaced"))
+                    {
+                        Assert.IsTrue(hosted.Tick());
+                        System.Threading.Thread.Sleep(10);
+                    }
+                }
 
                 Assert.AreEqual(Path.Combine(temp.Path, "game.nes"), machine.TransferredRomPath);
                 StringAssert.Contains(window.Message, "ROM replaced");
@@ -438,6 +479,3 @@ private static void WriteProject(TemporaryDirectory temp, string bank1, string b
         }
     }
 }
-
-
-

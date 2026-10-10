@@ -211,6 +211,20 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
+        public void RomLoadAcceptsQuotedPathsWithSpaces()
+        {
+            using (FakeMemoryBackend machine = new FakeMemoryBackend())
+            {
+                string image = WriteSource("game image.nes", "NES image");
+
+                string answer = Only(Session(machine).Execute("ROM LOAD \"" + image + "\""));
+
+                Assert.AreEqual("OK ROM replaced from " + image, answer);
+                Assert.AreEqual(image, machine.TransferredRomPath);
+            }
+        }
+
+        [TestMethod]
         public void RomLoadRefusesAMissingImageWithoutCallingTheHost()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())

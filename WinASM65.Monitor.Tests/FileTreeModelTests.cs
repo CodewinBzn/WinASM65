@@ -49,6 +49,33 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
+        public void ProjectConfigurationAndNestedTextFilesAreListedSeparatelyFromSources()
+        {
+            string directory = TempDirectory();
+            try
+            {
+                Directory.CreateDirectory(Path.Combine(directory, "src"));
+                File.WriteAllText(Path.Combine(directory, "config.json"), "{}");
+                File.WriteAllText(Path.Combine(directory, "src", "notes.md"), "notes");
+                File.WriteAllBytes(Path.Combine(directory, "image.nes"), new byte[] { 0, 1, 2 });
+                Directory.CreateDirectory(Path.Combine(directory, "bin"));
+                File.WriteAllText(Path.Combine(directory, "bin", "generated.json"), "{}");
+
+                string problem;
+                IReadOnlyList<FileTreeRow> rows = FileTreeModel.Rows(directory, null, out problem);
+
+                CollectionAssert.AreEqual(new[] { "config.json", Path.Combine("src", "notes.md") },
+                    Names(rows, FileTreeKind.TextFile));
+                CollectionAssert.AreEqual(new[] { "image.nes" }, Names(rows, FileTreeKind.Rom));
+                Assert.IsFalse(ContainsLabel(rows, "generated.json"));
+            }
+            finally
+            {
+                Directory.Delete(directory, true);
+            }
+        }
+
+        [TestMethod]
         public void TheExtensionsTheAssemblerUnderstandsAreTheOnesListed()
         {
             string directory = TempDirectory();

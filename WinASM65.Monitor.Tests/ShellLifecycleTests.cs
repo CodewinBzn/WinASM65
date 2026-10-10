@@ -75,6 +75,35 @@ private static ShellWindow BuildWindow(FakeMemoryBackend machine, out MonitorSes
         }
 
         [TestMethod]
+        public void RamPushesRefreshThePaneAndAreDetachedWhenTheShellIsDisposed()
+        {
+            using (FakeMemoryBackend machine = new FakeMemoryBackend())
+            {
+                ConsoleWindowSystem windowSystem = new ConsoleWindowSystem(new HeadlessConsoleDriver());
+                MonitorSession session = new MonitorSession(machine, new Cpu6502(), AppContext.BaseDirectory);
+                ShellWindow window = new ShellWindow(session, ShellTheme.Default,
+                    ListingSourceFactory.Create(), AppContext.BaseDirectory, windowSystem);
+                window.ApplyLayout(ShellLayout.ForSize(120, 24));
+                window.RegisterWindows(windowSystem);
+
+                using (HostedSession hosted = windowSystem.BeginHosted())
+                {
+                    hosted.Tick();
+                    machine.Write(0x0010, new byte[] { 0x5A });
+                    hosted.Tick();
+                    RamDumpRow row = window.Ram.Rows.Single(item => item.Address == 0x0010);
+                    Assert.AreEqual((byte)0x5A, row.Bytes[0]);
+
+                    window.Dispose();
+                    machine.Write(0x0010, new byte[] { 0xA5 });
+                    hosted.Tick();
+                    Assert.AreEqual((byte)0x5A, row.Bytes[0],
+                        "disposed shells must no longer receive backend memory events");
+                }
+            }
+        }
+
+        [TestMethod]
         public void TheShellDrawsAtEveryWidthTheBreakpointsAllow()
         {
             // Every mode boundary plus one either side. A layout that only draws at
@@ -424,6 +453,5 @@ foreach (int width in new[] { 60, 80, 100, 120 })
         }
     }
 }
-
 
 

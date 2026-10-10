@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinASM65.Monitor.Shell;
@@ -102,6 +103,8 @@ namespace WinASM65.Monitor.Tests
 
                 Assert.IsNotNull(readProblem, "mixed endings on read should be refused");
                 Assert.AreEqual(0, lines.Count);
+                Assert.IsFalse(doc.Write(name, ".org $8000\n", out string writeProblem));
+                StringAssert.Contains(writeProblem, "refused when read");
             }
         }
 
@@ -141,6 +144,50 @@ namespace WinASM65.Monitor.Tests
                 bool written = doc.Write(name, content, out problem2);
 
                 Assert.IsTrue(written);
+            }
+
+        }
+
+        [TestMethod]
+        public void ProjectConfigurationWritePreservesUtf16BomAndCrLf()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string path = Path.Combine(temp.Path, "config.json");
+                Encoding encoding = new UnicodeEncoding(false, true);
+                File.WriteAllBytes(path, encoding.GetPreamble().Concat(
+                    encoding.GetBytes("{\r\n  \"name\": \"game\"\r\n}\r\n")).ToArray());
+
+                SourceDocument doc = new SourceDocument(temp.Path);
+                string problem;
+                string text = doc.ReadText("config.json", out problem);
+                Assert.IsNull(problem);
+                Assert.AreEqual("{\n  \"name\": \"game\"\n}\n", text);
+                Assert.IsTrue(doc.Write("config.json", text.Replace("game", "new game"), out problem), problem);
+
+                byte[] actual = File.ReadAllBytes(path);
+                CollectionAssert.AreEqual(encoding.GetPreamble(), actual.Take(2).ToArray());
+                Assert.AreEqual("{\r\n  \"name\": \"new game\"\r\n}\r\n",
+                    encoding.GetString(actual, 2, actual.Length - 2));
+            }
+        }
+
+        [TestMethod]
+        public void BinaryFilesAndUnsupportedExtensionsCannotBeWritten()
+        {
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                File.WriteAllBytes(Path.Combine(temp.Path, "image.nes"), new byte[] { 1, 2, 3 });
+                File.WriteAllBytes(Path.Combine(temp.Path, "notes.txt"), new byte[] { 65, 0, 66 });
+                SourceDocument doc = new SourceDocument(temp.Path);
+                string problem;
+
+                Assert.IsNull(doc.ReadText("image.nes", out problem));
+                StringAssert.Contains(problem, "not a supported project text file");
+                Assert.IsFalse(doc.Write("image.nes", "bad", out problem));
+                Assert.IsNull(doc.ReadText("notes.txt", out problem));
+                StringAssert.Contains(problem, "binary");
+                Assert.IsFalse(doc.Write("notes.txt", "bad", out problem));
             }
         }
 
