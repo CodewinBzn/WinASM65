@@ -290,6 +290,16 @@ fill the rest of bytes with the value $00 .
 
 ## Syntax
 
+The complete reference, in French, is [docs/syntax.html](docs/syntax.html). Besides what this section describes, the assembler accepts:
+- character literals `'A'` with escapes, and strings with `\n \t \0 \" \xNN`, commas and semicolons;
+- `ASL A` as well as `ASL`, and `*` as the program counter (`jmp *`, `*= $C000`);
+- local labels `@loop` (scoped to the previous global label) and asm6-style anonymous labels `-` / `+`;
+- `NAME EQU value`, `NAME .equ value` (constant), `NAME .set value` (redefinable);
+- `.db .dw .addr .asciiz .lobytes .hibytes .dsb .dsw .pad .align .elseif .error .warning .assert`, and `.incbin "f", offset, length`;
+- the CPUs `6502x` (stable illegal opcodes), `r65c02` (BBR/BBS/RMB/SMB) and `w65c02` (+ STP/WAI).
+
+Errors that used to be silent are reported: unknown instruction, mode or directive, invalid expression, division by zero.
+
 - Comments begin with a semicolon (;).
 ```
 lda #$00 	; this is a comment

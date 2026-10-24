@@ -1,0 +1,602 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Syntaxe WinASM65</title>
+<style>
+  :root {
+    --bg: #fbfaf8;
+    --surface: #ffffff;
+    --surface-2: #f2f0ec;
+    --text: #1f1d1a;
+    --muted: #6b665e;
+    --border: #e1ddd5;
+    --accent: #b4532a;
+    --accent-soft: #f6e7df;
+    --code-bg: #f2f0ec;
+    --ok: #2f7a4f;
+    --warn: #9a6a12;
+    --node-a: #e8eef7;
+    --node-a-stroke: #5b7fb5;
+    --node-b: #eef5ea;
+    --node-b-stroke: #5d8f4e;
+    --node-c: #f7ece6;
+    --node-c-stroke: #b4532a;
+    --node-d: #f1ecf6;
+    --node-d-stroke: #7d5ba6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #171614;
+      --surface: #1f1e1b;
+      --surface-2: #282622;
+      --text: #ece8e1;
+      --muted: #a39d93;
+      --border: #3a3732;
+      --accent: #e08a5f;
+      --accent-soft: #3a2a22;
+      --code-bg: #282622;
+      --ok: #7cc49a;
+      --warn: #d9ad5b;
+      --node-a: #1f2a3a;
+      --node-a-stroke: #7f9fd1;
+      --node-b: #213021;
+      --node-b-stroke: #8cbf7c;
+      --node-c: #382720;
+      --node-c-stroke: #e08a5f;
+      --node-d: #2c2338;
+      --node-d-stroke: #ad8fd6;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #171614;
+    --surface: #1f1e1b;
+    --surface-2: #282622;
+    --text: #ece8e1;
+    --muted: #a39d93;
+    --border: #3a3732;
+    --accent: #e08a5f;
+    --accent-soft: #3a2a22;
+    --code-bg: #282622;
+    --ok: #7cc49a;
+    --warn: #d9ad5b;
+    --node-a: #1f2a3a;
+    --node-a-stroke: #7f9fd1;
+    --node-b: #213021;
+    --node-b-stroke: #8cbf7c;
+    --node-c: #382720;
+    --node-c-stroke: #e08a5f;
+    --node-d: #2c2338;
+    --node-d-stroke: #ad8fd6;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 250px minmax(0, 1fr);
+    max-width: 1180px;
+    margin: 0 auto;
+    gap: 48px;
+    padding: 40px 24px 80px;
+  }
+  nav {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    font-size: 14px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+  }
+  nav p { margin: 0 0 8px; font-weight: 600; color: var(--muted); text-transform: uppercase; font-size: 12px; letter-spacing: .06em; }
+  nav ol { list-style: none; margin: 0; padding: 0; counter-reset: s; }
+  nav li { counter-increment: s; }
+  nav a {
+    display: block;
+    padding: 5px 10px;
+    color: var(--text);
+    text-decoration: none;
+    border-left: 2px solid var(--border);
+  }
+  nav a::before { content: counter(s) ". "; color: var(--muted); }
+  nav a:hover { border-left-color: var(--accent); color: var(--accent); }
+  main { min-width: 0; }
+  header { margin-bottom: 40px; }
+  h1 { font-size: 34px; line-height: 1.2; margin: 0 0 12px; letter-spacing: -.01em; }
+  .lede { font-size: 18px; color: var(--muted); margin: 0; max-width: 60ch; }
+  h2 {
+    font-size: 24px;
+    margin: 56px 0 16px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    scroll-margin-top: 16px;
+  }
+  h3 { font-size: 18px; margin: 32px 0 8px; }
+  p, li { max-width: 72ch; }
+  a { color: var(--accent); }
+  code {
+    font-family: "Cascadia Code", Consolas, ui-monospace, monospace;
+    font-size: .88em;
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-size: 13.5px;
+    line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14.5px; }
+  .table-wrap { overflow-x: auto; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--surface-2); font-weight: 600; }
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-soft);
+    padding: 12px 16px;
+    border-radius: 0 8px 8px 0;
+    margin: 20px 0;
+  }
+  .callout p { margin: 4px 0; }
+  .figure {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin: 20px 0;
+    overflow-x: auto;
+  }
+  .figure svg { display: block; width: 100%; height: auto; min-width: 640px; }
+  .caption { font-size: 13.5px; color: var(--muted); margin-top: 10px; }
+  svg text { fill: var(--text); font-family: "Segoe UI", system-ui, sans-serif; }
+  svg .muted { fill: var(--muted); }
+  svg .line { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+  svg .box-a { fill: var(--node-a); stroke: var(--node-a-stroke); }
+  svg .box-b { fill: var(--node-b); stroke: var(--node-b-stroke); }
+  svg .box-c { fill: var(--node-c); stroke: var(--node-c-stroke); }
+  svg .box-d { fill: var(--node-d); stroke: var(--node-d-stroke); }
+  svg .frame { fill: none; stroke: var(--border); stroke-dasharray: 5 4; }
+  svg .life { stroke: var(--border); stroke-width: 1.5; stroke-dasharray: 4 4; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .card h4 { margin: 0 0 6px; font-size: 15px; }
+  .card p { margin: 0; font-size: 14.5px; color: var(--muted); }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 99px; background: var(--surface-2); color: var(--muted); margin-left: 6px; vertical-align: 2px; }
+  footer { margin-top: 64px; color: var(--muted); font-size: 13.5px; }
+  .theme-toggle {
+    position: fixed; top: 16px; right: 16px;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer;
+  }
+
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: minmax(0, 1fr); gap: 24px; padding: 24px 16px 64px; }
+    nav { position: static; max-height: none; }
+    .grid-2 { grid-template-columns: 1fr; }
+    h1 { font-size: 28px; }
+  }
+</style>
+</head>
+<body>
+<button class="theme-toggle" type="button" onclick="toggleTheme()">Thème</button>
+<div class="layout">
+  <nav aria-label="Sommaire">
+    <p>Sommaire</p>
+    <ol>
+      <li><a href="#ligne">Structure d'une ligne</a></li>
+      <li><a href="#commentaires">Commentaires et chaînes</a></li>
+      <li><a href="#nombres">Nombres et caractères</a></li>
+      <li><a href="#expressions">Expressions</a></li>
+      <li><a href="#pc">Compteur de programme</a></li>
+      <li><a href="#labels">Labels</a></li>
+      <li><a href="#constantes">Constantes</a></li>
+      <li><a href="#directives">Directives</a></li>
+      <li><a href="#macros">Macros et répétitions</a></li>
+      <li><a href="#modes">Modes d'adressage</a></li>
+      <li><a href="#cpu">Processeurs</a></li>
+      <li><a href="#erreurs">Messages d'erreur</a></li>
+      <li><a href="#omissions">Ce qui n'est pas pris en charge</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <header>
+      <h1>Syntaxe de l'assembleur WinASM65</h1>
+      <p class="lede">La référence complète du langage accepté par WinASM65 : la syntaxe 6502 standard de MOS, plus les formes courantes de ca65, asm6 et NESASM. Les exemples supposent définis les noms qu'ils utilisent sans les déclarer.</p>
+    </header>
+
+    <!-- ============================================================ -->
+    <h2 id="ligne">Structure d'une ligne</h2>
+    <p>Une ligne contient au plus une instruction ou une directive, éventuellement précédée d'un label et suivie d'un commentaire. L'indentation n'a pas de sens : la ligne est rognée avant d'être lue. Les mnémoniques, les directives et les noms ne distinguent pas les majuscules des minuscules.</p>
+<pre><code>Start:                  ; un label seul sur sa ligne (deux-points obligatoire)
+loop    lda $2002,x     ; un label devant une instruction (deux-points facultatif)
+Table:  .byte 1, 2, 3   ; un label devant une directive
+        bne loop</code></pre>
+    <p>Une ligne est l'une des formes suivantes, dans cet ordre de reconnaissance :</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Forme</th><th>Exemple</th></tr></thead>
+      <tbody>
+        <tr><td>Portée locale</td><td><code>{</code> … <code>}</code></td></tr>
+        <tr><td>Label anonyme</td><td><code>-</code>, <code>++ lda #0</code></td></tr>
+        <tr><td>Origine</td><td><code>*= $C000</code></td></tr>
+        <tr><td>Constante</td><td><code>N EQU 5</code>, <code>N .equ 5</code>, <code>N .set 5</code>, <code>N = 5</code></td></tr>
+        <tr><td>Réservation</td><td><code>buffer .res 16</code></td></tr>
+        <tr><td>Label + directive</td><td><code>Data: .word $1234</code></td></tr>
+        <tr><td>Directive</td><td><code>.org $8000</code></td></tr>
+        <tr><td>Label seul</td><td><code>Reset:</code></td></tr>
+        <tr><td>Instruction (avec label éventuel)</td><td><code>loop: lda #1</code></td></tr>
+        <tr><td>Appel de macro</td><td><code>vblank wait1, $2002</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Toute autre ligne est une erreur de syntaxe.</p>
+
+    <!-- ============================================================ -->
+    <h2 id="commentaires">Commentaires et chaînes</h2>
+    <p>Un commentaire commence au premier <code>;</code> qui n'est pas à l'intérieur d'une chaîne ou d'un caractère. <code>.byte "a;b"</code> et <code>cmp #';'</code> gardent donc leur point-virgule. Une apostrophe isolée, comme dans <code>; wait for 2 VBlank's</code>, n'ouvre rien.</p>
+    <p>Une chaîne s'écrit entre guillemets doubles et peut contenir des virgules, des points-virgules et des séquences d'échappement :</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Séquence</th><th>Octet</th></tr></thead>
+      <tbody>
+        <tr><td><code>\n</code> <code>\r</code> <code>\t</code> <code>\0</code></td><td><code>$0A</code> <code>$0D</code> <code>$09</code> <code>$00</code></td></tr>
+        <tr><td><code>\\</code> <code>\"</code> <code>\'</code></td><td>la barre oblique, le guillemet, l'apostrophe</td></tr>
+        <tr><td><code>\xNN</code></td><td>l'octet hexadécimal <code>NN</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Toute autre séquence, une chaîne non terminée ou un caractère au-delà de <code>$FF</code> est une erreur. Les noms de fichiers de <code>.include</code> et <code>.incbin</code> sont lus tels quels, sans échappement, pour qu'un chemin Windows garde ses barres obliques inverses.</p>
+
+    <!-- ============================================================ -->
+    <h2 id="nombres">Nombres et caractères</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Forme</th><th>Exemple</th><th>Valeur</th></tr></thead>
+      <tbody>
+        <tr><td>Hexadécimal</td><td><code>$FF</code></td><td>255</td></tr>
+        <tr><td>Binaire</td><td><code>%1010</code></td><td>10</td></tr>
+        <tr><td>Décimal</td><td><code>123</code></td><td>123</td></tr>
+        <tr><td>Caractère</td><td><code>'A'</code> ou <code>"A"</code></td><td>65</td></tr>
+        <tr><td>Caractère échappé</td><td><code>'\n'</code>, <code>'\x41'</code></td><td>10, 65</td></tr>
+        <tr><td>Booléens</td><td><code>TRUE</code>, <code>FALSE</code></td><td>1, 0</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p><code>%</code> n'est un préfixe binaire que là où une valeur est attendue : <code>7%10</code> est un modulo, qui vaut 7. Les formes <code>0x10</code> et <code>0b1010</code> du C ne sont pas acceptées : elles produisent une erreur, et non plus une valeur fausse.</p>
+
+    <!-- ============================================================ -->
+    <h2 id="expressions">Expressions</h2>
+    <p>Une expression combine nombres, caractères, noms et opérateurs. Par ordre de priorité décroissante :</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Priorité</th><th>Opérateurs</th><th>Sens</th></tr></thead>
+      <tbody>
+        <tr><td>11 (unaires)</td><td><code>&lt;</code> <code>&gt;</code> <code>+</code> <code>-</code> <code>~</code> <code>!</code></td><td>octet bas, octet haut, signe, complément, non logique</td></tr>
+        <tr><td>10</td><td><code>*</code> <code>/</code> <code>%</code></td><td>multiplication, division, modulo</td></tr>
+        <tr><td>9</td><td><code>+</code> <code>-</code></td><td>addition, soustraction</td></tr>
+        <tr><td>8</td><td><code>&lt;&lt;</code> <code>&gt;&gt;</code></td><td>décalages</td></tr>
+        <tr><td>7</td><td><code>&lt;</code> <code>&gt;</code> <code>&lt;=</code> <code>&gt;=</code></td><td>comparaisons</td></tr>
+        <tr><td>6</td><td><code>==</code> <code>=</code> <code>!=</code> <code>&lt;&gt;</code></td><td>égalité, différence</td></tr>
+        <tr><td>5</td><td><code>&amp;</code></td><td>et binaire</td></tr>
+        <tr><td>4</td><td><code>^</code></td><td>ou exclusif</td></tr>
+        <tr><td>3</td><td><code>|</code></td><td>ou binaire</td></tr>
+        <tr><td>2</td><td><code>&amp;&amp;</code>, <code>AND</code></td><td>et logique</td></tr>
+        <tr><td>1</td><td><code>||</code>, <code>OR</code></td><td>ou logique</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Les parenthèses regroupent. <code>AND</code>, <code>OR</code>, <code>TRUE</code> et <code>FALSE</code> ne sont des mots-clés que comme mots entiers : <code>origin</code> ou <code>and_mask</code> sont des noms. <code>#</code> marque l'adressage immédiat devant l'opérande.</p>
+    <div class="callout">
+      <p>Une expression qu'on ne peut pas évaluer est une erreur signalée à sa ligne, au lieu de devenir 0 sans rien dire :</p>
+      <ul>
+        <li>un caractère inconnu (<code>lda #$12#</code>) ;</li>
+        <li>une forme incorrecte : deux valeurs côte à côte, un opérateur sans opérande, des parenthèses déséquilibrées ;</li>
+        <li>une division par zéro, y compris quand elle n'apparaît qu'après la résolution d'une référence avant ;</li>
+        <li>un nombre trop grand.</li>
+      </ul>
+    </div>
+
+    <!-- ============================================================ -->
+    <h2 id="pc">Compteur de programme</h2>
+    <p><code>*</code> en position d'opérande vaut l'adresse de la ligne en cours. Entre deux valeurs, <code>*</code> reste une multiplication. <code>*= expr</code> fixe l'origine, comme <code>.org</code>.</p>
+<pre><code>*= $C000
+        jmp *           ; boucle sur place : 4C 00 C0
+Here:   .word *+2       ; l'adresse qui suit ce mot
+        lda #2*3        ; 6, une multiplication</code></pre>
+    <p>Une expression mise en attente (parce qu'elle lit un nom défini plus loin) garde l'adresse de la ligne où elle est écrite.</p>
+
+    <!-- ============================================================ -->
+    <h2 id="labels">Labels</h2>
+    <h3>Labels globaux</h3>
+    <p>Un nom commence par une lettre ou <code>_</code>, suivi de lettres, de chiffres ou de <code>_</code>. Seul sur sa ligne, il prend un deux-points ; devant une instruction ou une directive, le deux-points est facultatif. Un label global qui prend une adresse ouvre une nouvelle portée pour les labels locaux.</p>
+
+    <h3>Labels locaux : <code>@nom</code></h3>
+    <p>Un nom qui commence par <code>@</code> appartient au dernier label global. Le même nom peut donc resservir dans la routine suivante :</p>
+<pre><code>Clear:
+        ldx #0
+@loop:  sta $0200,x
+        inx
+        bne @loop
+        rts
+Copy:
+@loop:  lda $0300,x     ; un autre @loop
+        dex
+        bne @loop</code></pre>
+    <p>Une constante ou une réservation (<code>.res</code>) n'ouvre pas de portée. Dans une macro ou un bloc <code>.rep</code>, un label local appartient à l'expansion : chaque appel a le sien. Référencer un label local d'une autre portée, ou en définir un avant tout label global, est une erreur.</p>
+
+    <h3>Labels anonymes : <code>-</code> et <code>+</code></h3>
+    <p>Comme dans asm6, une ligne qui commence par <code>-</code> ou <code>+</code> définit un label anonyme. Elle peut être seule ou suivie d'une instruction. Un opérande qui n'est que <code>-</code> désigne le plus proche label <code>-</code> en arrière ; un opérande qui n'est que <code>+</code>, le plus proche label <code>+</code> en avant.</p>
+<pre><code>        ldx #8
+-       dex
+        bne -           ; retour à la ligne "-"
+        beq +
+        nop
++       rts             ; cible de "beq +"</code></pre>
+    <p>Les suites de longueurs différentes sont des labels distincts : <code>bne --</code> vise la ligne <code>--</code> la plus proche, pas le deuxième <code>-</code>. Un label anonyme introuvable est signalé (« No anonymous label '+' after this line »).</p>
+    <p>Les labels locaux et anonymes ne sont jamais exportés (fichiers <code>.symb</code>, modules) : deux unités d'un même projet ne résolvent pas leurs <code>+</code> l'une avec l'autre.</p>
+
+    <h3>Portées lexicales</h3>
+    <p><code>{</code> et <code>}</code> ouvrent et ferment une portée : les noms définis à l'intérieur n'en sortent pas.</p>
+
+    <!-- ============================================================ -->
+    <h2 id="constantes">Constantes</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Forme</th><th>Redéfinissable</th><th>Usage</th></tr></thead>
+      <tbody>
+        <tr><td><code>N = expr</code></td><td>oui</td><td>valeur de travail, compteur dans un <code>.rep</code></td></tr>
+        <tr><td><code>N .set expr</code></td><td>oui</td><td>même chose, à la manière de ca65</td></tr>
+        <tr><td><code>N EQU expr</code>, <code>N .equ expr</code></td><td>non</td><td>constante : une seconde définition avec une autre valeur est une erreur (la même valeur est acceptée)</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Les directives <code>.equ</code> et <code>.set</code> ne s'emploient qu'après un nom ; seules, elles sont une erreur.</p>
+    <p>Une constante peut lire un nom défini plus loin : elle est alors calculée dès que ce nom est connu.</p>
+
+    <!-- ============================================================ -->
+    <h2 id="directives">Directives</h2>
+    <p>Une directive commence par un point. Une directive inconnue est une erreur (elle était ignorée sans rien dire).</p>
+
+    <h3>Placement</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Directive</th><th>Effet</th></tr></thead>
+      <tbody>
+        <tr><td><code>.org expr</code>, <code>*= expr</code></td><td>Fixe l'adresse d'assemblage.</td></tr>
+        <tr><td><code>.pad adresse[, octet]</code></td><td>Remplit jusqu'à l'adresse (0 par défaut). Une adresse déjà dépassée est une erreur.</td></tr>
+        <tr><td><code>.align n[, octet]</code></td><td>Remplit jusqu'au prochain multiple de <code>n</code>, qui doit être une puissance de deux.</td></tr>
+        <tr><td><code>.memarea expr</code></td><td>Fixe le début de la zone de réservation utilisée par <code>.res</code>.</td></tr>
+        <tr><td><code>nom .res n</code></td><td>Donne au nom l'adresse courante de la zone de réservation, puis l'avance de <code>n</code>. N'émet rien.</td></tr>
+        <tr><td><code>.res n</code></td><td>Avance la zone de réservation sans nommer l'espace.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Données</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Directive</th><th>Effet</th></tr></thead>
+      <tbody>
+        <tr><td><code>.byte</code> (alias <code>.db</code>, <code>.byt</code>)</td><td>Un octet par valeur ; une chaîne donne ses octets. Valeurs de -128 à 255.</td></tr>
+        <tr><td><code>.word</code> (alias <code>.dw</code>, <code>.addr</code>)</td><td>Un mot de 16 bits par valeur, octet bas en premier.</td></tr>
+        <tr><td><code>.asciiz</code></td><td>Comme <code>.byte</code>, suivi d'un octet nul.</td></tr>
+        <tr><td><code>.lobytes e, …</code> / <code>.hibytes e, …</code></td><td>L'octet bas (ou haut) de chaque valeur : une table d'adresses découpée en deux tables.</td></tr>
+        <tr><td><code>.dsb n[, octet]</code> (alias <code>.ds</code>, <code>.fill</code>)</td><td><code>n</code> octets de la valeur donnée (0 par défaut). Émet, contrairement à <code>.res</code>.</td></tr>
+        <tr><td><code>.dsw n[, mot]</code></td><td><code>n</code> mots de la valeur donnée.</td></tr>
+        <tr><td><code>.incbin "fichier"[, début[, longueur]]</code></td><td>Les octets d'un fichier, à partir d'un décalage et sur une longueur donnés ; par défaut tout le fichier. Une plage hors du fichier est une erreur.</td></tr>
+        <tr><td><code>.include "fichier"</code></td><td>Assemble un autre source à cet endroit (chemin relatif au fichier courant).</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Les arguments sont séparés par les virgules qui ne sont ni dans une chaîne, ni dans un caractère, ni entre parenthèses. Une valeur qui ne tient pas dans son champ est une erreur, pas une troncature. Le nombre d'octets de <code>.dsb</code>, <code>.pad</code> et <code>.align</code> doit être connu à la ligne même.</p>
+
+    <h3>Assemblage conditionnel</h3>
+<pre><code>.if PAL
+        lda #50
+.elseif DENDY
+        lda #50
+.else
+        lda #60
+.endif</code></pre>
+    <p><code>.if expr</code>, <code>.ifdef nom</code>, <code>.ifndef nom</code>, <code>.elseif expr</code>, <code>.else</code>, <code>.endif</code>, jusqu'à 255 niveaux d'imbrication. La condition d'un <code>.elseif</code> n'est lue que si aucune branche précédente n'a été prise ; un <code>.else</code> ou un <code>.elseif</code> après un <code>.else</code> est une erreur.</p>
+
+    <h3>Diagnostics</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Directive</th><th>Effet</th></tr></thead>
+      <tbody>
+        <tr><td><code>.error "message"</code></td><td>Erreur à cette ligne : le build échoue.</td></tr>
+        <tr><td><code>.warning "message"</code></td><td>Avertissement : le build continue.</td></tr>
+        <tr><td><code>.assert expr[, "message"]</code></td><td>Erreur si l'expression est fausse. Si elle lit un nom défini plus loin, elle est vérifiée une fois l'unité complète.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Dans une branche conditionnelle non assemblée, ces directives ne font rien.</p>
+
+    <h3>Modules et fin</h3>
+    <p><code>.export a, b</code> et <code>.import sym[, module]</code> déclarent les noms échangés entre modules relogeables (voir <code>docs/format-module.md</code>). <code>.end</code> arrête l'assemblage du fichier.</p>
+
+    <!-- ============================================================ -->
+    <h2 id="macros">Macros et répétitions</h2>
+<pre><code>.macro vblank label, register
+label:  bit register
+        bpl label
+.endmacro           ; ou .endm
+
+        vblank wait1, $2002</code></pre>
+    <ul>
+      <li><code>.macro nom p1, p2</code> … <code>.endmacro</code> (alias <code>.endm</code>) définit une macro ; elle s'appelle par son nom suivi des arguments.</li>
+      <li>Les paramètres sont remplacés comme des mots entiers : un paramètre nommé <code>x</code> ne réécrit pas <code>tax</code>.</li>
+      <li>Les arguments sont séparés comme ceux d'une directive. S'il y en a plus que de paramètres, le dernier paramètre reçoit tout le reste : <code>get ($10),y</code> passe l'opérande entier à une macro à un paramètre.</li>
+      <li><code>.rep n</code> … <code>.endrep</code> (alias <code>.rept</code>, <code>.endr</code>) répète un bloc <code>n</code> fois.</li>
+      <li>Les macros et les répétitions ne s'imbriquent pas. Chaque expansion a ses propres labels locaux.</li>
+    </ul>
+
+    <!-- ============================================================ -->
+    <h2 id="modes">Modes d'adressage</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Mode</th><th>Syntaxe</th><th>Exemple</th><th>Octets</th></tr></thead>
+      <tbody>
+        <tr><td>Implicite</td><td></td><td><code>clc</code></td><td>1</td></tr>
+        <tr><td>Accumulateur</td><td><code>A</code> ou rien</td><td><code>asl a</code>, <code>asl</code></td><td>1</td></tr>
+        <tr><td>Immédiat</td><td><code>#valeur</code></td><td><code>lda #$10</code></td><td>2</td></tr>
+        <tr><td>Page zéro</td><td><code>$nn</code></td><td><code>lda $10</code></td><td>2</td></tr>
+        <tr><td>Page zéro,X / ,Y</td><td><code>$nn,x</code> <code>$nn,y</code></td><td><code>ldx $10,y</code></td><td>2</td></tr>
+        <tr><td>Absolu</td><td><code>$nnnn</code></td><td><code>jmp $C000</code></td><td>3</td></tr>
+        <tr><td>Absolu,X / ,Y</td><td><code>$nnnn,x</code> <code>$nnnn,y</code></td><td><code>sta $0200,x</code></td><td>3</td></tr>
+        <tr><td>Indirect</td><td><code>($nnnn)</code></td><td><code>jmp ($FFFC)</code></td><td>3</td></tr>
+        <tr><td>Indirect indexé X</td><td><code>($nn,x)</code></td><td><code>lda ($10,x)</code></td><td>2</td></tr>
+        <tr><td>Indexé Y indirect</td><td><code>($nn),y</code></td><td><code>lda ($10),y</code></td><td>2</td></tr>
+        <tr><td>Relatif</td><td>cible</td><td><code>bne loop</code></td><td>2</td></tr>
+        <tr><td>Page zéro indirect (65C02)</td><td><code>($nn)</code></td><td><code>lda ($10)</code></td><td>2</td></tr>
+        <tr><td>Absolu indexé indirect (65C02)</td><td><code>($nnnn,x)</code></td><td><code>jmp ($1234,x)</code></td><td>3</td></tr>
+        <tr><td>Page zéro + relatif (R65C02)</td><td><code>$nn,cible</code></td><td><code>bbr0 $10,loop</code></td><td>3</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <ul>
+      <li><strong>Choix de la page zéro.</strong> Une valeur connue entre 0 et 255 prend la forme page zéro quand l'instruction en a une. Une référence avant prend la forme absolue, sauf si l'instruction n'existe qu'en page zéro (<code>stx nom,y</code>, <code>sax</code>, <code>rmb</code>…).</li>
+      <li><strong><code>A</code> comme opérande.</strong> <code>A</code> n'est l'accumulateur que pour une instruction qui a cette forme (ASL, LSR, ROL, ROR ; INC et DEC sur 65C02). Ailleurs, c'est un nom : <code>lda A</code> lit le symbole <code>A</code>.</li>
+      <li><strong>Formes inexistantes.</strong> Une instruction écrite dans un mode qu'elle n'a pas est une erreur (« STX does not support absolute,X addressing »). Avant, l'octet <code>$FF</code> était émis sans aucun message.</li>
+      <li><strong>Branches relatives.</strong> Un déplacement hors de -128…127 est une erreur, signalée à la ligne de la branche même quand la cible est définie plus loin.</li>
+    </ul>
+
+    <!-- ============================================================ -->
+    <h2 id="cpu">Processeurs</h2>
+    <p>Le processeur se choisit avec <code>-cpu</code> en ligne de commande ou <code>Target.Cpu</code> dans <code>config.json</code>.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Nom</th><th>Alias</th><th>Jeu d'instructions</th></tr></thead>
+      <tbody>
+        <tr><td><code>6502</code></td><td><code>nmos</code>, <code>nmos6502</code></td><td>Les 56 instructions documentées du NMOS 6502 (151 opcodes).</td></tr>
+        <tr><td><code>6502x</code></td><td><code>nmos6502x</code>, <code>6502illegal</code></td><td>Le 6502 plus ses opcodes non documentés stables.</td></tr>
+        <tr><td><code>65c02</code></td><td><code>cmos</code></td><td>Le 65C02 : BRA, PHX, PHY, PLX, PLY, STZ, TRB, TSB, <code>(zp)</code>, <code>jmp (abs,x)</code>, BIT étendu, INC/DEC A.</td></tr>
+        <tr><td><code>r65c02</code></td><td><code>rockwell</code></td><td>Le 65C02 plus RMB0-7, SMB0-7, BBR0-7, BBS0-7.</td></tr>
+        <tr><td><code>w65c02</code></td><td><code>w65c02s</code>, <code>wdc65c02</code></td><td>Le R65C02 plus STP et WAI (le 65C02 produit aujourd'hui, celui du Commander X16).</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Opcodes non documentés (<code>6502x</code>)</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Mnémonique</th><th>imm</th><th>zp</th><th>zp,x</th><th>zp,y</th><th>abs</th><th>abs,x</th><th>abs,y</th><th>(zp,x)</th><th>(zp),y</th><th>impl.</th></tr></thead>
+      <tbody>
+        <tr><td>SLO</td><td></td><td>07</td><td>17</td><td></td><td>0F</td><td>1F</td><td>1B</td><td>03</td><td>13</td><td></td></tr>
+        <tr><td>RLA</td><td></td><td>27</td><td>37</td><td></td><td>2F</td><td>3F</td><td>3B</td><td>23</td><td>33</td><td></td></tr>
+        <tr><td>SRE</td><td></td><td>47</td><td>57</td><td></td><td>4F</td><td>5F</td><td>5B</td><td>43</td><td>53</td><td></td></tr>
+        <tr><td>RRA</td><td></td><td>67</td><td>77</td><td></td><td>6F</td><td>7F</td><td>7B</td><td>63</td><td>73</td><td></td></tr>
+        <tr><td>SAX</td><td></td><td>87</td><td></td><td>97</td><td>8F</td><td></td><td></td><td>83</td><td></td><td></td></tr>
+        <tr><td>LAX</td><td></td><td>A7</td><td></td><td>B7</td><td>AF</td><td></td><td>BF</td><td>A3</td><td>B3</td><td></td></tr>
+        <tr><td>DCP</td><td></td><td>C7</td><td>D7</td><td></td><td>CF</td><td>DF</td><td>DB</td><td>C3</td><td>D3</td><td></td></tr>
+        <tr><td>ISC</td><td></td><td>E7</td><td>F7</td><td></td><td>EF</td><td>FF</td><td>FB</td><td>E3</td><td>F3</td><td></td></tr>
+        <tr><td>ANC</td><td>0B</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td>ALR</td><td>4B</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td>ARR</td><td>6B</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td>AXS</td><td>CB</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td>LAS</td><td></td><td></td><td></td><td></td><td></td><td></td><td>BB</td><td></td><td></td><td></td></tr>
+        <tr><td>NOP</td><td>80</td><td>04</td><td>14</td><td></td><td>0C</td><td>1C</td><td></td><td></td><td></td><td>EA</td></tr>
+        <tr><td>JAM</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>02</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Sont exclus :</p>
+    <ul>
+      <li><strong>Les opcodes instables</strong>, dont le résultat dépend de la puce : ANE/XAA <code>$8B</code>, LXA <code>$AB</code>, SHA, SHX, SHY, TAS.</li>
+      <li><strong>Les encodages en double</strong> d'une instruction qui en a déjà un : SBC <code>$EB</code>, ANC <code>$2B</code>, les autres NOP et JAM. Le désassembleur les affiche comme <code>.byte</code>.</li>
+    </ul>
+
+    <h3>Instructions de bit Rockwell et WDC</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Mnémonique (n = 0 à 7)</th><th>Syntaxe</th><th>Opcode</th><th>Effet</th></tr></thead>
+      <tbody>
+        <tr><td>RMBn</td><td><code>rmb3 $10</code></td><td><code>$07 + n×$10</code></td><td>Met à 0 le bit n de l'octet en page zéro.</td></tr>
+        <tr><td>SMBn</td><td><code>smb3 $10</code></td><td><code>$87 + n×$10</code></td><td>Met à 1 le bit n.</td></tr>
+        <tr><td>BBRn</td><td><code>bbr0 $10,cible</code></td><td><code>$0F + n×$10</code></td><td>Branche si le bit n vaut 0. Le déplacement compte depuis la fin de l'instruction (3 octets).</td></tr>
+        <tr><td>BBSn</td><td><code>bbs7 $10,cible</code></td><td><code>$8F + n×$10</code></td><td>Branche si le bit n vaut 1.</td></tr>
+        <tr><td>WAI (W65C02)</td><td><code>wai</code></td><td><code>$CB</code></td><td>Attend une interruption.</td></tr>
+        <tr><td>STP (W65C02)</td><td><code>stp</code></td><td><code>$DB</code></td><td>Arrête l'horloge jusqu'au reset.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Le cœur d'exécution du moniteur n'implémente que les 151 opcodes documentés du NMOS. Les instructions ci-dessus s'assemblent et se désassemblent, mais ne s'exécutent pas dans ce cœur.</p>
+
+    <!-- ============================================================ -->
+    <h2 id="erreurs">Messages d'erreur</h2>
+    <p>Chaque message est rapporté à la ligne qui l'a causé, sous la forme <code>Line N - File f - Type message</code> (ou <code>fichier:ligne: error: message</code> avec <code>WinASM65.Tooling --build</code>).</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Message</th><th>Cause</th></tr></thead>
+      <tbody>
+        <tr><td>Unknown instruction or macro 'foo'</td><td>Un mot en position de mnémonique qui n'est ni une instruction du CPU, ni une macro.</td></tr>
+        <tr><td>X does not support … addressing</td><td>L'instruction n'existe pas dans ce mode.</td></tr>
+        <tr><td>Unknown directive '.xxx'</td><td>Directive inconnue.</td></tr>
+        <tr><td>Invalid token '…' in expression '…'</td><td>Caractère non reconnu dans une expression.</td></tr>
+        <tr><td>Malformed expression '…'</td><td>Deux valeurs côte à côte, opérateur sans opérande, parenthèses déséquilibrées.</td></tr>
+        <tr><td>Division by zero in '…'</td><td>Division ou modulo par zéro.</td></tr>
+        <tr><td>Number '…' is too large</td><td>Nombre qui dépasse 64 bits.</td></tr>
+        <tr><td>Unterminated string literal / Invalid escape sequence</td><td>Chaîne non fermée, échappement inconnu.</td></tr>
+        <tr><td>Value N is out of range for a 1-byte (2-byte) operand</td><td>Valeur trop grande pour son champ.</td></tr>
+        <tr><td>Relative jump is too big</td><td>Branche à plus de 127 octets.</td></tr>
+        <tr><td>Undefined symbol: nom</td><td>Nom jamais défini (ni importé).</td></tr>
+        <tr><td>Constant 'n' already defined with a different value</td><td>Seconde définition <code>EQU</code> avec une autre valeur.</td></tr>
+        <tr><td>Local label '@x' is not defined in the scope of 'G'</td><td>Label local référencé hors de sa portée.</td></tr>
+        <tr><td>Local label '@x' has no global label before it</td><td>Label local sans label global avant lui.</td></tr>
+        <tr><td>No anonymous label '-' before (after) this line</td><td>Label anonyme introuvable.</td></tr>
+        <tr><td>.pad target is below the current address</td><td><code>.pad</code> vers une adresse déjà dépassée.</td></tr>
+        <tr><td>.align requires a positive power of two</td><td>Frontière invalide.</td></tr>
+        <tr><td>.incbin offset/length outside 'f'</td><td>Plage hors du fichier.</td></tr>
+        <tr><td>.else/.elseif after .else</td><td>Branche après le <code>.else</code>.</td></tr>
+        <tr><td>Assertion failed: …</td><td><code>.assert</code> faux.</td></tr>
+        <tr><td>X expects …</td><td>Mauvais nombre ou type d'arguments, ou valeur qui doit être connue à la ligne même.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <!-- ============================================================ -->
+    <h2 id="omissions">Ce qui n'est pas pris en charge</h2>
+    <ul>
+      <li><strong>Directives sans point</strong> (<code>org</code>, <code>db</code> à la manière d'asm6) : elles entreraient en collision avec les labels et les macros. Seul <code>EQU</code> s'écrit sans point.</li>
+      <li><strong><code>.dc.b</code> / <code>.dc.w</code></strong> (style 68000) : utiliser <code>.byte</code> / <code>.word</code>.</li>
+      <li><strong><code>.proc</code>, <code>.scope</code>, <code>.segment</code></strong> de ca65 : les portées sont <code>{ }</code> et les labels locaux ; les segments se décrivent dans <code>config.json</code>.</li>
+      <li><strong>Labels locaux <code>.nom</code></strong> : le point introduit les directives, d'où le choix de <code>@nom</code>.</li>
+      <li><strong>Plusieurs instructions par ligne</strong>, et les commentaires <code>*</code> en colonne 1 ou <code>/* */</code>.</li>
+      <li><strong>Fonctions</strong> dans les expressions (<code>.defined()</code>, <code>.sizeof()</code>…).</li>
+      <li><strong>Macros et <code>.rep</code> imbriqués.</strong></li>
+    </ul>
+
+    <footer>Référence de la branche <code>assembler-syntax</code>, 24 octobre 2026. Chaque forme décrite ici est couverte par les tests de <code>WinASM65.Tests</code>.</footer>
+  </main>
+</div>
+<script>
+  function toggleTheme() {
+    var root = document.documentElement;
+    var dark = root.getAttribute('data-theme')
+      ? root.getAttribute('data-theme') === 'dark'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+  }
+</script>
+</body>
+</html>
