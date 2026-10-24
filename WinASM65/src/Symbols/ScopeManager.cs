@@ -30,6 +30,13 @@ namespace WinASM65.Symbols
         private readonly Dictionary<ushort, UnresolvedExpr> _unsolvedExprList = new Dictionary<ushort, UnresolvedExpr>();
         private byte _level;
 
+        /// <summary>
+        /// Called when a pending expression, evaluated once its symbols are known,
+        /// cannot be evaluated (a division by zero, for example). The expression is
+        /// null for a pending constant, which records no line.
+        /// </summary>
+        public Action<UnresolvedExpr, string> LateError { get; set; }
+
         public byte Level
         {
             get { return _level; }
@@ -241,7 +248,12 @@ namespace WinASM65.Symbols
                     if (unresDep.NbrUndefinedSymb <= 0)
                     {
                         ExpressionResult res = evaluator.Evaluate(unresDep.Expr, this);
-                        if (res.IsResolved)
+                        if (res.HasError)
+                        {
+                            if (LateError != null)
+                                LateError(null, res.Error);
+                        }
+                        else if (res.IsResolved)
                         {
                             string err;
                             AddSymbol(dep, res.Value.AsInteger, true, out err);
@@ -261,7 +273,13 @@ namespace WinASM65.Symbols
                     if (unresExp.NbrUndefinedSymb <= 0)
                     {
                         ExpressionResult res = evaluator.Evaluate(unresExp.Expr, this);
-                        if (res.IsResolved && patchCallback != null)
+                        if (res.HasError)
+                        {
+                            if (LateError != null)
+                                LateError(unresExp, res.Error);
+                            resolvedExprs.Add(exprPos);
+                        }
+                        else if (res.IsResolved && patchCallback != null)
                         {
                             patchCallback(unresExp, res.Value);
                             resolvedExprs.Add(exprPos);

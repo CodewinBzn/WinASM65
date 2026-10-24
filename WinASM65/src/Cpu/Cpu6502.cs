@@ -245,39 +245,24 @@ namespace WinASM65.Cpu
         {
             mnemonic = (mnemonic ?? string.Empty).ToUpperInvariant();
 
-            if (string.IsNullOrWhiteSpace(operand))
+            // "ASL A" is the MOS spelling of the accumulator form, "ASL" the short one.
+            // A is only the accumulator for a mnemonic that has that form; elsewhere it
+            // stays a name, as in "LDA A".
+            if (string.IsNullOrWhiteSpace(operand)
+                || (IsAccumulatorInstruction(mnemonic) && string.Equals(operand.Trim(), "A", StringComparison.OrdinalIgnoreCase)))
             {
-                if (IsAccumulatorInstruction(mnemonic))
-                {
-                    byte opc;
-                    TryGetOpcode(mnemonic, AddressingMode.Accumulator, out opc);
-                    return new InstructionInfo(AddressingMode.Accumulator, opc, 1, string.Empty);
-                }
-                else
-                {
-                    byte opc;
-                    TryGetOpcode(mnemonic, AddressingMode.Implicit, out opc);
-                    return new InstructionInfo(AddressingMode.Implicit, opc, 1, string.Empty);
-                }
+                AddressingMode bare = IsAccumulatorInstruction(mnemonic) ? AddressingMode.Accumulator : AddressingMode.Implicit;
+                return Form(mnemonic, bare, 1, string.Empty);
             }
 
             if (IsRelativeBranch(mnemonic))
-            {
-                byte opc;
-                TryGetOpcode(mnemonic, AddressingMode.Relative, out opc);
-                return new InstructionInfo(AddressingMode.Relative, opc, 2, operand.Trim());
-            }
+                return Form(mnemonic, AddressingMode.Relative, 2, operand.Trim());
 
             // Whitespace goes, except inside a literal: "lda #' '" is a space.
             string clean = WinASM65.Core.SourceText.RemoveWhitespaceOutsideQuotes(operand);
 
             if (clean.StartsWith("#"))
-            {
-                string expr = clean.Substring(1);
-                byte opc;
-                TryGetOpcode(mnemonic, AddressingMode.Immediate, out opc);
-                return new InstructionInfo(AddressingMode.Immediate, opc, 2, expr);
-            }
+                return Form(mnemonic, AddressingMode.Immediate, 2, clean.Substring(1));
 
             if (clean.StartsWith("(") && clean.EndsWith(",x)", StringComparison.OrdinalIgnoreCase))
             {
@@ -286,12 +271,7 @@ namespace WinASM65.Cpu
             }
 
             if (clean.StartsWith("(") && clean.EndsWith("),y", StringComparison.OrdinalIgnoreCase))
-            {
-                string expr = clean.Substring(1, clean.Length - 4);
-                byte opc;
-                TryGetOpcode(mnemonic, AddressingMode.IndirectY, out opc);
-                return new InstructionInfo(AddressingMode.IndirectY, opc, 2, expr);
-            }
+                return Form(mnemonic, AddressingMode.IndirectY, 2, clean.Substring(1, clean.Length - 4));
 
             if (clean.StartsWith("(") && clean.EndsWith(")"))
             {
@@ -300,39 +280,30 @@ namespace WinASM65.Cpu
             }
 
             if (clean.EndsWith(",x", StringComparison.OrdinalIgnoreCase))
-            {
-                string expr = clean.Substring(0, clean.Length - 2);
-                byte opc;
-                TryGetOpcode(mnemonic, AddressingMode.AbsoluteX, out opc);
-                return new InstructionInfo(AddressingMode.AbsoluteX, opc, 3, expr);
-            }
+                return Form(mnemonic, AddressingMode.AbsoluteX, 3, clean.Substring(0, clean.Length - 2));
 
             if (clean.EndsWith(",y", StringComparison.OrdinalIgnoreCase))
-            {
-                string expr = clean.Substring(0, clean.Length - 2);
-                byte opc;
-                TryGetOpcode(mnemonic, AddressingMode.AbsoluteY, out opc);
-                return new InstructionInfo(AddressingMode.AbsoluteY, opc, 3, expr);
-            }
+                return Form(mnemonic, AddressingMode.AbsoluteY, 3, clean.Substring(0, clean.Length - 2));
 
-            // Default to Absolute
-            byte absOpc;
-            TryGetOpcode(mnemonic, AddressingMode.Absolute, out absOpc);
-            return new InstructionInfo(AddressingMode.Absolute, absOpc, 3, clean);
+            return Form(mnemonic, AddressingMode.Absolute, 3, clean);
+        }
+
+        /// <summary>The instruction in one mode, saying whether the CPU has that form.</summary>
+        protected InstructionInfo Form(string mnemonic, AddressingMode mode, byte length, string expression)
+        {
+            byte opc;
+            bool has = TryGetOpcode(mnemonic, mode, out opc);
+            return new InstructionInfo(mode, opc, length, expression, has);
         }
 
         protected virtual InstructionInfo ParseIndexedIndirectX(string mnemonic, string expr)
         {
-            byte opc;
-            TryGetOpcode(mnemonic, AddressingMode.IndirectX, out opc);
-            return new InstructionInfo(AddressingMode.IndirectX, opc, 2, expr);
+            return Form(mnemonic, AddressingMode.IndirectX, 2, expr);
         }
 
         protected virtual InstructionInfo ParseIndirect(string mnemonic, string expr)
         {
-            byte opc;
-            TryGetOpcode(mnemonic, AddressingMode.Indirect, out opc);
-            return new InstructionInfo(AddressingMode.Indirect, opc, 3, expr);
+            return Form(mnemonic, AddressingMode.Indirect, 3, expr);
         }
 
         public bool TryOptimizeZeroPage(string mnemonic, AddressingMode currentMode, long value, out AddressingMode optimizedMode, out byte opcode, out byte length)
