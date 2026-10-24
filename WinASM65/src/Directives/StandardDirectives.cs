@@ -179,72 +179,13 @@ namespace WinASM65.Directives
             if (string.IsNullOrWhiteSpace(argument))
                 return;
 
-            string[] byteEntries = argument.Split(',');
+            // Arguments are split on top-level commas only, so ".byte "a,b"" is one
+            // string and ".byte ','" one character.
             ushort startAddr = context.Emitter.CurrentAddress;
-
-            foreach (string entry in byteEntries)
+            foreach (string data in SourceText.SplitArguments(argument))
             {
-                string data = entry.Trim();
-                if (data.StartsWith("\"") && data.EndsWith("\"") && data.Length >= 2)
-                {
-                    string strContent = data.Substring(1, data.Length - 2);
-                    foreach (char c in strContent)
-                    {
-                        context.Emitter.EmitByte(Convert.ToByte(c));
-                    }
-                }
-                else
-                {
-                    ExpressionResult res = context.ResolveExpression(data, AddressingMode.None, false);
-                    if (res.IsResolved)
-                    {
-                        // A value that does not fit is refused, not narrowed. ToByte()
-                        // masks to the low octet, so 300 became $2C and the image built
-                        // clean while behaving in a way the source never described -- and
-                        // .byte is the instruction byte of every LDA/STA operand the NES
-                        // sources write, so a wrong byte there is a wrong program. The
-                        // placeholder is a zero rather than the truncated value: the byte
-                        // is still emitted, so every address after it stays where the
-                        // source put it and the listing still counts the right length.
-                        if (!Value.InByteRange(res.Value.AsInteger))
-                        {
-                            DataRange.Report(context, res.Value.AsInteger, true);
-                            context.Emitter.EmitByte(0);
-                        }
-                        else
-                        {
-                            int fieldOffset = context.Emitter.Length;
-                            context.Emitter.EmitByte(res.Value.ToByte());
-                            DataRelocation.Record(context, res.WithRole(ExpressionRole.Data), fieldOffset, 1, res.Value.AsInteger);
-                        }
-                    }
-                    else
-                    {
-                        ushort position = (ushort)(context.Emitter.CurrentAddress - context.Emitter.OriginAddress);
-                        int bufferOffset = context.Emitter.Length;
-                        context.Emitter.EmitByte(0);
-
-                        UnresolvedExpr expr = new UnresolvedExpr
-                        {
-                            Position = position,
-                            BufferOffset = bufferOffset,
-                            Type = SymbolType.Byte,
-                            AddrMode = AddressingMode.None,
-                            NbrUndefinedSymb = res.UndefinedSymbols.Count,
-                            Expr = data
-                        };
-                        context.ScopeManager.AddUnresolvedExpression(position, expr);
-
-                        DataRelocation.Record(context, res.WithRole(ExpressionRole.Data), bufferOffset, 1, 0);
-
-                        foreach (string symb in res.UndefinedSymbols)
-                        {
-                            UnresolvedSymbol unResSymb = new UnresolvedSymbol();
-                            unResSymb.ExprList.Add(position);
-                            context.ScopeManager.AddUnresolvedSymbol(symb, unResSymb);
-                        }
-                    }
-                }
+                if (!DataEmitter.TryEmitString(context, data))
+                    DataEmitter.Emit(context, data, 1);
             }
 
             int bytesCount = context.Emitter.CurrentAddress - startAddr;
@@ -261,57 +202,10 @@ namespace WinASM65.Directives
             if (string.IsNullOrWhiteSpace(argument))
                 return;
 
-            string[] wordEntries = argument.Split(',');
-            context.ListingService.PrintLine(LineType.INST, wordEntries.Length * 2);
-
-            foreach (string entry in wordEntries)
-            {
-                string data = entry.Trim();
-                ExpressionResult res = context.ResolveExpression(data, AddressingMode.None, false);
-                if (res.IsResolved)
-                {
-                    // Same rule as .byte, at the two-byte width: ToUInt16() masks, and a
-                    // masked address is a pointer into the middle of the address space
-                    // rather than an error.
-                    if (!Value.InWordRange(res.Value.AsInteger))
-                    {
-                        DataRange.Report(context, res.Value.AsInteger, false);
-                        context.Emitter.EmitWord(0);
-                    }
-                    else
-                    {
-                        int fieldOffset = context.Emitter.Length;
-                        context.Emitter.EmitWord(res.Value.ToUInt16());
-                        DataRelocation.Record(context, res.WithRole(ExpressionRole.Data), fieldOffset, 2, res.Value.AsInteger);
-                    }
-                }
-                else
-                {
-                    ushort position = (ushort)(context.Emitter.CurrentAddress - context.Emitter.OriginAddress);
-                    int bufferOffset = context.Emitter.Length;
-                    context.Emitter.EmitWord(0);
-
-                    UnresolvedExpr expr = new UnresolvedExpr
-                    {
-                        Position = position,
-                        BufferOffset = bufferOffset,
-                        Type = SymbolType.Word,
-                        AddrMode = AddressingMode.None,
-                        NbrUndefinedSymb = res.UndefinedSymbols.Count,
-                        Expr = data
-                    };
-                    context.ScopeManager.AddUnresolvedExpression(position, expr);
-
-                    DataRelocation.Record(context, res.WithRole(ExpressionRole.Data), bufferOffset, 2, 0);
-
-                    foreach (string symb in res.UndefinedSymbols)
-                    {
-                        UnresolvedSymbol unResSymb = new UnresolvedSymbol();
-                        unResSymb.ExprList.Add(position);
-                        context.ScopeManager.AddUnresolvedSymbol(symb, unResSymb);
-                    }
-                }
-            }
+            System.Collections.Generic.List<string> entries = SourceText.SplitArguments(argument);
+            context.ListingService.PrintLine(LineType.INST, entries.Count * 2);
+            foreach (string data in entries)
+                DataEmitter.Emit(context, data, 2);
         }
     }
 

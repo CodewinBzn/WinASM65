@@ -35,7 +35,10 @@ namespace WinASM65.Expressions
         LogicalOr,
         LogicalAnd,
         True,
-        False
+        False,
+
+        /// <summary>Text the tokenizer recognised as nothing; an expression containing it is an error.</summary>
+        Invalid
     }
 
     public struct Token
@@ -43,11 +46,24 @@ namespace WinASM65.Expressions
         public TokenType Type { get; private set; }
         public string Value { get; private set; }
 
+        /// <summary>Offset of the token in the expression text.</summary>
+        public int Index { get; private set; }
+
+        /// <summary>Length of the token in the expression text, delimiters included.</summary>
+        public int Length { get; private set; }
+
         public Token(TokenType type, string value)
+            : this(type, value, 0, value == null ? 0 : value.Length)
+        {
+        }
+
+        public Token(TokenType type, string value, int index, int length)
             : this()
         {
             Type = type;
             Value = value;
+            Index = index;
+            Length = length;
         }
 
         public override string ToString()

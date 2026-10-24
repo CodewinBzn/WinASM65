@@ -119,6 +119,20 @@ namespace WinASM65.Expressions
         /// </summary>
         public ByteSelector Selector { get; private set; }
 
+        /// <summary>
+        /// Why the expression could not be evaluated at all: an invalid token, a
+        /// malformed shape, a division by zero. Null when it evaluated (or only waits
+        /// for symbols). A failed expression carries the value 0 so that callers that
+        /// ignore the error still emit a field of the right size; the assembler reports
+        /// the error once, where the expression was written.
+        /// </summary>
+        public string Error { get; private set; }
+
+        public bool HasError
+        {
+            get { return Error != null; }
+        }
+
         public bool IsResolved
         {
             get { return UndefinedSymbols == null || UndefinedSymbols.Count == 0; }
@@ -181,6 +195,13 @@ namespace WinASM65.Expressions
             return new ExpressionResult(value, role, usedSymbols, expression, location, selector);
         }
 
+        public static ExpressionResult Failure(string error, string expression, SourceLocation location)
+        {
+            ExpressionResult failed = new ExpressionResult(new Value(0), ExpressionRole.None, null, expression, location, ByteSelector.None);
+            failed.Error = error;
+            return failed;
+        }
+
         public static ExpressionResult WithUndefinedSymbols(IReadOnlyList<string> undefinedSymbols)
         {
             return WithUndefinedSymbols(undefinedSymbols, ExpressionRole.None, null, string.Empty, default(SourceLocation));
@@ -204,6 +225,12 @@ namespace WinASM65.Expressions
         /// </summary>
         public ExpressionResult WithRole(ExpressionRole role)
         {
+            if (HasError)
+            {
+                ExpressionResult failed = new ExpressionResult(Value, role, UsedSymbols, Expression, Location, Selector);
+                failed.Error = Error;
+                return failed;
+            }
             if (IsResolved)
                 return new ExpressionResult(Value, role, UsedSymbols, Expression, Location, Selector);
             return new ExpressionResult(UndefinedSymbols, role, UsedSymbols, Expression, Location, Selector);
