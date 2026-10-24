@@ -184,6 +184,8 @@ namespace WinASM65.Tooling.Tests
                 StringAssert.Contains(text, "**LDA**");
                 StringAssert.Contains(text, "$A9");
                 StringAssert.Contains(text, "`$8000`  A9 5A");
+                StringAssert.Contains(text, "**LDA** — 2 cycles", "the form on this line, with its cycles");
+                StringAssert.Contains(text, "4 cycles (+1 if a page is crossed)", "every form lists its cycles");
             }
         }
 

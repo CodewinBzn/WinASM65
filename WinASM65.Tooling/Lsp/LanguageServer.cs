@@ -388,15 +388,28 @@ namespace WinASM65.Tooling.Lsp
 
             StringBuilder markdown = new StringBuilder();
             string word = WordAt(lines[line], character);
+            ICpuInstructionSet cpu = CpuOf(session);
 
-            if (word != null && InstructionDocs.IsMnemonic(word))
+            ListingRow row = listing.Rows.FirstOrDefault(r => r.Kind == ListingRowKind.Instruction && r.Address.HasValue
+                && r.LineNumber == line + 1 && (string.IsNullOrEmpty(r.SourceName) || SamePath(r.SourceName, document.Path)));
+            InstructionDocumentation assembled = row == null ? null : FormOf(cpu, row, lines[line]);
+
+            if (word != null && InstructionDocs.IsMnemonic(word, cpu))
             {
-                markdown.Append("**").Append(word.ToUpperInvariant()).Append("**\n\n");
-                foreach (InstructionDocumentation form in InstructionDocs.ForMnemonic(word))
+                // The form this line assembled to first, with its cycle count; then
+                // every form of the mnemonic, for reference.
+                markdown.Append("**").Append(word.ToUpperInvariant()).Append("**");
+                if (assembled != null && assembled.CyclesText != null)
+                    markdown.Append(" — ").Append(assembled.CyclesText);
+                markdown.Append("\n\n");
+                foreach (InstructionDocumentation form in InstructionDocs.ForMnemonic(word, cpu))
                 {
                     markdown.Append("- `").Append(form.Mnemonic).Append(string.IsNullOrEmpty(form.Syntax) ? "" : " " + form.Syntax)
-                        .Append("` — ").Append(form.Mode).Append(", $").Append(form.Opcode.ToString("X2"))
-                        .Append(", ").Append(form.Length).Append(form.Length == 1 ? " byte\n" : " bytes\n");
+                        .Append("` — ").Append(AddressingModes.Describe(form.Mode)).Append(", $").Append(form.Opcode.ToString("X2"))
+                        .Append(", ").Append(form.Length).Append(form.Length == 1 ? " byte" : " bytes");
+                    if (form.CyclesText != null)
+                        markdown.Append(", ").Append(form.CyclesText);
+                    markdown.Append("\n");
                 }
             }
             else if (word != null)
@@ -407,14 +420,14 @@ namespace WinASM65.Tooling.Lsp
                         .Append(" (").Append(value.ToString(CultureInfo.InvariantCulture)).Append(")");
             }
 
-            ListingRow row = listing.Rows.FirstOrDefault(r => r.Kind == ListingRowKind.Instruction && r.Address.HasValue
-                && r.LineNumber == line + 1 && (string.IsNullOrEmpty(r.SourceName) || SamePath(r.SourceName, document.Path)));
             if (row != null)
             {
                 if (markdown.Length > 0)
                     markdown.Append("\n\n---\n\n");
                 markdown.Append("`$").Append(row.Address.Value.ToString("X4")).Append("`  ")
                     .Append(string.Join(" ", row.Bytes.Select(b => b.ToString("X2"))));
+                if (assembled != null && assembled.CyclesText != null)
+                    markdown.Append("  ·  ").Append(assembled.CyclesText);
             }
 
             if (markdown.Length == 0)
@@ -482,6 +495,37 @@ namespace WinASM65.Tooling.Lsp
         private static string Rooted(string name, string directory)
         {
             return Path.IsPathRooted(name) || string.IsNullOrEmpty(directory) ? name : Path.Combine(directory, name);
+        }
+
+        /// <summary>The CPU the project assembles for (its Target), the NMOS 6502 otherwise.</summary>
+        private static ICpuInstructionSet CpuOf(ProjectSession session)
+        {
+            try
+            {
+                return CpuFactory.Create(WinASM65.Targets.TargetResolver.Resolve(session.Configuration.Target, null, null, null).CpuName);
+            }
+            catch (ArgumentException)
+            {
+                return new Cpu6502();
+            }
+        }
+
+        /// <summary>
+        /// The instruction form a listing row holds: the documented form with its first
+        /// byte as opcode, the same length, and its mnemonic written on the line. A data
+        /// row (".byte $A9, $01") has no mnemonic on its line and gets none.
+        /// </summary>
+        private static InstructionDocumentation FormOf(ICpuInstructionSet cpu, ListingRow row, string text)
+        {
+            if (row.Bytes.Count == 0)
+                return null;
+            foreach (InstructionDocumentation doc in InstructionDocs.ForCpu(cpu))
+            {
+                if (doc.Opcode == row.Bytes[0] && doc.Length == row.Bytes.Count
+                    && System.Text.RegularExpressions.Regex.IsMatch(text, @"\b" + doc.Mnemonic + @"\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                    return doc;
+            }
+            return null;
         }
 
         private static bool TrySymbolOf(SourceListing listing, string word, out long value)

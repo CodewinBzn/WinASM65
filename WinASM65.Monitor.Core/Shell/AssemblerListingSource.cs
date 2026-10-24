@@ -414,9 +414,8 @@ namespace WinASM65.Monitor.Shell
         /// one byte that is a documented <c>LDA</c> immediate opcode, but that form is
         /// two bytes long, so the row is data and gets nothing.
         ///
-        /// <see cref="InstructionDocumentation.Cycles"/> is null for every form today —
-        /// the project has no cycle table — and that null is passed straight through.
-        /// The column is empty because the truth is empty.
+        /// The count is <see cref="InstructionDocumentation.Cycles"/>, the base count of
+        /// the form; the cases that take longer are in its CycleNote.
         /// </summary>
         private int? CyclesOf(Output.ListingRow row, string mnemonic)
         {
