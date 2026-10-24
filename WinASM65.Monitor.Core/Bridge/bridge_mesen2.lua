@@ -406,10 +406,26 @@ end
 
 -- Same rule for a reset: it needs a running machine, so it is issued from the
 -- owner rather than from dispatch.
+--
+-- Between the resume and the reset the old program runs a few instructions, and
+-- a breakpoint it crosses there would stop the machine just after the reset, at
+-- the reset vector, under the wrong name. Breakpoints are therefore deaf until
+-- the emulator reports the reset done.
+local resetting = false
+
 local function reset_now()
+  resetting = true
   emu.resume()
   local ok, message = pcall(function() emu.reset() end)
-  if not ok then log("reset refused: " .. tostring(message)) end
+  if not ok then
+    resetting = false
+    log("reset refused: " .. tostring(message))
+  end
+end
+
+local function on_reset()
+  resetting = false
+  stop_requested = nil
 end
 
 -- The single owner of "what does a finished serve_blocked mean". Every caller goes
@@ -434,6 +450,7 @@ local function install_breakpoint(address, kind)
 
   local ok, id = pcall(function()
     return emu.addMemoryCallback(function(accessed, value)
+      if resetting then return end
       if kind ~= "exec" then
         -- A watchpoint answers by refusing to let the access change anything:
         -- returning a value from the callback replaces the result of the read or
@@ -952,6 +969,7 @@ local function start()
 
   emu.addEventCallback(on_tick, emu.eventType.inputPolled)
   emu.addEventCallback(serve_stopped, emu.eventType.codeBreak)
+  emu.addEventCallback(on_reset, emu.eventType.reset)
   install_ram_watchpoint()
   log(NAME .. " " .. VERSION .. " bridge listening on 127.0.0.1:" .. port)
 end

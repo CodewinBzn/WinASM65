@@ -94,6 +94,11 @@ namespace WinASM65.Monitor.Tests
                 MappedLine resolved = map.Resolve(0xC01A, 0x1A, out ambiguous);
                 Assert.AreSame(pha, resolved);
                 Assert.IsFalse(ambiguous);
+
+                int offset;
+                Assert.AreEqual("NMI", map.NearestLabel(0xC01C, out offset));
+                Assert.AreEqual(2, offset);
+                Assert.AreEqual(0xC01A, map.Symbols["NMI"]);
             }
         }
 

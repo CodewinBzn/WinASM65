@@ -18,14 +18,14 @@ namespace WinASM65.Monitor
         /// before it listens, and failing on the first refused attempt would make
         /// launching Mesen from here unusable.
         /// </summary>
-        public static BridgeMemoryBackend Connect(int port, int timeoutMs = DefaultTimeoutMs)
+        public static BridgeMemoryBackend Connect(int port, int timeoutMs = DefaultTimeoutMs, bool poll = true)
         {
             DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
             while (true)
             {
                 try
                 {
-                    return new BridgeMemoryBackend(ProtocolClient.Connect(port), port);
+                    return new BridgeMemoryBackend(ProtocolClient.Connect(port), port, poll);
                 }
                 catch (MonitorException)
                 {

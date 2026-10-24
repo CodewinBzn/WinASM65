@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The editor side of WinASM65: one executable the VS Code extension starts in
+    one of three modes.
+
+      - -dap             Debug Adapter Protocol on stdin/stdout
+      - -lsp             Language Server Protocol on stdin/stdout
+      - -build <config>  builds a project and prints file:line diagnostics
+
+    stdout is the protocol channel in the first two modes, so nothing here (or in
+    what it calls) may write to it except the protocol writer. Program redirects
+    Console.Out to stderr before anything else runs.
+
+    No protocol library: DAP and LSP share one framing (Content-Length headers)
+    and the requests this tool answers are few, so System.Text.Json is enough.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>WinASM65.Tooling</RootNamespace>
+    <AssemblyName>WinASM65.Tooling</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WinASM65\WinASM65.csproj" />
+    <ProjectReference Include="..\WinASM65.Monitor.Core\WinASM65.Monitor.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="WinASM65.Tooling.Tests" />
+  </ItemGroup>
+
+</Project>

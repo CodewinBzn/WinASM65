@@ -17,6 +17,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinASM65.Monitor.Abstractio
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinASM65.Monitor.Core", "WinASM65.Monitor.Core\WinASM65.Monitor.Core.csproj", "{D036914D-2718-42A3-88FC-D254F434841E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinASM65.Tooling", "WinASM65.Tooling\WinASM65.Tooling.csproj", "{401358DD-0D7D-4AB2-9527-70B64066671C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinASM65.Tooling.Tests", "WinASM65.Tooling.Tests\WinASM65.Tooling.Tests.csproj", "{0E794869-FFE0-4411-96B1-905DBB592CCD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -51,6 +55,14 @@ Global
 		{D036914D-2718-42A3-88FC-D254F434841E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D036914D-2718-42A3-88FC-D254F434841E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D036914D-2718-42A3-88FC-D254F434841E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{401358DD-0D7D-4AB2-9527-70B64066671C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{401358DD-0D7D-4AB2-9527-70B64066671C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{401358DD-0D7D-4AB2-9527-70B64066671C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{401358DD-0D7D-4AB2-9527-70B64066671C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0E794869-FFE0-4411-96B1-905DBB592CCD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0E794869-FFE0-4411-96B1-905DBB592CCD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0E794869-FFE0-4411-96B1-905DBB592CCD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0E794869-FFE0-4411-96B1-905DBB592CCD}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
