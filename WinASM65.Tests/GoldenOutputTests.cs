@@ -1,0 +1,97 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Security.Cryptography;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using WinASM65.Core;
+using WinASM65.Linking;
+using WinASM65.Modules;
+using WinASM65.Output;
+using WinASM65.Projects;
+using WinASM65.Targets;
+using WinASM65.TextFormat;
+
+namespace WinASM65.Tests
+{
+    /// <summary>
+    /// The bytes real sources assemble to, pinned. A change to the parser that
+    /// alters one byte of these is a regression until proven otherwise; the
+    /// Bomberman image is pinned the same way in ProjectSessionTests.
+    /// </summary>
+    [TestClass]
+    public class GoldenOutputTests
+    {
+        private static string Hash(byte[] bytes)
+        {
+            using (SHA256 sha = SHA256.Create())
+                return BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", string.Empty);
+        }
+
+        private static string RepositoryRoot()
+        {
+            DirectoryInfo dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null && !File.Exists(Path.Combine(dir.FullName, "WinASM65.sln")))
+                dir = dir.Parent;
+            Assert.IsNotNull(dir, "the repository root was not found");
+            return dir.FullName;
+        }
+
+        private static void CopyTree(string source, string target)
+        {
+            Directory.CreateDirectory(target);
+            foreach (string file in Directory.GetFiles(source))
+                File.Copy(file, Path.Combine(target, Path.GetFileName(file)));
+            foreach (string dir in Directory.GetDirectories(source))
+                CopyTree(dir, Path.Combine(target, Path.GetFileName(dir)));
+        }
+
+        [TestMethod]
+        public void TheNesGameImageIsUnchanged()
+        {
+            string temp = Path.Combine(Path.GetTempPath(), "winasm65-golden-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                CopyTree(Path.Combine(RepositoryRoot(), "example_nes_game"), temp);
+                ProjectBuildResult build = ProjectSession.Open(Path.Combine(temp, "config.json")).Build();
+                Assert.IsTrue(build.Success, string.Join("\n", build.Diagnostics));
+                Assert.AreEqual(NesGameHash, Hash(build.Image), "the NES game image has changed");
+            }
+            finally
+            {
+                try { Directory.Delete(temp, true); } catch (IOException) { }
+            }
+        }
+
+        [TestMethod]
+        public void TheGeosStubBytesAreUnchanged()
+        {
+            List<Diagnostic> problems = new List<Diagnostic>();
+            byte[] stub = GeosStub.Assemble(0x4000, 32, problems);
+            Assert.AreEqual(0, problems.Count, string.Join("\n", problems));
+            Assert.AreEqual(GeosStubHash, Hash(stub), "the GEOS relocation stub has changed");
+        }
+
+        [TestMethod]
+        public void TheRuntimeStubBytesAreUnchanged()
+        {
+            List<Diagnostic> problems = new List<Diagnostic>();
+            ModuleImage module = new ModuleImage();
+            module.ModuleName = "golden";
+            ModuleSegment segment = new ModuleSegment("CODE", new byte[] { 0x60 }, SegmentKind.Ro, 1, 0);
+            segment.OriginAddress = 0x8000;
+            module.AddSegment(segment);
+            LinkedImage image;
+            OperationResult linked = new Linker().Link(new List<ModuleImage> { module }, out image);
+            Assert.IsTrue(linked.Success);
+
+            RuntimeBlock block = RuntimeBlock.Build(image,
+                new RuntimeBlockOptions { StubAddress = 0x2000, BlockAddress = 0x4000 }, problems);
+            Assert.AreEqual(0, problems.Count, string.Join("\n", problems));
+            Assert.AreEqual(RuntimeStubHash, Hash(block.Data), "the runtime stub has changed");
+        }
+
+        private const string NesGameHash = "A88D8890CAEDEFFC497E1C931C14D5F4D651492D99CE312AEAB08ED6CE9FE06F";
+        private const string GeosStubHash = "D2E816CE9767FDB1487566C9911FBCC630A584CE2AABFF41E3455AE15E583973";
+        private const string RuntimeStubHash = "4488937DAE45E0A07516757CFE2BE177238A88DCEBF8878707DB2ADCB77BEF15";
+    }
+}
