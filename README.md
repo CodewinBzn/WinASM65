@@ -46,7 +46,7 @@ The extension starts `WinASM65.Tooling` in one of these modes:
 cd vscode-extension
 npm install
 npm run package        # publishes WinASM65.Tooling into bin/ and builds the .vsix
-code --install-extension winasm65-win32-x64-0.2.1.vsix
+code --install-extension winasm65-win32-x64-0.2.3.vsix
 ```
 
 To try the extension from the repository without packaging it, open `vscode-extension/` in VS Code and press F5. It uses the debug build of `WinASM65.Tooling`.

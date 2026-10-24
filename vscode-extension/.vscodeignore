@@ -10,3 +10,5 @@ bin/WinASM65.runtimeconfig.json
 bin/Bridge/probe_mame.lua
 bin/Bridge/spike_m0.lua
 .vscode/**
+.vscode-test/**
+out/test/**
