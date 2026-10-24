@@ -8,6 +8,13 @@
   - registers, flags and the zero page in the Variables view
   - the 64 KiB address space in the hex memory view
 - **Debug console.** Type a symbol, a register or `$0010` to see its value. Monitor commands (`CPU`, `READ $0200 16`, `BREAK LIST`, …) are passed straight to the monitor.
+- **Listing column.** Right-click in a source and choose **Show Listing**. Each line then shows the address and bytes it assembled to, in a column to its left, as in a `.lst`. The column follows your edits before you save.
+- **RAM panel.** All 2 KiB of RAM ($0000-$07FF) in hex and ASCII. It opens at the first stop and refreshes at every stop:
+  - bytes changed since the last stop are highlighted;
+  - the zero page and the stack are shaded, and the byte at SP is marked;
+  - hovering a byte shows its address, value and any names the build gives it;
+  - double-click a byte to change it;
+  - tick **Live** to keep it updating while the game runs.
 - **Build task.** "WinASM65: build" is offered for each `config.json` in the workspace. Errors go to the Problems panel.
 - **Highlighting.** Mnemonics, directives, labels and numbers are coloured, using the same mnemonic and directive tables as the assembler.
 

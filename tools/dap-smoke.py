@@ -102,8 +102,13 @@ def main():
         frame2 = request("stackTrace", {"threadId": 1})["body"]["stackFrames"][0]
         check(frame2.get("line", 0) > frame["line"], "now at line %s" % frame2.get("line"))
 
-        mem = request("readMemory", {"memoryReference": "0x0000", "count": 16})
-        check(mem["success"] and len(mem["body"]["data"]) > 0, "readMemory $0000")
+        mem = request("readMemory", {"memoryReference": "0x0000", "count": 0x800})
+        import base64
+        ram = base64.b64decode(mem["body"]["data"]) if mem["success"] else b""
+        check(len(ram) == 0x800, "readMemory of all RAM: %d bytes" % len(ram))
+        symbols = request("winasm65.symbols", {"from": 0, "to": 0x7FF})
+        names = [s["name"] for s in symbols["body"]["symbols"]] if symbols["success"] else []
+        check(len(names) > 0, "RAM symbols: %d, e.g. %s" % (len(names), ", ".join(names[:5])))
         cpu = request("evaluate", {"expression": "CPU", "context": "repl"})
         check(cpu["success"] and "PC=$" in cpu["body"]["result"], "debug console CPU: " + cpu["body"]["result"].splitlines()[0])
 

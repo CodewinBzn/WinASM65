@@ -320,6 +320,27 @@ namespace WinASM65.Tooling.Tests
         }
 
         [TestMethod]
+        public void TheRamPanelReadsAllOfRamAndNamesItsBytes()
+        {
+            using (Harness h = new Harness())
+            {
+                h.Write("prog.asm", "FRAMEDONE = $0042\nscore = $0300\n" + Program);
+                h.Start(h.Project("prog.asm"));
+                h.Machine.Load(0x07FF, new byte[] { 0x99 });
+
+                JsonObject read = h.Request("readMemory", new JsonObject { ["memoryReference"] = "0x0000", ["count"] = 0x800 });
+                byte[] ram = Convert.FromBase64String((string)read["body"]["data"]);
+                Assert.AreEqual(0x800, ram.Length);
+                Assert.AreEqual(0x99, ram[0x7FF]);
+
+                JsonArray symbols = (JsonArray)h.Request("winasm65.symbols", new JsonObject { ["from"] = 0, ["to"] = 0x7FF })["body"]["symbols"];
+                CollectionAssert.AreEqual(new[] { "FRAMEDONE", "score" }, symbols.Select(s => (string)s["name"]).ToArray(),
+                    "RAM names only, by address; the code labels at $C000 are out of range");
+                Assert.AreEqual(0x42L, (long)symbols[0]["value"]);
+            }
+        }
+
+        [TestMethod]
         public void TheDebugConsoleSpeaksMonitorAndSymbols()
         {
             using (Harness h = new Harness())

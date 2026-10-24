@@ -65,10 +65,17 @@ namespace WinASM65.Output
 
         public static List<ListingRow> Build(IReadOnlyList<IReadOnlyList<ListingFragment>> lines, byte[] memoryBytes)
         {
+            return Build(lines, memoryBytes, 0);
+        }
+
+        /// <param name="startAddress">Where bytes emitted before the first .org go: the
+        /// assembler's default origin, which is the target's load address in a build.</param>
+        public static List<ListingRow> Build(IReadOnlyList<IReadOnlyList<ListingFragment>> lines, byte[] memoryBytes, int startAddress)
+        {
             List<ListingRow> rows = new List<ListingRow>();
             byte[] memory = memoryBytes ?? new byte[0];
             int memoryIndex = 0;
-            int currentAddress = 0;
+            int currentAddress = startAddress;
             int lineNumber = 0;
             string currentSource = null;
 

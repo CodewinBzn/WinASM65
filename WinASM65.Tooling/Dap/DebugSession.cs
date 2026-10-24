@@ -149,6 +149,7 @@ namespace WinASM65.Tooling.Dap
                     case "readMemory": ReadMemory(request, args); break;
                     case "writeMemory": WriteMemory(request, args); break;
                     case "evaluate": Evaluate(request, args); break;
+                    case "winasm65.symbols": Symbols(request, args); break;
                     case "terminate": Terminate(request); break;
                     case "disconnect": Disconnect(request, args); break;
                     default:
@@ -903,6 +904,24 @@ namespace WinASM65.Tooling.Dap
                 return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// The build's names whose value lies in [from, to]: what the RAM panel shows
+        /// over a byte, so $0042 reads as FRAMEDONE.
+        /// </summary>
+        private void Symbols(JsonObject request, JsonObject args)
+        {
+            int from = Int(args, "from", 0);
+            int to = Int(args, "to", AddressSpace - 1);
+            JsonArray symbols = new JsonArray();
+            foreach (KeyValuePair<string, long> symbol in _map.Symbols
+                .Where(s => s.Value >= from && s.Value <= to)
+                .OrderBy(s => s.Value).ThenBy(s => s.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                symbols.Add(new JsonObject { ["name"] = symbol.Key, ["value"] = symbol.Value });
+            }
+            Respond(request, new JsonObject { ["symbols"] = symbols });
         }
 
         // ------------------------------------------------------------- shutdown

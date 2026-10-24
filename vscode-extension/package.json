@@ -2,7 +2,7 @@
   "name": "winasm65",
   "displayName": "WinASM65",
   "description": "6502 assembly for WinASM65 projects: build, debug on Mesen2 with source breakpoints, live diagnostics.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "codewinbzn",
   "license": "Zlib",
   "repository": {
@@ -172,6 +172,11 @@
           "type": "boolean",
           "default": true,
           "description": "Report assembler errors as you type and show addresses and bytes on hover."
+        },
+        "winasm65.ram.openOnStop": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open the RAM panel the first time a WinASM65 debug session stops."
         }
       }
     },
@@ -217,7 +222,55 @@
         ],
         "pattern": "$winasm65"
       }
-    ]
+    ],
+    "commands": [
+      {
+        "command": "winasm65.showListing",
+        "title": "Show Listing",
+        "category": "WinASM65"
+      },
+      {
+        "command": "winasm65.hideListing",
+        "title": "Hide Listing",
+        "category": "WinASM65"
+      },
+      {
+        "command": "winasm65.showRam",
+        "title": "Show RAM",
+        "category": "WinASM65",
+        "icon": "$(circuit-board)"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "winasm65.showListing",
+          "when": "editorLangId == winasm65 && !winasm65.listingVisible",
+          "group": "winasm65@1"
+        },
+        {
+          "command": "winasm65.hideListing",
+          "when": "editorLangId == winasm65 && winasm65.listingVisible",
+          "group": "winasm65@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "winasm65.showListing",
+          "when": "!winasm65.listingVisible"
+        },
+        {
+          "command": "winasm65.hideListing",
+          "when": "winasm65.listingVisible"
+        }
+      ],
+      "debug/toolBar": [
+        {
+          "command": "winasm65.showRam",
+          "when": "debugType == winasm65"
+        }
+      ]
+    }
   },
   "scripts": {
     "compile": "tsc -p ./",
