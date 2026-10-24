@@ -50,6 +50,7 @@ namespace WinASM65.Monitor.Shell
         private readonly ToolbarControl _activityToolbar;
         private readonly SpinnerControl _loadingSpinner;
         private readonly RamPane _ram;
+        private readonly RomPane _rom;
         private readonly MarkupControl _refusal;
         private readonly List<Shortcut> _shortcuts = new List<Shortcut>();
         private readonly List<string> _commands = new List<string>();
@@ -58,10 +59,12 @@ namespace WinASM65.Monitor.Shell
         private bool _treeOpen = true;
         private bool _rightPaneOpen = true;
         private bool _ramOpen = true;
+        private bool _romOpen = true;
         private readonly Window _mainWindow;
         private readonly Window _treeWindow;
         private readonly Window _editorWindow;
         private readonly Window _ramWindow;
+        private readonly Window _romWindow;
         private readonly Window _refusalWindow;
         private readonly ConsoleWindowSystem _windowSystem;
         private string _sourceFile;
@@ -96,8 +99,10 @@ namespace WinASM65.Monitor.Shell
             _sourceEditors.ActiveChanged += OnActiveEditorChanged;
             _loadingSpinner = new SpinnerControl { IsSpinning = false, Width = 1 };
             _ram = new RamPane(_theme);
+            _rom = new RomPane(_theme);
             _tree.Activated += (sender, row) => OnTreeActivated(row);
             _tree.ContextRequested += OnTreeContextRequested;
+            _tree.TreeContextRequested += OnTreeContextRequested;
             _sourceEditors.Control.MouseRightClick += OnEditorContextRequested;
             _ramChangedHandler = OnRamChanged;
             _session.Backend.RamChanged += _ramChangedHandler;
@@ -117,7 +122,7 @@ namespace WinASM65.Monitor.Shell
                 .Build();
             _refusal = new MarkupControl(new List<string> { string.Empty })
             {
-                Visible = false,
+                // MarkupControl does not have a Visible property; the refusal window is hidden by being positioned off‑screen.
                 ForegroundColor = _theme.Foreground(ThemeRole.Warning),
                 Width = null,
                 Height = null,
@@ -192,6 +197,23 @@ namespace WinASM65.Monitor.Shell
             };
             _ramWindow.AddControl(_ram.ScrollableControl);
 
+            _romWindow = new Window(windowSystem)
+            {
+                Title = "ROM ($8000-$FFFF)",
+                Left = 86,
+                Top = 2,
+                Width = 34,
+                Height = 32,
+                IsResizable = false,
+                IsMovable = false,
+                IsMaximizable = false,
+                IsMinimizable = false,
+                IsClosable = false,
+                ShowTitle = true,
+                ShowInTaskbar = false,
+            };
+            _romWindow.AddControl(_rom.ScrollableControl);
+
             _refusalWindow = new Window(windowSystem)
             {
                 Title = "Terminal Too Small",
@@ -220,7 +242,86 @@ namespace WinASM65.Monitor.Shell
                 return;
             }
             RunWithProgress("Transferring ROM " + Path.GetFileName(path) + "...",
-                progress => string.Join(" ", _session.TransferRom(path)));
+                progress =>
+                {
+                    var answer = _session.TransferRom(path);
+                    var result = string.Join(" ", answer);
+
+                    // Auto-reset emulator after ROM transfer to load new image
+                    if (answer.Count > 0 && answer[0].StartsWith(MonitorProtocol.OkPrefix, StringComparison.Ordinal))
+                    {
+                        progress("ROM transferred; resetting emulator...");
+                        try
+                        {
+                            _session.Execute("RESET");
+                            result += " | Emulator reset";
+                        }
+                        catch (Exception ex)
+                        {
+                            result += " | Reset failed: " + ex.Message;
+                        }
+                    }
+                    return result;
+                });
+        }
+
+        /// <summary>
+        /// Reconnects to the bridge. The backend must support reconnection; a
+        /// backend that cannot reconnect refuses with its own words.
+        /// </summary>
+        public void ReconnectBridge()
+        {
+            if (_actionInProgress)
+            {
+                PostMessage("An operation is already in progress.");
+                return;
+            }
+
+            string bridge = BridgeFilePicker.Pick();
+            if (string.IsNullOrEmpty(bridge)) return;
+
+            RunWithProgress("Starting selected bridge...", progress =>
+            {
+                if (_session.Launcher == null)
+                    return "ERR start the monitor with an emulator before selecting a bridge";
+                _session.Launcher.RestartWithBridge(bridge);
+                IReadOnlyList<string> answer = _session.Execute("CONNECT");
+                var result = string.Join(" ", answer);
+
+                // Re-read the RAM pane after reconnecting, so it shows the
+                // new bridge's memory rather than the old one's last push.
+                if (answer.Count > 0 && answer[0].StartsWith(MonitorProtocol.OkPrefix, StringComparison.Ordinal))
+                {
+                    progress("Reconnected; refreshing panes...");
+                    RefreshPanes();
+                }
+                return result;
+            });
+        }
+
+        /// <summary>
+        /// Launches the emulator from the monitor. The session must have a
+        /// launcher configured; a session without one refuses with its own words.
+        /// </summary>
+        public void LaunchEmulator()
+        {
+            if (_actionInProgress)
+            {
+                PostMessage("An operation is already in progress.");
+                return;
+            }
+
+            if (_session.Launcher == null)
+            {
+                PostMessage("no emulator is configured; start the monitor with --mesen");
+                return;
+            }
+
+            RunWithProgress("Starting emulator...", progress =>
+            {
+                IReadOnlyList<string> answer = _session.Execute("EMULATOR START");
+                return string.Join(" ", answer);
+            });
         }
 
         public Window Window { get { return _mainWindow; } }
@@ -232,6 +333,7 @@ namespace WinASM65.Monitor.Shell
             ws.AddWindow(_treeWindow);
             ws.AddWindow(_editorWindow, activateWindow: true);
             ws.AddWindow(_ramWindow);
+            ws.AddWindow(_romWindow);
             ws.AddWindow(_refusalWindow);
         }
 
@@ -339,6 +441,7 @@ namespace WinASM65.Monitor.Shell
                     new ShellKey("F9", "run", true, ExecutionCapability.Resume),
                     new ShellKey("F10", "step", true, ExecutionCapability.StepInstruction),
                     new ShellKey("F12", "video pane", false),
+                    new ShellKey("R", "reconnect to bridge", true),
                     new ShellKey("Ctrl+S", "save active source", true),
                     new ShellKey("Ctrl+A", "assistant", false),
                     new ShellKey("Ctrl+Q", "quit", true),
@@ -614,7 +717,23 @@ namespace WinASM65.Monitor.Shell
 
                 progress("Build complete; transferring ROM...");
                 IReadOnlyList<string> answer = _session.TransferRom(builtRomPath);
-                return string.Join(" ", answer);
+                var result = string.Join(" ", answer);
+
+                // Auto-reset emulator after ROM transfer to load new image
+                if (answer.Count > 0 && answer[0].StartsWith(MonitorProtocol.OkPrefix, StringComparison.Ordinal))
+                {
+                    progress("ROM transferred; resetting emulator...");
+                    try
+                    {
+                        _session.Execute("RESET");
+                        result += " | Emulator reset";
+                    }
+                    catch (Exception ex)
+                    {
+                        result += " | Reset failed: " + ex.Message;
+                    }
+                }
+                return result;
             }, () => _lastBuiltRomPath = builtRomPath);
         }
 
@@ -658,6 +777,8 @@ namespace WinASM65.Monitor.Shell
             _actionInProgress = true;
             int generation = ++_actionGeneration;
             _loadingSpinner.IsSpinning = true;
+            _loadingSpinner.Invalidate();
+            _activityToolbar.Invalidate();
             PostMessage(initialMessage);
 
             Task.Run(() => action(progress =>
@@ -680,6 +801,8 @@ namespace WinASM65.Monitor.Shell
 
                     _actionInProgress = false;
                     _loadingSpinner.IsSpinning = false;
+                    _loadingSpinner.Invalidate();
+                    _activityToolbar.Invalidate();
                     if (task.IsFaulted)
                     {
                         PostMessage("ERR " + task.Exception.GetBaseException().Message);
@@ -797,7 +920,14 @@ namespace WinASM65.Monitor.Shell
 
         private void ToggleRamPane()
         {
-            _rightPaneOpen = !_rightPaneOpen;
+            _ramOpen = !_ramOpen;
+            if (_layout != null)
+                ApplyLayout(_layout);
+        }
+
+        private void ToggleRomPane()
+        {
+            _romOpen = !_romOpen;
             if (_layout != null)
                 ApplyLayout(_layout);
         }
@@ -896,6 +1026,20 @@ namespace WinASM65.Monitor.Shell
             });
             _ram.InvalidateWindow(_ramWindow);
 
+            // Refresh ROM pane with memory data
+            _rom.Refresh((address, length) =>
+            {
+                try
+                {
+                    return _session.Backend.Read(address, length);
+                }
+                catch
+                {
+                    return new byte[length];
+                }
+            });
+            _rom.InvalidateWindow(_romWindow);
+
             // Refresh listing pane with current listing
             if (_listing != null && SourceEditor != null
                 && SourceDocument.IsAssemblerSourceFile(_sourceFile))
@@ -983,22 +1127,52 @@ namespace WinASM65.Monitor.Shell
             // RAM Pane Window (right)
             if (_ramOpen && layout.RamWidth > 0)
             {
+                int ramHeight = _romOpen ? paneHeight / 2 : paneHeight;
                 _ramWindow.IsContentVisible = true;
                 _ramWindow.Left = layout.TreeWidth + layout.EditorWidth;
                 _ramWindow.Top = bodyTop;
                 _ramWindow.Width = layout.RamWidth;
-                _ramWindow.Height = paneHeight;
+                _ramWindow.Height = ramHeight;
                 _ram.Control.Width = Math.Max(1, layout.RamWidth - 2);
-                int ramHeight = Math.Max(1, paneHeight - 2);
-                _ram.Control.Height = ramHeight;
+                int ramContentHeight = Math.Max(1, ramHeight - 2);
+                _ram.Control.Height = ramContentHeight;
                 _ram.ScrollableControl.Width = Math.Max(1, layout.RamWidth - 2);
-                _ram.ScrollableControl.Height = ramHeight;
+                _ram.ScrollableControl.Height = ramContentHeight;
                 _ram.SetContentWidth(Math.Max(1, layout.RamWidth - 3));
-                _ram.SetVisibleItems(ramHeight);
+                _ram.SetVisibleItems(ramContentHeight);
             }
             else
             {
                 _ramWindow.IsContentVisible = false;
+            }
+
+            // ROM Pane Window (below RAM when both open)
+            if (_romOpen && layout.RamWidth > 0)
+            {
+                int romTop = bodyTop;
+                int romHeight = paneHeight;
+                if (_ramOpen)
+                {
+                    romTop = bodyTop + paneHeight / 2;
+                    romHeight = paneHeight - paneHeight / 2;
+                }
+
+                _romWindow.IsContentVisible = true;
+                _romWindow.Left = layout.TreeWidth + layout.EditorWidth;
+                _romWindow.Top = romTop;
+                _romWindow.Width = layout.RamWidth;
+                _romWindow.Height = romHeight;
+                _rom.Control.Width = Math.Max(1, layout.RamWidth - 2);
+                int romContentHeight = Math.Max(1, romHeight - 2);
+                _rom.Control.Height = romContentHeight;
+                _rom.ScrollableControl.Width = Math.Max(1, layout.RamWidth - 2);
+                _rom.ScrollableControl.Height = romContentHeight;
+                _rom.SetContentWidth(Math.Max(1, layout.RamWidth - 3));
+                _rom.SetVisibleItems(romContentHeight);
+            }
+            else
+            {
+                _romWindow.IsContentVisible = false;
             }
 
             RefreshPanes();
@@ -1017,6 +1191,7 @@ namespace WinASM65.Monitor.Shell
             _treeWindow.IsContentVisible = false;
             _editorWindow.IsContentVisible = false;
             _ramWindow.IsContentVisible = false;
+            _romWindow.IsContentVisible = false;
         }
 
         private void HideRefusal()
@@ -1036,6 +1211,8 @@ namespace WinASM65.Monitor.Shell
             string cue = role == ThemeRole.Error ? "[ERR] "
                 : role == ThemeRole.Label ? "[OK] " : "[i] ";
             _message.Text = tag + cue + EscapeMarkup(_messageText) + "[/]";
+            _message.Invalidate();
+            _activityToolbar.Invalidate();
         }
 
         private void SetMessage(string text)
@@ -1088,6 +1265,8 @@ namespace WinASM65.Monitor.Shell
                     case "F8": action = () => { ToggleBreakpoint(); PostMessage(Message); }; break;
                     case "F9": action = () => { ResumeMachine(); PostMessage(Message); }; break;
                     case "F10": action = () => { StepMachine(); PostMessage(Message); }; break;
+                    case "F12": action = () => ToggleRomPane(); break;
+                    case "R": action = () => { ReconnectBridge(); PostMessage(Message); }; break;
                     case "Ctrl+S": action = () => { SaveCurrentSource(); PostMessage(Message); }; break;
                     case "Ctrl+Q": action = () => RequestQuit(); break;
                 }
@@ -1113,7 +1292,13 @@ namespace WinASM65.Monitor.Shell
         {
             FileTreeRow row = _tree.Selected;
             if (row != null && (row.Kind == FileTreeKind.Source || row.Kind == FileTreeKind.Rom))
+            {
                 ShowSourceContextMenu(row, e.AbsolutePosition, _tree.ScrollableControl);
+            }
+            else
+            {
+                ShowTreeContextMenu(e.AbsolutePosition, _tree.ScrollableControl);
+            }
         }
 
         private void OnEditorContextRequested(object sender, MouseEventArgs e)
@@ -1183,6 +1368,39 @@ namespace WinASM65.Monitor.Shell
                 + (_lastBuiltRomPath != null && _session.Backend is IRomTransferTarget ? 2 : 0)
                 + 2;
             int height = itemCount;
+            int left = Math.Max(0, Math.Min(position.X, _layout.Width - width));
+            int top = Math.Max(0, Math.Min(position.Y, _layout.Height - height));
+            _contextMenuPortal = _windowSystem.DesktopPortalService.CreatePortal(
+                new DesktopPortalOptions(menu, new Rectangle(left, top, width, height),
+                    true, true, false, () => _contextMenuPortal = null, owner,
+                    null, null));
+        }
+
+        private void ShowTreeContextMenu(Point position, IWindowControl owner)
+        {
+            DismissContextMenu();
+
+            MenuBuilder menuBuilder = Controls.Menu().Vertical().WithName("tree-context-menu");
+            menuBuilder.AddItem("New source file", () => { DismissContextMenu(); _sourceEditors.AddBlankEditor(); });
+            menuBuilder.AddItem("Open source file...", () => { DismissContextMenu(); /* TODO: file dialog */ });
+            menuBuilder.AddSeparator();
+            menuBuilder.AddItem("Refresh file tree", () => { DismissContextMenu(); RefreshPanes(); });
+
+            // Launch emulator is always shown; LaunchEmulator() handles the
+            // case where no launcher is configured by posting a message.
+            menuBuilder.AddSeparator();
+            menuBuilder.AddItem("Launch emulator", () => { DismissContextMenu(); LaunchEmulator(); });
+
+            // Reconnect is always available.
+            menuBuilder.AddItem("Reconnect to bridge", () => { DismissContextMenu(); ReconnectBridge(); });
+
+            MenuControl menu = menuBuilder.Build();
+            int width = Math.Max(24, Math.Min(36, "Refresh file tree".Length + 4));
+            // Seven menu rows (including the two separators) plus the menu's
+            // top and bottom frame.  The old seven-cell portal clipped the last
+            // two actions, which made Launch and Reconnect appear intermittently
+            // absent depending on the terminal driver.
+            int height = 9;
             int left = Math.Max(0, Math.Min(position.X, _layout.Width - width));
             int top = Math.Max(0, Math.Min(position.Y, _layout.Height - height));
             _contextMenuPortal = _windowSystem.DesktopPortalService.CreatePortal(

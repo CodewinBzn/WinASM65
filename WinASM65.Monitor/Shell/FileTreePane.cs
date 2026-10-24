@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -55,6 +55,8 @@ namespace WinASM65.Monitor.Shell
         public event EventHandler<FileTreeRow> Activated;
 
         public event EventHandler<MouseEventArgs> ContextRequested;
+
+        public event EventHandler<MouseEventArgs> TreeContextRequested;
 
         public IReadOnlyList<FileTreeRow> Rows { get { return _rows; } }
 
@@ -127,11 +129,15 @@ namespace WinASM65.Monitor.Shell
         private void OnRightClick(object sender, MouseEventArgs e)
         {
             FileTreeRow row = Selected;
-            if (row == null || !row.IsSelectable)
-                return;
-
-            e.Handled = true;
-            ContextRequested?.Invoke(this, e);
+            if (row != null && row.IsSelectable)
+            {
+                e.Handled = true;
+                ContextRequested?.Invoke(this, e);
+            }
+            else
+            {
+                TreeContextRequested?.Invoke(this, e);
+            }
         }
     }
 }

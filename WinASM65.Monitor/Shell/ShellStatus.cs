@@ -47,6 +47,7 @@ namespace WinASM65.Monitor.Shell
     {
         public const int PriorityHost = 100;
         public const int PriorityExecution = 90;
+        public const int PriorityConnection = 88;
 
         /// <summary>
         /// The machine's declared capability set.
@@ -80,22 +81,28 @@ namespace WinASM65.Monitor.Shell
         public static IReadOnlyList<StatusSegment> Read(IMemoryBackend backend, int breakpointCount)
         {
             if (backend == null)
-                return Compose(null, null, false, null, false, breakpointCount, null, null);
+                return Compose(null, null, false, null, false, breakpointCount, null, null, false, null);
 
             string name;
             string version;
             bool running;
+            bool connected;
+            string ramMode;
             try
             {
                 name = backend.EmulatorName;
                 version = backend.EmulatorVersion;
                 running = backend.IsRunning;
+                connected = backend.IsConnected;
+                ramMode = backend.RamRefreshMode;
             }
             catch (MonitorException)
             {
                 name = null;
                 version = null;
                 running = false;
+                connected = false;
+                ramMode = null;
             }
 
             ExecutionCapability capabilities = ExecutionCapabilities.Of(backend);
@@ -114,7 +121,7 @@ namespace WinASM65.Monitor.Shell
                 && source != null
                 && cpu != null;
 
-            return Compose(name, version, canObserveCpu, cpu, running, breakpointCount, rom, capabilities);
+            return Compose(name, version, canObserveCpu, cpu, running, breakpointCount, rom, capabilities, connected, ramMode);
         }
 
         private static CpuSnapshot ReadCpu(ICpuStateSource source)
@@ -178,7 +185,9 @@ namespace WinASM65.Monitor.Shell
             bool running,
             int breakpointCount,
             string cartridge,
-            ExecutionCapability? capabilities = null)
+            ExecutionCapability? capabilities = null,
+            bool connected = true,
+            string ramRefreshMode = null)
         {
             List<StatusSegment> segments = new List<StatusSegment>();
 
@@ -187,6 +196,18 @@ namespace WinASM65.Monitor.Shell
                 (emulatorName ?? "?") + " " + (emulatorVersion ?? "?"),
                 ThemeRole.Chrome,
                 PriorityHost));
+
+            // The connection state is second only to the host name, because a
+            // dead bridge makes every other fact on the line a lie. Shown as
+            // "disconnected" rather than omitting the host, so the user knows
+            // which host they were talking to when it died.
+            segments.Add(new StatusSegment(
+                connected ? "connected" : "disconnected",
+                connected ? ThemeRole.Label : ThemeRole.Error,
+                PriorityConnection));
+
+            if (!string.IsNullOrEmpty(ramRefreshMode))
+                segments.Add(new StatusSegment(ramRefreshMode, ThemeRole.Gutter, PriorityConnection));
 
             segments.Add(new StatusSegment(
                 running ? "RUNNING" : "STOPPED",

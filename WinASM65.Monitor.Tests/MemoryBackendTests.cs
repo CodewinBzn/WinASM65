@@ -63,6 +63,26 @@ namespace WinASM65.Monitor.Tests
         public string EmulatorVersion { get; private set; }
         public bool IsRunning { get; private set; }
 
+        /// <summary>
+        /// The fake is always connected: it is a byte array with no socket behind
+        /// it, so there is nothing to disconnect. Declared rather than inherited
+        /// from a default so the status line cannot mistake it for a bridge.
+        /// </summary>
+        public bool IsConnected
+        {
+            get { return true; }
+        }
+
+        /// <summary>
+        /// The fake does not push or poll: it is synchronous and fires the event
+        /// from the write itself. Declared so the status line can say so rather
+        /// than falling back to a default that would be wrong.
+        /// </summary>
+        public string RamRefreshMode
+        {
+            get { return "RAM: Synchronous"; }
+        }
+
         public List<string> Breakpoints { get; private set; }
         public int PauseCount { get; private set; }
         public int ResumeCount { get; private set; }

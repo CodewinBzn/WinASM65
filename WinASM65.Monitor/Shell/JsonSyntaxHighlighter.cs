@@ -83,7 +83,7 @@ namespace WinASM65.Monitor.Shell
                     continue;
                 }
 
-                tokens.Add(Token(index, 1, ThemeRole.Chrome));
+                tokens.Add(Token(index, 1, ThemeRole.Mnemonic));
                 index++;
             }
 

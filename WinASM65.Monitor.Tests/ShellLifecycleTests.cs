@@ -256,7 +256,7 @@ foreach (int width in new[] { 60, 80, 100, 120 })
 
                     exitCode = ShellRunner.Run(session, ShellTheme.Default,
                         ListingSourceFactory.Create(), AppContext.BaseDirectory, child, driver,
-                        ShellRunner.OneIteration);
+                        ShellRunner.OneIteration, null, null);
                 }
             }
             finally
@@ -286,7 +286,7 @@ foreach (int width in new[] { 60, 80, 100, 120 })
                     new MonitorSession(machine, new Cpu6502(), AppContext.BaseDirectory);
 
                 int exitCode = ShellRunner.Run(session, ShellTheme.Default,
-                    ListingSourceFactory.Create(), AppContext.BaseDirectory, null, driver, 3);
+                    ListingSourceFactory.Create(), AppContext.BaseDirectory, null, driver, 3, null, null);
 
                 Assert.AreEqual(0, exitCode);
             }
@@ -300,7 +300,7 @@ foreach (int width in new[] { 60, 80, 100, 120 })
             Process child = StartChild();
 
             int exitCode = ShellRunner.Run(null, ShellTheme.Default, new UnavailableListingSource(),
-                AppContext.BaseDirectory, child, new HeadlessConsoleDriver(), -1);
+                AppContext.BaseDirectory, child, new HeadlessConsoleDriver(), -1, null, null);
 
             try
             {

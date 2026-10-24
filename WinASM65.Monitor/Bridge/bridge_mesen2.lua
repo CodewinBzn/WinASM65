@@ -97,6 +97,9 @@ local RAM_WATCH_END = 0xFFFF
 local ramDirty = {}
 local ramDirtyCount = 0
 
+local client = nil
+local server = nil
+
 -- Largest number of byte changes a single PUSH line may carry. Mirrors
 -- MonitorProtocol.MaxPushPayload on the monitor side; the bridge checks
 -- its own count before formatting so a burst cannot produce a line the
@@ -113,8 +116,10 @@ local function install_ram_watchpoint()
       -- Observation, not interception: returning a value here would replace
       -- the byte being written and the emulated program would silently stop
       -- writing there. Nothing is returned, so the write proceeds.
+      if ramDirty[accessed] == nil then
+        ramDirtyCount = ramDirtyCount + 1
+      end
       ramDirty[accessed] = value
-      ramDirtyCount = ramDirtyCount + 1
     end, emu.callbackType.write, RAM_WATCH_START, RAM_WATCH_END,
       emu.cpuType.nes, emu.memType.nesMemory)
   end)
@@ -138,26 +143,28 @@ local function drain_ram_push()
   end
 
   local parts = {}
+  local sentAddresses = {}
   local sent = 0
   for address, value in pairs(ramDirty) do
     if sent >= MAX_PUSH then
       break
     end
     parts[#parts + 1] = "$" .. string.format("%04X", address) .. ":" .. string.format("%02X", value)
+    sentAddresses[#sentAddresses + 1] = address
     sent = sent + 1
   end
-
-  -- Whatever was left behind is sent on the next tick. The cap is a
-  -- bandwidth bound, not a correctness one: a byte that is not in this
-  -- line is in the next, and the monitor applies them in order.
-  ramDirty = {}
-  ramDirtyCount = 0
 
   local line = "PUSH RAM " .. table.concat(parts, " ")
   local sent_ok = client:send(line .. "\n")
   if not sent_ok then
     log("PUSH send failed; RAM updates for this tick are lost")
+    return
   end
+
+  for _, address in ipairs(sentAddresses) do
+    ramDirty[address] = nil
+  end
+  ramDirtyCount = ramDirtyCount - sent
 end
 
 local function fail(text)
@@ -554,6 +561,9 @@ local function dispatch(line)
   if command == "ROM" then
     if #tokens == 3 and tokens[2]:upper() == "LOAD" then
       local image_path = tokens[3]
+      if type(emu.loadRom) ~= "function" then
+        return fail("Mesen2 cannot replace a ROM from Lua; restart the emulator with the new image")
+      end
       local ok, message = pcall(emu.loadRom, image_path)
       if not ok then return fail("ROM load refused by the emulator: " .. tostring(message)) end
       return "OK ROM loaded from " .. image_path
@@ -665,9 +675,6 @@ local function answer(line)
 end
 
 ------------------------------------------------------------------ serving
-
-local client = nil
-local server = nil
 
 -- Serves a stopped machine. Called from a callback, so blocking here is not the
 -- MesenCE mistake: the emulator is frozen, nothing is being starved, and this is

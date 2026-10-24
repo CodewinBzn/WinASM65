@@ -32,6 +32,7 @@ namespace WinASM65.Monitor
         private readonly Disassembler _disassembler;
         private readonly UnitLibrary _library;
         private readonly ProjectBuilder _projects;
+        private EmulatorLauncher _launcher;
 
         // Remembered between CPU commands so the session can tell a machine that
         // advanced from one that stood still. Not persisted: this is a statement
@@ -60,6 +61,17 @@ namespace WinASM65.Monitor
             get { return _backend; }
         }
 
+        /// <summary>
+        /// The emulator launcher, if the caller gave the session one. Set by the
+        /// shell when it knows which emulator to start; null when the monitor
+        /// was attached to an already-running bridge and has nothing to launch.
+        /// </summary>
+        public EmulatorLauncher Launcher
+        {
+            get { return _launcher; }
+            set { _launcher = value; }
+        }
+
         public UnitLibrary Library
         {
             get { return _library; }
@@ -75,6 +87,21 @@ namespace WinASM65.Monitor
         /// <summary>Replaces the emulator's cartridge image when the backend supports it.</summary>
         public IReadOnlyList<string> TransferRom(string imagePath)
         {
+            // Mesen2 exposes no Lua API to replace a cartridge in place.  When
+            // the monitor owns it, restarting on the freshly built image is the
+            // only honest implementation of "transfer ROM" and keeps its GUI.
+            if (_launcher != null)
+            {
+                _launcher.Restart(imagePath);
+                if (!_launcher.UsesBridge)
+                    return new[] { MonitorProtocol.OkPrefix + " emulator restarted with " + imagePath };
+                IReconnectable reconnectable = _backend as IReconnectable;
+                if (reconnectable == null)
+                    return new[] { MonitorProtocol.ErrPrefix + " this backend cannot reconnect after restarting the emulator" };
+                reconnectable.Reconnect();
+                return new[] { MonitorProtocol.OkPrefix + " emulator restarted with " + imagePath };
+            }
+
             IRomTransferTarget target = _backend as IRomTransferTarget;
             if (target == null)
                 return new[] { MonitorProtocol.ErrPrefix + " this emulator cannot replace its ROM" };
@@ -203,6 +230,12 @@ namespace WinASM65.Monitor
                     case "CPU":
                         output.AddRange(Cpu());
                         break;
+                    case "CONNECT":
+                        output.AddRange(Connect(parts));
+                        break;
+                    case "EMULATOR":
+                        output.AddRange(Emulator(parts));
+                        break;
                     default:
                         output.Add(MonitorProtocol.ErrPrefix + " unknown command: " + parts[0]
                             + ". HELP lists what this session knows.");
@@ -247,6 +280,8 @@ namespace WinASM65.Monitor
                 "UNITS                         what has been assembled",
                 "HELP                          this list",
                 "QUIT                          leave the monitor",
+                "CONNECT                       reconnect to the bridge",
+                "EMULATOR START               launch the emulator",
             };
         }
 
@@ -440,6 +475,40 @@ private IReadOnlyList<string> Cpu()
         {
             if (parts.Length < needed)
                 throw new MonitorException("usage: " + usage);
+        }
+
+        /// <summary>
+        /// Reconnects to the bridge. The backend must expose a <c>Reconnect</c>
+        /// method for this to work; a backend that cannot reconnect refuses with its
+        /// own words rather than a generic failure.
+        /// </summary>
+        private IReadOnlyList<string> Connect(string[] parts)
+        {
+            Require(parts, 1, "CONNECT");
+            IReconnectable reconnectable = _backend as IReconnectable;
+            if (reconnectable == null)
+                return Ok(MonitorProtocol.ErrPrefix + " this backend cannot reconnect");
+
+            reconnectable.Reconnect();
+            return Ok(MonitorProtocol.OkPrefix + " reconnected to " + _backend.EmulatorName
+                + " " + _backend.EmulatorVersion);
+        }
+
+        /// <summary>
+        /// Launches the emulator from the monitor. The backend must expose an
+        /// <c>EmulatorLauncher</c> for this to work.
+        /// </summary>
+        private IReadOnlyList<string> Emulator(string[] parts)
+        {
+            Require(parts, 2, "EMULATOR START");
+            if (!parts[1].Equals("START", StringComparison.OrdinalIgnoreCase))
+                return Ok(MonitorProtocol.ErrPrefix + " EMULATOR expects START");
+
+            if (_launcher == null)
+                return Ok(MonitorProtocol.ErrPrefix + " no emulator is configured; start the monitor with --mesen");
+
+            _launcher.LaunchEmulator();
+            return Ok(MonitorProtocol.OkPrefix + " emulator started");
         }
     }
 }

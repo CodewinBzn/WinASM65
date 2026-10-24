@@ -38,7 +38,7 @@ namespace WinASM65.Monitor.Shell
         public static int Run(MonitorSession session, ShellTheme theme, IListingSource listing,
             string directory, Process emulator)
         {
-            return Run(session, theme, listing, directory, emulator, null, UntilQuit, null);
+            return Run(session, theme, listing, directory, emulator, null, UntilQuit, null, null);
         }
 
         /// <summary>
@@ -51,7 +51,7 @@ namespace WinASM65.Monitor.Shell
         public static int Run(MonitorSession session, ShellTheme theme, IListingSource listing,
             string directory, Process emulator, IConsoleDriver driver)
         {
-            return Run(session, theme, listing, directory, emulator, driver, UntilQuit, null);
+            return Run(session, theme, listing, directory, emulator, driver, UntilQuit, null, null);
         }
 
         /// <summary>
@@ -61,7 +61,7 @@ namespace WinASM65.Monitor.Shell
         public static int Run(MonitorSession session, ShellTheme theme, IListingSource listing,
             string directory, Process emulator, IConsoleDriver driver, int maxIterations)
         {
-            return Run(session, theme, listing, directory, emulator, driver, maxIterations, null);
+            return Run(session, theme, listing, directory, emulator, driver, maxIterations, null, null);
         }
 
         /// <summary>
@@ -69,7 +69,7 @@ namespace WinASM65.Monitor.Shell
         /// </summary>
         public static int Run(MonitorSession session, ShellTheme theme, IListingSource listing,
             string directory, Process emulator, IConsoleDriver driver, int maxIterations,
-            string sourceFile)
+            string sourceFile, EmulatorLauncher launcher)
         {
             int exitCode = 0;
             Exception failure = null;
@@ -81,6 +81,8 @@ namespace WinASM65.Monitor.Shell
                 if (maxIterations < 0 && maxIterations != UntilQuit)
                     throw new ArgumentOutOfRangeException(nameof(maxIterations), maxIterations,
                         "use " + UntilQuit + " for a run that lasts until the user quits");
+
+                session.Launcher = launcher;
 
                 IConsoleDriver chosen = driver ?? new NetConsoleDriver();
                 ConsoleWindowSystem ws = new ConsoleWindowSystem(chosen);
@@ -142,6 +144,8 @@ namespace WinASM65.Monitor.Shell
                 // Stop the emulator, so the machine is stopped even when the
                 // terminal could not be restored.
                 StopEmulator(emulator);
+                if (launcher != null)
+                    launcher.Stop();
 
                 if (failure != null)
                     Report(failure);

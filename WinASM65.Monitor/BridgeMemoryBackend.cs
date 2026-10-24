@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
+using System.Net.Sockets;
+using System.Threading;
 using WinASM65.Monitor.Abstractions;
 using WinASM65.Monitor.Protocol;
 
@@ -19,14 +22,15 @@ namespace WinASM65.Monitor
     /// backend that swallowed it would turn "this host has no emu.pause" into a
     /// generic failure, which is the one thing the protocol forbids.
     /// </summary>
-public sealed class BridgeMemoryBackend : IMemoryBackend, ICpuStateSource, IRomInfoSource, IRomTransferTarget, IExecutionAdapter
+public sealed class BridgeMemoryBackend : IMemoryBackend, ICpuStateSource, IRomInfoSource, IRomTransferTarget, IExecutionAdapter, IReconnectable
     {
-        private readonly ProtocolClient _client;
+        private ProtocolClient _client;
+        private readonly int _port;
 
         // What this host was measured able to do, and the address space it exposes.
         // Both are decided in the constructor from the handshake, because both are
         // facts about the build on the other end rather than about this process.
-        private readonly ExecutionCapability _capabilities;
+        private ExecutionCapability _capabilities;
         private readonly IReadOnlyList<MemoryRegion> _regions;
 
         // A copy of the machine's RAM, kept so a PUSH RAM line can be applied
@@ -35,6 +39,25 @@ public sealed class BridgeMemoryBackend : IMemoryBackend, ICpuStateSource, IRomI
         // private bookkeeping and the pane always sees a consistent snapshot.
         private readonly byte[] _cache;
         private const int CacheBase = 0x0000;
+
+        // Polling fallback for RAM refresh.
+        //
+        // The bridge fires PUSH RAM lines while the machine runs, and the pane
+        // applies them. That is the live path. When the bridge goes quiet —
+        // a host that does not push, or a push that was lost in transit — the
+        // pane goes stale and the user sees a frozen machine that is in fact
+        // running. A polling thread catches that: it reads RAM on a timer and
+        // fires the same event with the diff, so the pane refreshes either way.
+        //
+        // The poll is a fallback, not a replacement. When a push arrives the
+        // poll pauses briefly, because applying a push and then immediately
+        // re-reading would discard the push's precision for no gain.
+        private readonly Thread _poller;
+        private volatile bool _pollingEnabled = true;
+        private volatile bool _pollingStopped;
+        private DateTime _lastPushAt = DateTime.MinValue;
+        private const int PollIntervalMs = 250;
+        private const int PushGraceMs = 500;
 
         // Reads the registers through the bridge's CPU command.
         //
@@ -116,34 +139,14 @@ public CpuSnapshot ReadCpuState()
                 : 0;
         }
 
-        public BridgeMemoryBackend(ProtocolClient client)
+        public BridgeMemoryBackend(ProtocolClient client, int port)
         {
             if (client == null)
                 throw new ArgumentNullException("client");
             _client = client;
+            _port = port;
 
-            // The bridge answers PING with its name and version, which is where both
-            // come from: hard-coding them would let the monitor run against a host it
-            // was never measured against.
-            string response = _client.Send("PING");
-            if (!ProtocolClient.IsOk(response))
-                throw new MonitorException("the bridge refused the handshake: " + ProtocolClient.ErrorOf(response));
-
-            string banner = ProtocolClient.PayloadOf(response);
-            string[] parts = banner.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length >= 1)
-                EmulatorName = parts[0];
-            if (parts.Length >= 2)
-                EmulatorVersion = parts[1];
-            if (parts.Length == 0)
-                throw new MonitorException("the bridge sent an empty handshake: '" + banner + "'");
-
-            // The answer to PING is the only statement this side has about what the
-            // host can do, and it is enough: the three builds the host has measured
-            // are named exactly here, and anything else declares nothing. Reading
-            // it is not probing — nothing is sent to find out, so no capability is
-            // learned by making the user wait for a refusal.
-            _capabilities = ExecutionCapabilities.For(EmulatorName, EmulatorVersion);
+            ReadNameAndVersion();
 
             // One flat region, because that is what the bridge exposes and what the
             // monitor already speaks: a 64 KiB CPU space addressed by a single
@@ -171,12 +174,25 @@ public CpuSnapshot ReadCpuState()
             // backend owns the translation from protocol to the (address,
             // value) pairs the pane can apply directly.
             _client.PushReceived += OnPushReceived;
+
+            // The polling thread is the fallback for a host that does not push
+            // or whose pushes are lost. It starts after the handshake, so it
+            // runs only against a live bridge; a backend that could not reach
+            // the bridge would not have a constructor to start it in.
+            _poller = new Thread(PollLoop)
+            {
+                IsBackground = true,
+                Name = "bridge-poller"
+            };
+            _poller.Start();
         }
 
         private void OnPushReceived(string payload)
         {
             if (string.IsNullOrEmpty(payload))
                 return;
+
+            _lastPushAt = DateTime.UtcNow;
 
             List<(int Address, byte Value)> changes;
             if (!MonitorProtocol.TryParsePushRam(payload, out changes))
@@ -203,10 +219,65 @@ public CpuSnapshot ReadCpuState()
             RamChanged?.Invoke(changes);
         }
 
+        /// <summary>
+        /// The polling loop, running on a background thread. It reads RAM at
+        /// <see cref="PollIntervalMs"/> intervals and fires <see cref="RamChanged"/>
+        /// with the diff, so a pane that only knows about pushes still refreshes
+        /// when the bridge goes quiet. The poll pauses briefly after a push,
+        /// because applying a push and then immediately re-reading would
+        /// discard the push's precision for no gain.
+        /// </summary>
+        private void PollLoop()
+        {
+            while (!_pollingStopped && _pollingEnabled)
+            {
+                try
+                {
+                    // Pause after a push so the poll does not fight it.
+                    if ((DateTime.UtcNow - _lastPushAt).TotalMilliseconds < PushGraceMs)
+                    {
+                        Thread.Sleep(50);
+                        continue;
+                    }
+
+                    // Read the whole RAM region and diff it against the cache.
+                    // A full read is expensive, so it is done only when no push
+                    // has landed recently; the pane gets live updates from the
+                    // push path while the machine runs and falls back here.
+                    byte[] current = Read(0x0000, FlatRegionLength);
+                    List<(int Address, byte Value)> changes = new List<(int Address, byte Value)>();
+                    for (int i = 0; i < current.Length; i++)
+                    {
+                        int offset = i - CacheBase;
+                        if (offset < 0 || offset >= _cache.Length)
+                            continue;
+
+                        if (_cache[offset] != current[i])
+                        {
+                            _cache[offset] = current[i];
+                            changes.Add((i, current[i]));
+                        }
+                    }
+
+                    if (changes.Count > 0)
+                        RamChanged?.Invoke(changes);
+                }
+                catch (Exception)
+                {
+                    // The poll is a fallback: a failure here must not take the
+                    // backend down. The next iteration retries, and if the
+                    // bridge is gone the caller's next real command fails with
+                    // a named exception rather than a silent one.
+                }
+
+                Thread.Sleep(PollIntervalMs);
+            }
+        }
+
         /// <summary>Connects to a bridge listening on 127.0.0.1.</summary>
         public static BridgeMemoryBackend Connect(int port, int timeoutMs = 5000)
         {
-            return new BridgeMemoryBackend(ProtocolClient.Connect(port, timeoutMs));
+            return new BridgeMemoryBackend(ProtocolClient.Connect(port, timeoutMs), port);
         }
 
         /// <summary>
@@ -224,6 +295,38 @@ public CpuSnapshot ReadCpuState()
         public bool IsRunning
         {
             get { return true; }
+        }
+
+        /// <summary>
+        /// Whether the bridge is connected and able to answer commands. Read by
+        /// the status line so a dead bridge shows as "disconnected" rather than
+        /// as a host that never existed.
+        /// </summary>
+        public bool IsConnected
+        {
+            get { return _client != null && _client.IsConnected; }
+        }
+
+        /// <summary>
+        /// How RAM is currently being refreshed. "Live" when the bridge is
+        /// pushing changes; "Polling" when the fallback thread is doing the
+        /// work. The status line shows this so a user can tell whether the
+        /// pane is showing the machine's current state or its last known one.
+        /// </summary>
+        public string RamRefreshMode
+        {
+            get
+            {
+                if (!_pollingEnabled || _pollingStopped)
+                    return "RAM: Stopped";
+
+                // If a push landed within the grace period, the bridge is
+                // pushing and the poll is staying out of its way.
+                if ((DateTime.UtcNow - _lastPushAt).TotalMilliseconds < PushGraceMs * 2)
+                    return "RAM: Live";
+
+                return "RAM: Polling";
+            }
         }
 
         /// <summary>
@@ -408,7 +511,83 @@ public CpuSnapshot ReadCpuState()
 
         public void Dispose()
         {
+            _pollingStopped = true;
+            if (_poller != null)
+            {
+                try { _poller.Join(500); } catch { }
+            }
+
             _client.Dispose();
+        }
+
+        /// <summary>
+        /// Closes the current bridge connection and opens a new one against the
+        /// same port, then re-sends <c>PING</c> so the new client reports the host
+        /// it is now talking to.
+        ///
+        /// This is the escape hatch for a bridge that died mid-session: the
+        /// monitor does not have to restart the emulator to keep working. The
+        /// old client is disposed first, so a sender blocked on it is woken with
+        /// a closure rather than left hanging on a dead socket.
+        /// </summary>
+        public void Reconnect()
+        {
+            ProtocolClient old = _client;
+            _client = null;
+
+            try
+            {
+                if (old != null)
+                    old.Dispose();
+            }
+            catch (Exception)
+            {
+                // Disposing a dead client is best-effort: the new connection is
+                // the point, and a failure to clean up the old one is not worth
+                // aborting the reconnect over.
+            }
+
+            DateTime deadline = DateTime.UtcNow.AddSeconds(15);
+            while (true)
+            {
+                try
+                {
+                    _client = ProtocolClient.Connect(_port);
+                    break;
+                }
+                catch (SocketException) when (DateTime.UtcNow < deadline)
+                {
+                    Thread.Sleep(250);
+                }
+                catch (IOException) when (DateTime.UtcNow < deadline)
+                {
+                    Thread.Sleep(250);
+                }
+            }
+            EmulatorName = null;
+            EmulatorVersion = null;
+            ReadNameAndVersion();
+        }
+
+        private void ReadNameAndVersion()
+        {
+            // The bridge answers PING with its name and version, which is where both
+            // come from: hard-coding them would let the monitor run against a host it
+            // was never measured against.
+            string response = _client.Send("PING");
+            if (!ProtocolClient.IsOk(response))
+                throw new MonitorException("the bridge refused the handshake: " + ProtocolClient.ErrorOf(response));
+
+            string banner = ProtocolClient.PayloadOf(response);
+            string[] parts = banner.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 1)
+                EmulatorName = parts[0];
+            if (parts.Length >= 2)
+                EmulatorVersion = parts[1];
+            if (parts.Length == 0)
+                throw new MonitorException("the bridge sent an empty handshake: '" + banner + "'");
+
+            _capabilities = ExecutionCapabilities.For(EmulatorName, EmulatorVersion);
         }
 
         // ---------------------------------------------------------------- the contract

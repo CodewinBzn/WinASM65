@@ -36,17 +36,17 @@ namespace WinASM65.Monitor.Tests
             return dir;
         }
 
-        private static int RunWith(string directory, string sessionDirectory, string initialSource)
+private static int RunWith(string directory, string sessionDirectory, string initialSource)
         {
             IConsoleDriver driver = new HeadlessConsoleDriver();
-                        
+
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
                 ICpuInstructionSet cpu = new Cpu6502();
                 MonitorSession session = new MonitorSession(machine, cpu, sessionDirectory);
                 return ShellRunner.Run(session, ShellTheme.Default,
                     ListingSourceFactory.Create(cpu, sessionDirectory), directory, null,
-                    driver, ShellRunner.OneIteration, initialSource);
+                    driver, ShellRunner.OneIteration, initialSource, null);
             }
         }
 

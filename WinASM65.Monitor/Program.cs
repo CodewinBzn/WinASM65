@@ -67,7 +67,7 @@ namespace WinASM65.Monitor.Cli
                         case "--emulator":
                             emulator = args[++i].ToLowerInvariant();
                             break;
-case "--theme":
+                        case "--theme":
                               themePath = args[++i];
                               break;
                           case "--source":
@@ -103,11 +103,20 @@ case "--theme":
                 }
 
                 Process mesen = null;
+                EmulatorLauncher launcher = null;
                 if (mesenPath != null)
                 {
-                    mesen = LaunchEmulator(mesenPath, romPath, emulator, port);
+                    launcher = new EmulatorLauncher(mesenPath, romPath, emulator, port);
+                    mesen = launcher.Start();
                     if (mesen == null)
                         return 3;
+                }
+                else
+                {
+                    // A project can name any emulator in config.json.  It is not
+                    // assumed to implement the Mesen bridge; this only supplies
+                    // the shell's generic launch action.
+                    launcher = EmulatorLauncher.FromProjectConfiguration(Directory.GetCurrentDirectory());
                 }
 
                 try
@@ -117,7 +126,7 @@ case "--theme":
                     // with a named reason, and that reason reaches the user intact
                     // because the backend re-raises what the bridge said. Mesen2
                     // answers all of them, because it has the API to do it.
-                    using (BridgeMemoryBackend backend = Connect(port))
+                    using (IMemoryBackend backend = TryConnect(port) ?? new DummyBridgeBackend())
                     {
                         // One CPU instance, given to both the session and the listing.
                         // They have to agree: what a listing reports as a mnemonic, how
@@ -129,13 +138,20 @@ case "--theme":
                         MonitorSession session =
                             new MonitorSession(backend, cpu, Directory.GetCurrentDirectory());
 
+                        // The launcher belongs to the session, not just to the TUI.
+                        // Set it before selecting the UI so every entry point (and
+                        // every menu created during startup) sees the same launch
+                        // configuration.  ShellRunner sets it too for callers that
+                        // invoke the shell directly.
+                        session.Launcher = launcher;
+
                         if (UseShell(wantShell))
                         {
                             ShellTheme theme = ShellTheme.Load(themePath);
                             return ShellRunner.Run(session, theme,
                                 ListingSourceFactory.Create(cpu, Directory.GetCurrentDirectory()),
                                 Directory.GetCurrentDirectory(), mesen, null,
-                                ShellRunner.UntilQuit, sourceFile);
+                                ShellRunner.UntilQuit, sourceFile, launcher);
                         }
 
                         return RunRepl(session);
@@ -202,7 +218,11 @@ case "--theme":
         /// has to be opened before a socket can exist. Guessing would produce a
         /// bridge that never listens, which looks exactly like a crash.
         /// </summary>
-        private static Process LaunchEmulator(string emulatorPath, string romPath, string emulator, int port)
+        // Kept internal so the shell's launcher and the command-line startup use
+        // exactly the same, emulator-specific invocation.  MesenCE and Mesen2 do
+        // not accept interchangeable script arguments.
+        internal static Process LaunchEmulator(string emulatorPath, string romPath, string emulator, int port,
+            string bridgeOverride = null)
         {
             if (!File.Exists(emulatorPath))
             {
@@ -216,7 +236,7 @@ case "--theme":
             }
 
             string scriptName = emulator == Mesen2 ? "bridge_mesen2.lua" : "bridge.lua";
-            string bridgeScript = Path.Combine(AppContext.BaseDirectory, "Bridge", scriptName);
+            string bridgeScript = bridgeOverride ?? Path.Combine(AppContext.BaseDirectory, "Bridge", scriptName);
             if (!File.Exists(bridgeScript))
             {
                 // Fall back to the source tree when running from a build output that
@@ -242,14 +262,13 @@ case "--theme":
                 if (!EnsureMesen2ScriptSettings(emulatorPath))
                     return null;
 
-                start.ArgumentList.Add("--testRunner");
-                start.ArgumentList.Add(bridgeScript);
+                // A plain ROM plus Lua script opens Mesen2's normal graphical
+                // window.  --testRunner is specifically its headless mode, so it
+                // made the monitor claim the emulator was started while showing no
+                // emulator at all.  Mesen2 loads the ROM first, then opens and
+                // starts the script (AutoStartScriptOnLoad is enabled by default).
                 start.ArgumentList.Add(romPath);
-                start.ArgumentList.Add("-novideo");
-                start.ArgumentList.Add("-noaudio");
-                start.ArgumentList.Add("-noinput");
-                start.ArgumentList.Add("-enablestdout");
-                start.ArgumentList.Add("-donotsavesettings");
+                start.ArgumentList.Add(bridgeScript);
             }
             else
             {
@@ -395,7 +414,7 @@ case "--theme":
             {
                 try
                 {
-                    return new BridgeMemoryBackend(ProtocolClient.Connect(port));
+                    return new BridgeMemoryBackend(ProtocolClient.Connect(port), port);
                 }
                 catch (MonitorException)
                 {
@@ -419,6 +438,29 @@ case "--theme":
                 }
 
                 Thread.Sleep(ConnectRetryMs);
+            }
+        }
+        /// <summary>
+        /// Connects, or returns null so the monitor can start without a bridge.
+        /// The reason is still written to stderr: a monitor that opens in degraded
+        /// mode without saying which address it tried leaves the user guessing.
+        /// </summary>
+        private static IMemoryBackend TryConnect(int port)
+        {
+            try
+            {
+                return Connect(port);
+            }
+            catch (MonitorException e)
+            {
+                Console.Error.WriteLine(e.Message + " Starting without a bridge.");
+                return null;
+            }
+            catch (SocketException e)
+            {
+                Console.Error.WriteLine("No bridge on 127.0.0.1:" + port + ": " + e.Message
+                    + " Starting without a bridge.");
+                return null;
             }
         }
 

@@ -188,7 +188,7 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void WithoutABridgeTheProgramFailsNamingTheOneItExpected()
+        public void WithoutABridgeTheProgramStartsDegradedNamingTheOneItExpected()
         {
             // A port just released by a server this test opened, so it is
             // certainly free. Port 1 would do the same job, but it is reserved on
@@ -202,6 +202,7 @@ namespace WinASM65.Monitor.Tests
             ProcessStartInfo start = new ProcessStartInfo(Executable)
             {
                 UseShellExecute = false,
+                RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true
@@ -211,10 +212,15 @@ namespace WinASM65.Monitor.Tests
 
             using (Process process = Process.Start(start))
             {
+                // No bridge is not fatal: the monitor opens without one, so it
+                // can launch the emulator itself or reconnect later. It must
+                // still say which address it tried.
+                process.StandardInput.WriteLine("quit");
+                process.StandardInput.Close();
                 string errors = process.StandardError.ReadToEnd();
                 Assert.IsTrue(process.WaitForExit(60000), "the monitor waited forever for a bridge that never came");
 
-                Assert.AreNotEqual(0, process.ExitCode);
+                Assert.AreEqual(0, process.ExitCode);
                 StringAssert.Contains(errors, "127.0.0.1:" + port);
             }
         }
