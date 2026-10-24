@@ -225,7 +225,7 @@ WithShell(delegate (ShellWindow window)
         }
 
         [TestMethod]
-        public void RamRowsFitTheAvailableContentWidth()
+        public void RamRowsAreDrawnWholeAndScrollWhenThePaneIsNarrow()
         {
             foreach (int width in new[] { 80, 100, 120 })
             {
@@ -248,10 +248,16 @@ WithShell(delegate (ShellWindow window)
                     Assert.IsTrue(window.Ram.Rows.Count > 0);
                     ListControl list = (ListControl)window.Ram.Control;
                     Assert.IsTrue(list.StringItems.Count > 0);
-                    int contentWidth = ShellLayout.ForSize(width, 34).RamWidth - 3;
-                    foreach (string line in list.StringItems)
-                        Assert.IsTrue(line.Length <= contentWidth,
-                            width + " columns: RAM display row exceeds " + contentWidth + " cells: " + line);
+                    // A row is never split: address, bytes and characters stay on
+                    // one line, and a pane too narrow for it scrolls instead.
+                    Assert.AreEqual(window.Ram.Rows.Count, list.StringItems.Count,
+                        width + " columns: a RAM row was split across display lines");
+                    for (int i = 0; i < list.StringItems.Count; i++)
+                        Assert.AreEqual(window.Ram.Rows[i].Text, list.StringItems[i],
+                            width + " columns: RAM display row differs from its dump row");
+                    int longest = list.StringItems.Max(line => line.Length);
+                    Assert.IsTrue(list.Width >= longest,
+                        width + " columns: the RAM list is narrower than its longest row, so it cannot scroll to it");
                 }
             }
         }

@@ -403,6 +403,8 @@ namespace WinASM65.Monitor.Tests
             public string EmulatorName { get { return _inner.EmulatorName; } }
             public string EmulatorVersion { get { return _inner.EmulatorVersion; } }
             public bool IsRunning { get { return _inner.IsRunning; } }
+            public bool IsConnected { get { return _inner.IsConnected; } }
+            public string RamRefreshMode { get { return _inner.RamRefreshMode; } }
 
             public byte[] Read(int address, int length) { return _inner.Read(address, length); }
 

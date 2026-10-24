@@ -47,6 +47,17 @@ namespace WinASM65.Monitor.Protocol
         /// </summary>
         public event Action<string> PushReceived;
 
+        /// <summary>
+        /// True when the socket is still open and the receiver thread has not
+        /// exited. Read by the backend so a dead bridge shows as
+        /// "disconnected" in the status line rather than as a host that
+        /// never existed.
+        /// </summary>
+        public bool IsConnected
+        {
+            get { return !_disposed && !_receiverExited; }
+        }
+
         private ProtocolClient(NetworkStream stream)
         {
             _stream = stream;
