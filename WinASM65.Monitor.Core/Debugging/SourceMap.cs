@@ -57,6 +57,9 @@ namespace WinASM65.Monitor.Debugging
     {
         public static readonly SourceMap Empty = new SourceMap(new List<MappedLine>());
 
+        private readonly SortedList<int, string> _labels = new SortedList<int, string>();
+        private readonly Dictionary<string, long> _symbols = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+
         private readonly List<MappedLine> _lines;
         private readonly Dictionary<string, SortedList<int, List<MappedLine>>> _byFile =
             new Dictionary<string, SortedList<int, List<MappedLine>>>(StringComparer.OrdinalIgnoreCase);
@@ -64,7 +67,32 @@ namespace WinASM65.Monitor.Debugging
         private readonly Dictionary<int, MappedLine> _byPrg = new Dictionary<int, MappedLine>();
 
         public SourceMap(IEnumerable<MappedLine> lines)
+            : this(lines, null, null)
         {
+        }
+
+        /// <param name="labels">Code labels by address; the first one seen at an address wins.</param>
+        /// <param name="symbols">Every name the build defined, labels and constants.</param>
+        public SourceMap(IEnumerable<MappedLine> lines, IEnumerable<KeyValuePair<int, string>> labels,
+            IEnumerable<KeyValuePair<string, long>> symbols)
+        {
+            if (labels != null)
+            {
+                foreach (KeyValuePair<int, string> label in labels)
+                {
+                    if (!_labels.ContainsKey(label.Key))
+                        _labels.Add(label.Key, label.Value);
+                }
+            }
+            if (symbols != null)
+            {
+                foreach (KeyValuePair<string, long> symbol in symbols)
+                {
+                    if (!_symbols.ContainsKey(symbol.Key))
+                        _symbols[symbol.Key] = symbol.Value;
+                }
+            }
+
             _lines = new List<MappedLine>(lines ?? Enumerable.Empty<MappedLine>());
             foreach (MappedLine line in _lines)
             {
@@ -94,6 +122,34 @@ namespace WinASM65.Monitor.Debugging
         public IEnumerable<string> Files
         {
             get { return _byFile.Keys; }
+        }
+
+        /// <summary>Every name the build defined, with its value.</summary>
+        public IReadOnlyDictionary<string, long> Symbols
+        {
+            get { return _symbols; }
+        }
+
+        /// <summary>
+        /// The closest code label at or below <paramref name="address"/>, within
+        /// <paramref name="reach"/> bytes, or null. Names a stack frame the way a
+        /// reader would: the routine the program counter is in.
+        /// </summary>
+        public string NearestLabel(int address, out int offset, int reach = 0x400)
+        {
+            offset = 0;
+            IList<int> keys = _labels.Keys;
+            int low = 0, high = keys.Count - 1, found = -1;
+            while (low <= high)
+            {
+                int middle = (low + high) / 2;
+                if (keys[middle] <= address) { found = middle; low = middle + 1; }
+                else high = middle - 1;
+            }
+            if (found < 0 || address - keys[found] > reach)
+                return null;
+            offset = address - keys[found];
+            return _labels.Values[found];
         }
 
         /// <summary>Every emission of a line: one, or several for a macro or a repeat.</summary>

@@ -23,15 +23,26 @@ namespace WinASM65.Monitor.Debugging
 
             int header = PrgStart(result.Image);
             List<MappedLine> lines = new List<MappedLine>();
+            List<KeyValuePair<int, string>> labels = new List<KeyValuePair<int, string>>();
+            List<KeyValuePair<string, long>> symbols = new List<KeyValuePair<string, long>>();
 
             foreach (ProjectUnitResult unit in result.Units)
             {
                 ImagePlacement placement = PlacementOf(unit, result.Placements);
                 string unitDirectory = Path.GetDirectoryName(unit.SourceFile) ?? string.Empty;
                 int originIndex = 0;
+                symbols.AddRange(unit.Symbols);
 
                 foreach (ListingRow row in unit.Listing)
                 {
+                    if (row.Kind == ListingRowKind.Label && row.Address.HasValue)
+                    {
+                        string name = LabelName(row.Text);
+                        if (name != null)
+                            labels.Add(new KeyValuePair<int, string>(row.Address.Value, name));
+                        continue;
+                    }
+
                     if (row.Kind != ListingRowKind.Instruction || !row.Address.HasValue || row.Bytes.Count == 0)
                         continue;
 
@@ -50,7 +61,19 @@ namespace WinASM65.Monitor.Debugging
                 }
             }
 
-            return new SourceMap(lines);
+            return new SourceMap(lines, labels, symbols);
+        }
+
+        /// <summary>The label a source line defines: its first word, without the colon.</summary>
+        private static string LabelName(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return null;
+            string trimmed = text.TrimStart();
+            int end = 0;
+            while (end < trimmed.Length && trimmed[end] != ':' && trimmed[end] != ';' && !char.IsWhiteSpace(trimmed[end]))
+                end++;
+            return end == 0 ? null : trimmed.Substring(0, end);
         }
 
         /// <summary>Where PRG-ROM starts in the image: after an iNES header and trainer, or at 0.</summary>
