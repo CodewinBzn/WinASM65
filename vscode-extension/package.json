@@ -2,7 +2,7 @@
   "name": "winasm65",
   "displayName": "WinASM65",
   "description": "6502 assembly for WinASM65 projects: build, debug on Mesen2 with source breakpoints, live diagnostics.",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "publisher": "codewinbzn",
   "license": "Zlib",
   "repository": {
@@ -246,13 +246,8 @@
     "menus": {
       "editor/context": [
         {
-          "command": "winasm65.showListing",
-          "when": "editorLangId == winasm65 && !winasm65.listingVisible",
-          "group": "navigation@100"
-        },
-        {
-          "command": "winasm65.hideListing",
-          "when": "editorLangId == winasm65 && winasm65.listingVisible",
+          "submenu": "winasm65.context",
+          "when": "editorLangId == winasm65",
           "group": "navigation@100"
         }
       ],
@@ -274,13 +269,8 @@
       ],
       "editor/lineNumber/context": [
         {
-          "command": "winasm65.showListing",
-          "when": "editorLangId == winasm65 && !winasm65.listingVisible",
-          "group": "winasm65"
-        },
-        {
-          "command": "winasm65.hideListing",
-          "when": "editorLangId == winasm65 && winasm65.listingVisible",
+          "submenu": "winasm65.context",
+          "when": "editorLangId == winasm65",
           "group": "winasm65"
         }
       ],
@@ -298,17 +288,35 @@
       ],
       "explorer/context": [
         {
-          "command": "winasm65.showListing",
-          "when": "resourceLangId == winasm65 && !winasm65.listingVisible",
+          "submenu": "winasm65.context",
+          "when": "resourceLangId == winasm65",
           "group": "navigation@90"
+        }
+      ],
+      "winasm65.context": [
+        {
+          "command": "winasm65.showListing",
+          "when": "!winasm65.listingVisible",
+          "group": "1_listing"
         },
         {
           "command": "winasm65.hideListing",
-          "when": "resourceLangId == winasm65 && winasm65.listingVisible",
-          "group": "navigation@90"
+          "when": "winasm65.listingVisible",
+          "group": "1_listing"
+        },
+        {
+          "command": "winasm65.showRam",
+          "when": "inDebugMode && debugType == winasm65",
+          "group": "2_debug"
         }
       ]
-    }
+    },
+    "submenus": [
+      {
+        "id": "winasm65.context",
+        "label": "WinASM65"
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -p ./",
