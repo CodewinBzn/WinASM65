@@ -159,6 +159,15 @@ namespace WinASM65.Cpu
                 target = (ushort)(address + 2 + delta);
                 operand = "$" + target.Value.ToString("X4", CultureInfo.InvariantCulture);
             }
+            else if (info.Mode == AddressingMode.ZeroPageRelative)
+            {
+                // BBRn zp,target: the displacement counts from the end of the
+                // three-byte instruction.
+                sbyte delta = unchecked((sbyte)hi);
+                target = (ushort)(address + 3 + delta);
+                operand = "$" + lo.ToString("X2", CultureInfo.InvariantCulture)
+                    + ",$" + target.Value.ToString("X4", CultureInfo.InvariantCulture);
+            }
 
             string text = operand.Length == 0
                 ? info.Mnemonic
@@ -230,7 +239,7 @@ namespace WinASM65.Cpu
                 case AddressingMode.ZeroPageIndirect:
                     return 2;
                 default:
-                    return 3;
+                    return 3; // absolute forms, and ZeroPageRelative: opcode, zp, displacement
             }
         }
 

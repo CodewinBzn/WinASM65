@@ -77,7 +77,7 @@ python tools/dap-smoke.py WinASM65.Tooling/bin/Debug/net8.0/WinASM65.Tooling.dll
 
 		-t <system>		Target system (nes, c64, apple2, atari8, bbc, ...).
 				Use `-t list` to enumerate every known system.
-		-cpu <cpu>		CPU override: 6502 or 65c02.
+		-cpu <cpu>		CPU override: 6502, 6502x (stable illegal opcodes), 65c02, r65c02 (Rockwell bit instructions), w65c02 (+ STP, WAI).
 				Defaults to the target system's CPU.
 		-format <fmt>		Output format override: bin, ines, prg, xex,
 				a2bin, rom, o65, ihex, srec.

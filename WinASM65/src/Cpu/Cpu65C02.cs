@@ -10,11 +10,11 @@ namespace WinASM65.Cpu
     {
         private static readonly HashSet<string> CmosRelativeBranchMnemonics = CreateRelativeBranches();
         private static readonly HashSet<string> CmosAccumulatorMnemonics = CreateAccumulatorMnemonics();
-        private static readonly Dictionary<string, Dictionary<AddressingMode, byte>> CmosMap = CreateOpcodeMap();
+        protected static readonly Dictionary<string, Dictionary<AddressingMode, byte>> CmosOpcodeMap = CreateCmosOpcodeMap();
 
         protected override Dictionary<string, Dictionary<AddressingMode, byte>> OpcodeMap
         {
-            get { return CmosMap; }
+            get { return CmosOpcodeMap; }
         }
 
         protected override HashSet<string> RelativeBranchMnemonics
@@ -61,7 +61,7 @@ namespace WinASM65.Cpu
             return set;
         }
 
-        private static Dictionary<string, Dictionary<AddressingMode, byte>> CreateOpcodeMap()
+        private static Dictionary<string, Dictionary<AddressingMode, byte>> CreateCmosOpcodeMap()
         {
             Dictionary<string, Dictionary<AddressingMode, byte>> table = Copy(FromRows(NmosOpcodeTable));
 

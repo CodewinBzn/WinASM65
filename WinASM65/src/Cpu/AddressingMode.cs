@@ -20,7 +20,8 @@ namespace WinASM65.Cpu
         IndirectY = 11,      // OPC (byte),Y
         Relative = 12,       // OPC byte
         ZeroPageIndirect = 13,           // 65C02 OPC (zp)
-        AbsoluteIndexedIndirect = 14     // 65C02 JMP (abs,X)
+        AbsoluteIndexedIndirect = 14,    // 65C02 JMP (abs,X)
+        ZeroPageRelative = 15            // R65C02 BBRn/BBSn zp,target
     }
 
     public struct InstructionInfo
@@ -45,6 +46,16 @@ namespace WinASM65.Cpu
         /// so no byte can stand for "unsupported".
         /// </summary>
         public bool HasOpcode { get; private set; }
+
+        /// <summary>The branch target of <c>BBRn zp,target</c>; null for one-operand forms.</summary>
+        public string SecondOperandExpression { get; private set; }
+
+        public InstructionInfo WithSecondOperand(string expression)
+        {
+            InstructionInfo copy = this;
+            copy.SecondOperandExpression = expression;
+            return copy;
+        }
 
         public InstructionInfo(AddressingMode mode, byte opcode, byte length, string operandExpression, bool hasOpcode)
             : this(mode, opcode, length, operandExpression)
@@ -85,6 +96,7 @@ namespace WinASM65.Cpu
                 case AddressingMode.Relative: return "relative";
                 case AddressingMode.ZeroPageIndirect: return "zero page indirect (zp)";
                 case AddressingMode.AbsoluteIndexedIndirect: return "absolute indexed indirect (abs,X)";
+                case AddressingMode.ZeroPageRelative: return "zero page, relative (zp,target)";
                 default: return mode.ToString();
             }
         }
