@@ -4,7 +4,7 @@
   "description": "6502 assembly for WinASM65 projects: build, debug on Mesen2 with source breakpoints, live diagnostics.",
   "version": "0.1.0",
   "publisher": "codewinbzn",
-  "license": "MIT",
+  "license": "Zlib",
   "repository": {
     "type": "git",
     "url": "https://github.com/CodewinBzn/WinASM65"
@@ -223,7 +223,9 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
-    "package": "vsce package"
+    "package": "npm run tooling && npm run license && vsce package --target win32-x64",
+    "tooling": "dotnet publish ../WinASM65.Tooling/WinASM65.Tooling.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=none -maxcpucount:1 -o bin",
+    "license": "node -e \"require('fs').copyFileSync('../LICENSE.txt', 'LICENSE.txt')\""
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

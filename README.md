@@ -29,6 +29,36 @@ dotnet run --project WinASM65.Monitor -- --mesen "C:\...\Mesen.exe" --rom game.n
 ```
 
 ------------------------------
+## VS Code
+
+`vscode-extension/` is a VS Code extension for WinASM65 projects:
+- Press F5 to build the project, start Mesen2 2.1.1, and debug in the sources: breakpoints, step, registers, and memory in the hex view.
+- Errors are reported as you type.
+- A build task fills the Problems panel.
+- Sources get syntax highlighting.
+
+The extension starts `WinASM65.Tooling` in one of these modes:
+- `--dap` for the debug adapter
+- `--lsp` for the language server
+- `--build <config.json>` for the build task
+
+```bash
+cd vscode-extension
+npm install
+npm run package        # publishes WinASM65.Tooling into bin/ and builds the .vsix
+code --install-extension winasm65-win32-x64-0.1.0.vsix
+```
+
+To try the extension from the repository without packaging it, open `vscode-extension/` in VS Code and press F5. It uses the debug build of `WinASM65.Tooling`.
+
+Two scripts check the parts that only a real emulator can test. Close any open Mesen2 first, because it runs as a single instance:
+
+```bash
+python tools/mesen2-bridge-check.py <Mesen.exe> example_bomberman-nes/bomber.nes C01A
+python tools/dap-smoke.py WinASM65.Tooling/bin/Debug/net8.0/WinASM65.Tooling.dll <config.json> <source> <line>
+```
+
+------------------------------
 ## Command line 
 
 ### Usage 

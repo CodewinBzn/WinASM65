@@ -5,3 +5,8 @@ node_modules/@types/**
 node_modules/typescript/**
 node_modules/@vscode/vsce/**
 .gitignore
+bin/WinASM65.exe
+bin/WinASM65.runtimeconfig.json
+bin/Bridge/probe_mame.lua
+bin/Bridge/spike_m0.lua
+.vscode/**
