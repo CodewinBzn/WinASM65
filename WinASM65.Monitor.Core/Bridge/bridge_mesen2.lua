@@ -342,7 +342,49 @@ local breakpoints = {}
 -- being answered, so no other source can raise a stop from inside a command.
 local stop_requested = nil
 
-local serve_blocked, serve_stopped
+-- What the monitor was told about the current stop, or nil while the machine
+-- runs. Answered by STATUS, so a monitor that missed a push can resynchronise.
+local stopped_info = nil
+
+local serve_blocked, serve_blocked_loop, serve_stopped
+
+-- Sends one unsolicited line. The monitor's receiver routes every line that
+-- starts with PUSH to its event, never to a waiting command.
+local function push(text)
+  if client == nil then return end
+  if not client:send("PUSH " .. text .. "\n") then
+    log("PUSH send failed: " .. text)
+  end
+end
+
+-- The cartridge offset of a CPU address, or "-" when the address is not in
+-- PRG-ROM or this build cannot convert. Two banks can share a CPU address, and
+-- this is the only thing that tells the debugger which one is executing.
+local function prg_offset(address)
+  local ok, result = pcall(function()
+    return emu.convertAddress(address, emu.memType.nesMemory, emu.cpuType.nes)
+  end)
+  if ok and type(result) == "table" and result.memType == emu.memType.nesPrgRom
+      and type(result.address) == "number" and result.address >= 0 then
+    return string.format("$%05X", result.address)
+  end
+  return "-"
+end
+
+-- "breakpoint exec $C123" -> "breakpoint", "PAUSE" -> "pause", "step" -> "step".
+local function stop_kind(reason)
+  local text = tostring(reason):lower()
+  if text:sub(1, 10) == "breakpoint" then return "breakpoint" end
+  if text == "pause" or text == "step" then return text end
+  return "unknown"
+end
+
+local function describe_stop(reason)
+  local pc = 0
+  local ok, state = pcall(emu.getState)
+  if ok and type(state) == "table" and state["cpu.pc"] ~= nil then pc = state["cpu.pc"] end
+  return string.format("reason=%s pc=$%04X prg=%s", stop_kind(reason), pc, prg_offset(pc))
+end
 
 -- One step, from a running machine, then broken again. The resume comes first:
 -- emu.step waits for an instruction to execute, and instructions only execute
@@ -357,6 +399,8 @@ local function step_once()
     -- for and stop the machine for no reason.
     stop_requested = nil
     emu.resume()
+    -- The monitor expects a STOPPED after a step; tell it the machine runs.
+    push("RESUMED")
   end
 end
 
@@ -404,7 +448,13 @@ local function install_breakpoint(address, kind)
       -- stopped machine.
       stop_requested = string.format("breakpoint exec $%04X", accessed)
       log("hit: " .. stop_requested)
-      emu.breakExecution()
+      -- breakExecution stops at the end of the current instruction, so the
+      -- instruction under the breakpoint would already have run. A one-cycle
+      -- step stops right after its opcode fetch instead: PC, registers and
+      -- memory are still as they were before it, and the next STEP or RESUME
+      -- carries it out exactly once. Measured on Mesen2 2.1.1.
+      local stepped = pcall(function() emu.step(1, emu.stepType.cpuCycleStep, emu.cpuType.nes) end)
+      if not stepped then emu.breakExecution() end
     end, callback_type, address, address, emu.cpuType.nes, emu.memType.nesMemory)
   end)
 
@@ -416,10 +466,18 @@ local function install_breakpoint(address, kind)
   return id
 end
 
+-- Mesen2 identifies a callback by the reference and the exact arguments it was
+-- added with; the reference alone removes nothing.
+local function unregister(address, kind, id)
+  pcall(function()
+    emu.removeMemoryCallback(id, KINDS[kind], address, address, emu.cpuType.nes, emu.memType.nesMemory)
+  end)
+end
+
 local function remove_breakpoint(address, kind)
   local byKind = breakpoints[address]
   if byKind == nil or byKind[kind] == nil then return false end
-  pcall(function() emu.removeMemoryCallback(byKind[kind]) end)
+  unregister(address, kind, byKind[kind])
   byKind[kind] = nil
   if next(byKind) == nil then breakpoints[address] = nil end
   return true
@@ -507,6 +565,11 @@ local function dispatch(line)
 
   if command == "PING" then
     return "OK " .. NAME .. " " .. VERSION
+  end
+
+  if command == "STATUS" then
+    if stopped_info == nil then return "OK running" end
+    return "OK stopped " .. stopped_info
   end
 
   if command == "READ" then
@@ -601,7 +664,7 @@ local function dispatch(line)
     if action == "CLEAR" then
       for address, byKind in pairs(breakpoints) do
         for kind, id in pairs(byKind) do
-          pcall(function() emu.removeMemoryCallback(id) end)
+          unregister(address, kind, id)
           byKind[kind] = nil
         end
         breakpoints[address] = nil
@@ -689,6 +752,21 @@ end
 -- owner has to carry it out, because the machine cannot run while this is on the
 -- stack.
 function serve_blocked(reason)
+  local outcome = serve_blocked_loop(reason)
+  stopped_info = nil
+  -- A step is followed by its own STOPPED; anything else leaves a running
+  -- machine, which the monitor must hear about or it will wait forever.
+  if outcome == "resume" or outcome == "reset" then push("RESUMED") end
+  return outcome
+end
+
+function serve_blocked_loop(reason)
+  -- Announced before serving: the monitor learns the machine stopped without
+  -- polling. RAM written up to the stop goes first so the stop reads current.
+  drain_ram_push()
+  stopped_info = describe_stop(reason)
+  push("STOPPED " .. stopped_info)
+
   client:settimeout(0.5)
   local waited = 0.0
   local reported = 0.0

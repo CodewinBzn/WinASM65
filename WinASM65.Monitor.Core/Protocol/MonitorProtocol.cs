@@ -23,6 +23,11 @@ namespace WinASM65.Monitor.Protocol
         public const string ErrPrefix = "ERR";
         public const string PrefixPush = "PUSH";
 
+        // The kinds of unsolicited line, as the first word after PUSH.
+        public const string PushRam = "RAM";
+        public const string PushStopped = "STOPPED";
+        public const string PushResumed = "RESUMED";
+
         // Beyond these, the Lua bridge blocks the emulator. These caps are covered
         // by tests: they are part of the contract, not a mere guard rail.
         public const int MaxReadLength = 4096;
@@ -218,6 +223,69 @@ namespace WinASM65.Monitor.Protocol
                 return false;
 
             changes = result;
+            return true;
+        }
+
+        /// <summary>
+        /// Parses a stop description: <c>reason=breakpoint pc=$C123 prg=$04123</c>.
+        /// The same text follows <c>PUSH STOPPED</c> and <c>OK stopped</c> (the
+        /// answer to STATUS), so a monitor that missed the push reads the same thing.
+        ///
+        /// <c>pc</c> is required. <c>prg=-</c> or a missing <c>prg</c> means the host
+        /// could not say. An unknown reason is kept as <see cref="StopReason.Unknown"/>
+        /// rather than refused: the stop is real even if its cause is new.
+        /// </summary>
+        public static bool TryParseStop(string text, out StopInfo stop)
+        {
+            stop = null;
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+
+            StopReason reason = StopReason.Unknown;
+            int? pc = null;
+            int? prg = null;
+
+            foreach (string token in text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                int equals = token.IndexOf('=');
+                if (equals <= 0)
+                    return false;
+                string key = token.Substring(0, equals).ToLowerInvariant();
+                string value = token.Substring(equals + 1);
+
+                switch (key)
+                {
+                    case "reason":
+                        switch (value.ToLowerInvariant())
+                        {
+                            case "breakpoint": reason = StopReason.Breakpoint; break;
+                            case "step": reason = StopReason.Step; break;
+                            case "pause": reason = StopReason.Pause; break;
+                        }
+                        break;
+                    case "pc":
+                        int address;
+                        if (!TryParseAddress(value, out address))
+                            return false;
+                        pc = address;
+                        break;
+                    case "prg":
+                        if (value == "-")
+                            break;
+                        int offset;
+                        if (!value.StartsWith("$", StringComparison.Ordinal)
+                            || !int.TryParse(value.Substring(1), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out offset)
+                            || offset < 0)
+                            return false;
+                        prg = offset;
+                        break;
+                }
+            }
+
+            if (!pc.HasValue)
+                return false;
+
+            stop = new StopInfo(reason, pc.Value, prg);
             return true;
         }
     }

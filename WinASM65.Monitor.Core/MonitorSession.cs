@@ -359,7 +359,13 @@ namespace WinASM65.Monitor
                     + ", expected read, write or exec");
 
             if (action == "REMOVE")
-                return Ok(MonitorProtocol.ErrPrefix + " the bridge owns its breakpoints; use BREAK CLEAR");
+            {
+                IBreakpointRemoval removal = _backend as IBreakpointRemoval;
+                if (removal == null)
+                    return Ok(MonitorProtocol.ErrPrefix + " this backend cannot remove one breakpoint; use BREAK CLEAR");
+                removal.RemoveBreakpoint(address, kind);
+                return Ok(MonitorProtocol.OkPrefix + " removed " + kind + " $" + address.ToString("X4"));
+            }
 
             _backend.AddBreakpoint(address, kind);
             return Ok(MonitorProtocol.OkPrefix + " " + kind + " $" + address.ToString("X4"));

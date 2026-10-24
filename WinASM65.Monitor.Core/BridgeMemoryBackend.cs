@@ -22,7 +22,7 @@ namespace WinASM65.Monitor
     /// backend that swallowed it would turn "this host has no emu.pause" into a
     /// generic failure, which is the one thing the protocol forbids.
     /// </summary>
-public sealed class BridgeMemoryBackend : IMemoryBackend, ICpuStateSource, IRomInfoSource, IRomTransferTarget, IExecutionAdapter, IReconnectable
+public sealed class BridgeMemoryBackend : IMemoryBackend, ICpuStateSource, IRomInfoSource, IRomTransferTarget, IExecutionAdapter, IReconnectable, IExecutionEvents, IBreakpointRemoval
     {
         private ProtocolClient _client;
         private readonly int _port;
@@ -56,6 +56,12 @@ public sealed class BridgeMemoryBackend : IMemoryBackend, ICpuStateSource, IRomI
         private volatile bool _pollingEnabled = true;
         private volatile bool _pollingStopped;
         private DateTime _lastPushAt = DateTime.MinValue;
+
+        // Run state, as the bridge last reported it through PUSH STOPPED/RESUMED
+        // or STATUS. Written on the receiver thread, read anywhere.
+        private volatile bool _stopped;
+        private volatile StopInfo _lastStop;
+        private bool _reportsExecutionState;
         private const int PollIntervalMs = 250;
         private const int PollBase = 0x0000;
         private const int PollLength = 0x0800;
@@ -152,6 +158,7 @@ public CpuSnapshot ReadCpuState()
             _port = port;
 
             ReadNameAndVersion();
+            ReadExecutionStatus();
 
             // One flat region, because that is what the bridge exposes and what the
             // monitor already speaks: a 64 KiB CPU space addressed by a single
@@ -203,10 +210,31 @@ public CpuSnapshot ReadCpuState()
             if (string.IsNullOrEmpty(payload))
                 return;
 
+            int space = payload.IndexOf(' ');
+            string kind = space < 0 ? payload : payload.Substring(0, space);
+            string rest = space < 0 ? "" : payload.Substring(space + 1);
+
+            if (kind == MonitorProtocol.PushStopped)
+            {
+                StopInfo stop;
+                if (MonitorProtocol.TryParseStop(rest, out stop))
+                    MarkStopped(stop);
+                return;
+            }
+
+            if (kind == MonitorProtocol.PushResumed)
+            {
+                MarkRunning();
+                return;
+            }
+
+            if (kind != MonitorProtocol.PushRam)
+                return;
+
             _lastPushAt = DateTime.UtcNow;
 
             List<(int Address, byte Value)> changes;
-            if (!MonitorProtocol.TryParsePushRam(payload, out changes))
+            if (!MonitorProtocol.TryParsePushRam(rest, out changes))
             {
                 // A malformed push is a protocol violation, not a byte update.
                 // The bridge sent something the monitor cannot apply, so the
@@ -230,6 +258,70 @@ public CpuSnapshot ReadCpuState()
             RamChanged?.Invoke(changes);
         }
 
+        private void MarkStopped(StopInfo stop)
+        {
+            _lastStop = stop;
+            _stopped = true;
+            Stopped?.Invoke(stop);
+        }
+
+        private void MarkRunning()
+        {
+            bool was = _stopped;
+            _stopped = false;
+            _lastStop = null;
+            if (was)
+                Resumed?.Invoke();
+        }
+
+        /// <summary>
+        /// Asks the bridge whether the machine is stopped. A bridge older than run
+        /// state answers ERR, and the backend then reports no execution state
+        /// rather than claiming a machine that always runs.
+        /// </summary>
+        private void ReadExecutionStatus()
+        {
+            string response = _client.Send("STATUS");
+            if (!ProtocolClient.IsOk(response))
+            {
+                _reportsExecutionState = false;
+                return;
+            }
+
+            _reportsExecutionState = true;
+            string payload = ProtocolClient.PayloadOf(response);
+            StopInfo stop;
+            if (payload.StartsWith("stopped", StringComparison.OrdinalIgnoreCase)
+                && MonitorProtocol.TryParseStop(payload.Substring("stopped".Length), out stop))
+            {
+                _lastStop = stop;
+                _stopped = true;
+            }
+            else
+            {
+                _lastStop = null;
+                _stopped = false;
+            }
+        }
+
+        public bool ReportsExecutionState
+        {
+            get { return _reportsExecutionState; }
+        }
+
+        public bool IsStopped
+        {
+            get { return _stopped; }
+        }
+
+        public StopInfo LastStop
+        {
+            get { return _lastStop; }
+        }
+
+        public event Action<StopInfo> Stopped;
+        public event Action Resumed;
+
         /// <summary>
         /// The polling loop, running on a background thread. It reads RAM at
         /// <see cref="PollIntervalMs"/> intervals and fires <see cref="RamChanged"/>
@@ -244,6 +336,13 @@ public CpuSnapshot ReadCpuState()
             {
                 try
                 {
+                    // A stopped machine writes nothing, so there is nothing to poll.
+                    if (_stopped)
+                    {
+                        Thread.Sleep(PollIntervalMs);
+                        continue;
+                    }
+
                     // Pause after a push so the poll does not fight it.
                     if ((DateTime.UtcNow - _lastPushAt).TotalMilliseconds < PushGraceMs)
                     {
@@ -302,9 +401,13 @@ public CpuSnapshot ReadCpuState()
         public string EmulatorName { get; private set; }
         public string EmulatorVersion { get; private set; }
 
+        /// <summary>
+        /// False only when the bridge said the machine stopped. A bridge that does
+        /// not report run state is assumed to be running, as before.
+        /// </summary>
         public bool IsRunning
         {
-            get { return true; }
+            get { return !_stopped; }
         }
 
         /// <summary>
@@ -472,6 +575,15 @@ public CpuSnapshot ReadCpuState()
             Expect(_client.Send("BREAK SET " + kind + " $" + address.ToString("X4")), "BREAK SET");
         }
 
+        public void RemoveBreakpoint(int address, string kind)
+        {
+            if (string.IsNullOrEmpty(kind))
+                throw new MonitorException("a breakpoint needs a kind: read, write or exec");
+            CheckRange(address, 1);
+
+            Expect(_client.Send("BREAK REMOVE " + kind + " $" + address.ToString("X4")), "BREAK REMOVE");
+        }
+
         public void ClearBreakpoints()
         {
             Expect(_client.Send("BREAK CLEAR"), "BREAK CLEAR");
@@ -574,9 +686,14 @@ public CpuSnapshot ReadCpuState()
                     Thread.Sleep(250);
                 }
             }
+            // A new client has its own receiver: without this the pushes of the
+            // new connection would reach nobody.
+            _client.PushReceived += OnPushReceived;
+
             EmulatorName = null;
             EmulatorVersion = null;
             ReadNameAndVersion();
+            ReadExecutionStatus();
         }
 
         private void ReadNameAndVersion()
