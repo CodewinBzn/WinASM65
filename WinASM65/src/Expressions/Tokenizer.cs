@@ -14,7 +14,9 @@ namespace WinASM65.Expressions
 
     public class Tokenizer : ITokenizer
     {
-        public const string LabelPattern = @"[a-zA-Z_][a-zA-Z_0-9]*";
+        // A name, a local "@name", or a local already qualified by its scope
+        // ("Main@loop"), which is how a local is stored for a later pass.
+        public const string LabelPattern = @"@?[a-zA-Z_][a-zA-Z_0-9]*(?:@[a-zA-Z_][a-zA-Z_0-9]*)?";
 
         private const string DecPattern = @"[0-9]+";
         private const string BinPattern = @"[01]+";

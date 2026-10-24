@@ -156,6 +156,14 @@ namespace WinASM65.Directives
         /// is the one already rewritten for the current line ('*' replaced).
         /// </summary>
         void DeferAssertion(string expression, string message);
+
+        /// <summary>
+        /// Opens one expansion of a macro or one iteration of a .rep block: the local
+        /// labels ("@name") defined inside it belong to it alone.
+        /// </summary>
+        void BeginExpansion();
+
+        void EndExpansion();
     }
 
     public interface IDirectiveHandler

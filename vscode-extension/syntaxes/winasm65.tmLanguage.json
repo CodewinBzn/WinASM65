@@ -93,6 +93,15 @@
               "name": "variable.other.constant.winasm65"
             }
           }
+        },
+        {
+          "comment": "Anonymous labels: a line starting with a run of - or +.",
+          "match": "^\\s*(-+|\\++)(?=\\s|$)",
+          "captures": {
+            "1": {
+              "name": "entity.name.function.label.anonymous.winasm65"
+            }
+          }
         }
       ]
     },
