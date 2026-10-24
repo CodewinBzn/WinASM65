@@ -1,0 +1,228 @@
+{
+  "name": "winasm65",
+  "displayName": "WinASM65",
+  "description": "6502 assembly for WinASM65 projects: build, debug on Mesen2 with source breakpoints, live diagnostics.",
+  "version": "0.1.0",
+  "publisher": "codewinbzn",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CodewinBzn/WinASM65"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Debuggers"
+  ],
+  "keywords": [
+    "6502",
+    "nes",
+    "assembly",
+    "mesen",
+    "retro"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onDebugResolve:winasm65",
+    "onDebugDynamicConfigurations:winasm65",
+    "workspaceContains:**/config.json",
+    "onCommand:workbench.action.tasks.runTask"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "winasm65",
+        "aliases": [
+          "6502 Assembly (WinASM65)",
+          "winasm65"
+        ],
+        "extensions": [
+          ".nas",
+          ".asm"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "breakpoints": [
+      {
+        "language": "winasm65"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "winasm65",
+        "label": "WinASM65 (Mesen2)",
+        "languages": [
+          "winasm65"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "type": "string",
+                "description": "The project's config.json.",
+                "default": "${workspaceFolder}/config.json"
+              },
+              "emulatorPath": {
+                "type": "string",
+                "description": "Mesen.exe. Defaults to the winasm65.emulatorPath setting, then to Emulator.Path in config.json."
+              },
+              "emulator": {
+                "type": "string",
+                "enum": [
+                  "mesen2",
+                  "mesence"
+                ],
+                "description": "Which bridge to load. Only Mesen2 can pause, step and stop on breakpoints.",
+                "default": "mesen2"
+              },
+              "rom": {
+                "type": "string",
+                "description": "The image to run. Defaults to the build's Output.ObjectFile."
+              },
+              "port": {
+                "type": "number",
+                "description": "Bridge port; 0 picks a free one.",
+                "default": 0
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "Stop at the reset vector.",
+                "default": false
+              },
+              "connectTimeoutMs": {
+                "type": "number",
+                "description": "How long to wait for the bridge to answer.",
+                "default": 15000
+              }
+            }
+          },
+          "attach": {
+            "properties": {
+              "port": {
+                "type": "number",
+                "description": "Port of a bridge already running in Mesen2.",
+                "default": 45678
+              },
+              "config": {
+                "type": "string",
+                "description": "The project's config.json, for source breakpoints. Optional.",
+                "default": "${workspaceFolder}/config.json"
+              },
+              "stopOnAttach": {
+                "type": "boolean",
+                "default": false
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "winasm65",
+            "request": "launch",
+            "name": "Debug on Mesen2",
+            "config": "${workspaceFolder}/config.json"
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "WinASM65: Debug on Mesen2",
+            "description": "Build the project, start Mesen2 and debug.",
+            "body": {
+              "type": "winasm65",
+              "request": "launch",
+              "name": "Debug on Mesen2",
+              "config": "^\"\\${workspaceFolder}/config.json\""
+            }
+          },
+          {
+            "label": "WinASM65: Attach to Mesen2",
+            "description": "Attach to a Mesen2 already running the bridge.",
+            "body": {
+              "type": "winasm65",
+              "request": "attach",
+              "name": "Attach to Mesen2",
+              "port": 45678,
+              "config": "^\"\\${workspaceFolder}/config.json\""
+            }
+          }
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "WinASM65",
+      "properties": {
+        "winasm65.toolingPath": {
+          "type": "string",
+          "default": "",
+          "description": "WinASM65.Tooling executable (or .dll, run with dotnet). Empty: the copy shipped with the extension."
+        },
+        "winasm65.emulatorPath": {
+          "type": "string",
+          "default": "",
+          "description": "Mesen.exe, used when neither launch.json nor config.json names one."
+        }
+      }
+    },
+    "grammars": [
+      {
+        "language": "winasm65",
+        "scopeName": "source.winasm65",
+        "path": "./syntaxes/winasm65.tmLanguage.json"
+      }
+    ],
+    "taskDefinitions": [
+      {
+        "type": "winasm65",
+        "required": [
+          "config"
+        ],
+        "properties": {
+          "config": {
+            "type": "string",
+            "description": "The project's config.json."
+          }
+        }
+      }
+    ],
+    "problemPatterns": [
+      {
+        "name": "winasm65",
+        "regexp": "^(.+?)(?::(\\d+))?: (error|warning): (.*)$",
+        "file": 1,
+        "line": 2,
+        "severity": 3,
+        "message": 4
+      }
+    ],
+    "problemMatchers": [
+      {
+        "name": "winasm65",
+        "owner": "winasm65",
+        "source": "winasm65",
+        "fileLocation": [
+          "autoDetect",
+          "${workspaceFolder}"
+        ],
+        "pattern": "$winasm65"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.24.0",
+    "typescript": "^5.4.0"
+  }
+}
