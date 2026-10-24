@@ -153,17 +153,19 @@ class BuildTaskProvider implements vscode.TaskProvider {
   }
 }
 
-export function activate(context: vscode.ExtensionContext): void {
+export function activate(context: vscode.ExtensionContext): { listing: ListingColumn } {
+  const log = vscode.window.createOutputChannel('WinASM65', { log: true });
+  context.subscriptions.push(log);
+  log.info('WinASM65 ' + String(context.extension.packageJSON.version) + ' activated');
   context.subscriptions.push(
     vscode.debug.registerDebugAdapterDescriptorFactory(DEBUG_TYPE, new AdapterFactory(context)),
     vscode.debug.registerDebugConfigurationProvider(DEBUG_TYPE, new ConfigurationProvider()),
     vscode.tasks.registerTaskProvider(DEBUG_TYPE, new BuildTaskProvider(context))
   );
   startLanguageServer(context);
-  context.subscriptions.push(
-    new ListingColumn(context, () => clientReady),
-    new RamPanel(context)
-  );
+  const listing = new ListingColumn(context, () => clientReady, log);
+  context.subscriptions.push(listing, new RamPanel(context));
+  return { listing };
 }
 
 /** Diagnostics as you type and hover, from WinASM65.Tooling --lsp. */

@@ -2,7 +2,7 @@
   "name": "winasm65",
   "displayName": "WinASM65",
   "description": "6502 assembly for WinASM65 projects: build, debug on Mesen2 with source breakpoints, live diagnostics.",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "publisher": "codewinbzn",
   "license": "Zlib",
   "repository": {
@@ -295,6 +295,18 @@
           "when": "editorLangId == winasm65 && winasm65.listingVisible",
           "group": "navigation"
         }
+      ],
+      "explorer/context": [
+        {
+          "command": "winasm65.showListing",
+          "when": "resourceLangId == winasm65 && !winasm65.listingVisible",
+          "group": "navigation@90"
+        },
+        {
+          "command": "winasm65.hideListing",
+          "when": "resourceLangId == winasm65 && winasm65.listingVisible",
+          "group": "navigation@90"
+        }
       ]
     }
   },
@@ -304,11 +316,13 @@
     "vscode:prepublish": "npm run compile",
     "package": "npm run tooling && npm run license && vsce package --target win32-x64",
     "tooling": "dotnet publish ../WinASM65.Tooling/WinASM65.Tooling.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=none -maxcpucount:1 -o bin",
-    "license": "node -e \"require('fs').copyFileSync('../LICENSE.txt', 'LICENSE.txt')\""
+    "license": "node -e \"require('fs').copyFileSync('../LICENSE.txt', 'LICENSE.txt')\"",
+    "test": "tsc -p ./ && node out/test/runTest.js"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^2.4.1",
     "@vscode/vsce": "^2.24.0",
     "typescript": "^5.4.0"
   },

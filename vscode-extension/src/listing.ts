@@ -33,12 +33,26 @@ export class ListingColumn implements vscode.Disposable {
   private readonly timers = new Map<string, NodeJS.Timeout>();
   private visible: boolean;
 
-  constructor(private readonly context: vscode.ExtensionContext, private readonly client: () => Promise<LanguageClient | undefined>) {
+  /** Rows drawn per document, kept so a test (or a bug report) can see what was drawn. */
+  readonly drawn = new Map<string, number>();
+
+  constructor(
+    private readonly context: vscode.ExtensionContext,
+    private readonly client: () => Promise<LanguageClient | undefined>,
+    private readonly log: vscode.LogOutputChannel
+  ) {
     this.visible = context.workspaceState.get<boolean>(STATE_KEY, false);
     void vscode.commands.executeCommand('setContext', CONTEXT_KEY, this.visible);
 
     this.subscriptions.push(
-      vscode.commands.registerCommand('winasm65.showListing', () => this.setVisible(true)),
+      // From the Explorer the command receives the file: it is opened first, so
+      // the column appears where the user is about to look.
+      vscode.commands.registerCommand('winasm65.showListing', async (uri?: vscode.Uri) => {
+        if (uri instanceof vscode.Uri) {
+          await vscode.window.showTextDocument(uri, { preview: false });
+        }
+        await this.setVisible(true);
+      }),
       vscode.commands.registerCommand('winasm65.hideListing', () => this.setVisible(false)),
       vscode.window.onDidChangeVisibleTextEditors(editors => editors.forEach(e => this.schedule(e.document, 0))),
       vscode.workspace.onDidChangeTextDocument(e => this.schedule(e.document, 300)),
@@ -52,6 +66,7 @@ export class ListingColumn implements vscode.Disposable {
   }
 
   private async setVisible(visible: boolean): Promise<void> {
+    this.log.info('listing ' + (visible ? 'shown' : 'hidden'));
     this.visible = visible;
     await this.context.workspaceState.update(STATE_KEY, visible);
     await vscode.commands.executeCommand('setContext', CONTEXT_KEY, visible);
@@ -81,7 +96,11 @@ export class ListingColumn implements vscode.Disposable {
 
   private async refresh(document: vscode.TextDocument): Promise<void> {
     const client = await this.client();
-    if (!client || !this.visible) {
+    if (!client) {
+      this.log.warn('listing: no language server, so no listing for ' + document.uri.fsPath);
+      return;
+    }
+    if (!this.visible) {
       return;
     }
     let rows: ListingRow[];
@@ -90,7 +109,8 @@ export class ListingColumn implements vscode.Disposable {
         textDocument: { uri: client.code2ProtocolConverter.asUri(document.uri) }
       });
       rows = reply.rows;
-    } catch {
+    } catch (error) {
+      this.log.error('listing of ' + document.uri.fsPath + ' failed: ' + (error instanceof Error ? error.message : String(error)));
       return;
     }
 
@@ -111,11 +131,15 @@ export class ListingColumn implements vscode.Disposable {
       });
     }
 
+    let editors = 0;
     for (const editor of vscode.window.visibleTextEditors) {
       if (editor.document === document && this.visible) {
         editor.setDecorations(this.decoration, decorations);
+        editors++;
       }
     }
+    this.drawn.set(document.uri.toString(), rows.length);
+    this.log.info('listing: ' + rows.length + ' row(s) for ' + document.uri.fsPath + ' in ' + editors + ' editor(s)');
   }
 
   dispose(): void {
