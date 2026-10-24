@@ -110,22 +110,10 @@ namespace WinASM65.Cpu
                 return cached;
 
             List<InstructionDocumentation> docs = new List<InstructionDocumentation>();
-            List<string> mnemonics = new List<string>(cpu.InstructionTable.Keys);
-            mnemonics.Sort(StringComparer.OrdinalIgnoreCase);
-
-            foreach (string mnemonic in mnemonics)
+            foreach (OpcodeEntry entry in cpu.Opcodes)
             {
-                byte[] row = cpu.InstructionTable[mnemonic];
-                for (int index = 0; index < row.Length; index++)
-                {
-                    byte opcode = row[index];
-                    if (opcode == 0xFF)
-                        continue;
-
-                    AddressingMode mode = (AddressingMode)index;
-                    docs.Add(new InstructionDocumentation(mnemonic.ToUpperInvariant(), mode, opcode,
-                        Disassembler.ModeLength(mode), SyntaxFor(mode)));
-                }
+                docs.Add(new InstructionDocumentation(entry.Mnemonic.ToUpperInvariant(), entry.Mode, entry.Opcode,
+                    Disassembler.ModeLength(entry.Mode), SyntaxFor(entry.Mode)));
             }
 
             Cache.Add(cpu, docs);

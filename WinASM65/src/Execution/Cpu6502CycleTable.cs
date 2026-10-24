@@ -69,14 +69,6 @@ namespace WinASM65.Execution
             2, 5, 0, 0, 0, 4, 6, 0, 2, 4, 0, 0, 0, 4, 7, 0
         };
 
-        static Cpu6502CycleTable()
-        {
-            // JSR (abs,X) and JSR (zp),Y. Unimplemented on a stock NMOS part,
-            // implemented here, and a call costs what a call costs.
-            BaseCycles[0xFC] = 6;
-            BaseCycles[0xFF] = 6;
-        }
-
         /// <summary>The base cost of an opcode, zero when the core does not implement it.</summary>
         public static int Base(byte opcode)
         {

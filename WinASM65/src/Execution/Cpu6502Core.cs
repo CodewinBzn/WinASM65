@@ -615,27 +615,6 @@ namespace WinASM65.Execution
                     return;
                 }
                 case 0x60: PC = (ushort)(Pull16() + 1); return;
-                case 0xFF:
-                {
-                    // JSR (zp),Y is the one call whose target the stub cannot
-                    // know when it is written, so it is the one the test CPU
-                    // needed. Two byte operand: opcode $FF is the zero page
-                    // form, and $FC below is the absolute one. Both push the
-                    // address of their own last byte, which is what RTS adds
-                    // one to.
-                    ushort pointer = Read(PC++);
-                    Push16((ushort)(PC - 1));
-                    PC = (ushort)(Peek16(pointer) + Y);
-                    return;
-                }
-                case 0xFC:
-                {
-                    ushort base_ = Next16();
-                    Push16((ushort)(PC - 1));
-                    ushort at = (ushort)(base_ + X);
-                    PC = (ushort)(Read(at) | (Read((ushort)(at + 1)) << 8));
-                    return;
-                }
                 case 0x40:
                 {
                     SetFlags(Pull());
