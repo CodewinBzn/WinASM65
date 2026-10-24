@@ -567,8 +567,8 @@ npm run package
 #  1. dotnet publish WinASM65.Tooling -r win-x64 --self-contained -p:PublishSingleFile=true -o bin
 #     (bin/WinASM65.Tooling.exe + bin/Bridge/*.lua)
 #  2. copie de LICENSE.txt (zlib)
-#  3. vsce package --target win32-x64  →  winasm65-win32-x64-0.2.4.vsix (≈ 30 Mo)
-code --install-extension winasm65-win32-x64-0.2.4.vsix</code></pre>
+#  3. vsce package --target win32-x64  →  winasm65-win32-x64-0.3.0.vsix (≈ 30 Mo)
+code --install-extension winasm65-win32-x64-0.3.0.vsix</code></pre>
     <p>Pour développer sans paquet, ouvrez <code>vscode-extension/</code> dans VS Code et appuyez sur F5. La configuration « Run the extension » compile le TypeScript et <code>WinASM65.Tooling</code>, puis ouvre l'exemple Bomberman dans une fenêtre de développement.</p>
     <p>La publication est sérialisée (<code>-maxcpucount:1</code>) : WinASM65 est référencé à la fois par Tooling et par Monitor.Core, et deux compilations parallèles se disputaient la même DLL.</p>
 
