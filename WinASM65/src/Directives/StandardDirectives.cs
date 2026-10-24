@@ -230,7 +230,7 @@ namespace WinASM65.Directives
             string[] paramList;
             if (!string.IsNullOrEmpty(paramsPart))
             {
-                paramList = Regex.Replace(paramsPart, @"\s+", "").Split(',');
+                paramList = SourceText.SplitArguments(paramsPart).ToArray();
             }
             else
             {
@@ -359,7 +359,61 @@ namespace WinASM65.Directives
                 context.Diagnostics.ReportError(context.CurrentLocation, ErrorCodes.NO_CONDITIONAL_ASSEMBLY);
                 return;
             }
-            cAsm.FlipTop();
+            if (!cAsm.Else())
+                context.Diagnostics.ReportError(context.CurrentLocation, ErrorCodes.ELSE_AFTER_ELSE);
+        }
+    }
+
+    /// <summary>
+    /// <c>.elseif expr</c>: the next branch of an .if chain. Its condition is read only
+    /// when no earlier branch was taken and the code around it is assembled.
+    /// </summary>
+    public class ElseIfDirectiveHandler : IDirectiveHandler
+    {
+        public string Name { get { return ".elseif"; } }
+
+        public void Execute(string argument, IAssemblyContext context)
+        {
+            ConditionalState cAsm = context.ConditionState;
+            if (!cAsm.IsActive)
+            {
+                context.Diagnostics.ReportError(context.CurrentLocation, ErrorCodes.NO_CONDITIONAL_ASSEMBLY);
+                return;
+            }
+
+            bool condition = false;
+            if (cAsm.ElseIfNeedsCondition)
+            {
+                ExpressionResult res = context.ResolveExpression(argument != null ? argument.Trim() : string.Empty, AddressingMode.None, true);
+                if (!res.IsResolved)
+                    context.Diagnostics.ReportError(context.CurrentLocation, ErrorCodes.UNDEFINED_SYMBOL);
+                else
+                    condition = res.Value.ToBoolean();
+            }
+
+            if (!cAsm.ElseIf(condition))
+                context.Diagnostics.ReportError(context.CurrentLocation, ErrorCodes.ELSE_AFTER_ELSE);
+        }
+    }
+
+    /// <summary>
+    /// <c>.equ</c> and <c>.set</c> on their own: they only make sense after a name
+    /// (<c>NAME .equ value</c>), a form the line dispatcher handles before any directive.
+    /// </summary>
+    public class NamedValueDirectiveHandler : IDirectiveHandler
+    {
+        private readonly string _name;
+
+        public NamedValueDirectiveHandler(string name)
+        {
+            _name = name;
+        }
+
+        public string Name { get { return _name; } }
+
+        public void Execute(string argument, IAssemblyContext context)
+        {
+            context.Diagnostics.ReportError(context.CurrentLocation, string.Format(ErrorCodes.EQU_WITHOUT_NAME, _name));
         }
     }
 

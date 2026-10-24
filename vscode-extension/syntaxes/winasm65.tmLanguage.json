@@ -3,17 +3,45 @@
   "name": "WinASM65",
   "scopeName": "source.winasm65",
   "patterns": [
-    { "include": "#comment" },
-    { "include": "#string" },
-    { "include": "#char" },
-    { "include": "#label-definition" },
-    { "include": "#directive" },
-    { "include": "#mnemonic" },
-    { "include": "#number" },
-    { "include": "#register" },
-    { "include": "#operator" },
-    { "include": "#scope" },
-    { "include": "#identifier" }
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#string"
+    },
+    {
+      "include": "#char"
+    },
+    {
+      "include": "#label-definition"
+    },
+    {
+      "include": "#directive"
+    },
+    {
+      "include": "#equ"
+    },
+    {
+      "include": "#pc"
+    },
+    {
+      "include": "#mnemonic"
+    },
+    {
+      "include": "#number"
+    },
+    {
+      "include": "#register"
+    },
+    {
+      "include": "#operator"
+    },
+    {
+      "include": "#scope"
+    },
+    {
+      "include": "#identifier"
+    }
   ],
   "repository": {
     "comment": {
@@ -25,7 +53,10 @@
       "begin": "\"",
       "end": "\"|$",
       "patterns": [
-        { "name": "constant.character.escape.winasm65", "match": "\\\\." }
+        {
+          "name": "constant.character.escape.winasm65",
+          "match": "\\\\."
+        }
       ]
     },
     "char": {
@@ -38,28 +69,36 @@
         {
           "match": "^\\s*([@.]?[A-Za-z_][A-Za-z0-9_.]*)\\s*(:)",
           "captures": {
-            "1": { "name": "entity.name.function.label.winasm65" },
-            "2": { "name": "punctuation.separator.label.winasm65" }
+            "1": {
+              "name": "entity.name.function.label.winasm65"
+            },
+            "2": {
+              "name": "punctuation.separator.label.winasm65"
+            }
           }
         },
         {
           "match": "^([A-Za-z_][A-Za-z0-9_]*)(?=\\s+(?i:adc|alr|anc|and|arr|asl|axs|bbr0|bbr1|bbr2|bbr3|bbr4|bbr5|bbr6|bbr7|bbs0|bbs1|bbs2|bbs3|bbs4|bbs5|bbs6|bbs7|bcc|bcs|beq|bit|bmi|bne|bpl|bra|brk|bvc|bvs|clc|cld|cli|clv|cmp|cpx|cpy|dcp|dec|dex|dey|eor|inc|inx|iny|isc|jam|jmp|jsr|las|lax|lda|ldx|ldy|lsr|nop|ora|pha|php|phx|phy|pla|plp|plx|ply|rla|rmb0|rmb1|rmb2|rmb3|rmb4|rmb5|rmb6|rmb7|rol|ror|rra|rti|rts|sax|sbc|sec|sed|sei|slo|smb0|smb1|smb2|smb3|smb4|smb5|smb6|smb7|sre|sta|stp|stx|sty|stz|tax|tay|trb|tsb|tsx|txa|txs|tya|wai)\\b)",
           "captures": {
-            "1": { "name": "entity.name.function.label.winasm65" }
+            "1": {
+              "name": "entity.name.function.label.winasm65"
+            }
           }
         },
         {
           "comment": "NAME .res n, NAME = value",
           "match": "^\\s*([A-Za-z_][A-Za-z0-9_]*)(?=\\s*(?:=|\\.(?i:res)\\b))",
           "captures": {
-            "1": { "name": "variable.other.constant.winasm65" }
+            "1": {
+              "name": "variable.other.constant.winasm65"
+            }
           }
         }
       ]
     },
     "directive": {
       "name": "keyword.control.directive.winasm65",
-      "match": "(?i)(?<![A-Za-z0-9_])\\.(byte|else|end|endif|endmacro|endrep|export|if|ifdef|ifndef|import|incbin|include|macro|memarea|org|rep|res|word)\\b"
+      "match": "(?i)(?<![A-Za-z0-9_])\\.(addr|byt|byte|db|dw|else|elseif|end|endif|endm|endmacro|endr|endrep|equ|export|if|ifdef|ifndef|import|incbin|include|macro|memarea|org|rep|rept|res|set|word)\\b"
     },
     "mnemonic": {
       "name": "keyword.other.mnemonic.winasm65",
@@ -67,9 +106,18 @@
     },
     "number": {
       "patterns": [
-        { "name": "constant.numeric.hex.winasm65", "match": "\\$[0-9A-Fa-f]+\\b" },
-        { "name": "constant.numeric.binary.winasm65", "match": "%[01]+\\b" },
-        { "name": "constant.numeric.decimal.winasm65", "match": "(?<![A-Za-z_$%])\\b\\d+\\b" }
+        {
+          "name": "constant.numeric.hex.winasm65",
+          "match": "\\$[0-9A-Fa-f]+\\b"
+        },
+        {
+          "name": "constant.numeric.binary.winasm65",
+          "match": "%[01]+\\b"
+        },
+        {
+          "name": "constant.numeric.decimal.winasm65",
+          "match": "(?<![A-Za-z_$%])\\b\\d+\\b"
+        }
       ]
     },
     "register": {
@@ -78,8 +126,14 @@
     },
     "operator": {
       "patterns": [
-        { "name": "keyword.operator.immediate.winasm65", "match": "#" },
-        { "name": "keyword.operator.winasm65", "match": "<<|>>|<=|>=|==|!=|<>|&&|\\|\\||[-+*/%~!<>=&^|]" }
+        {
+          "name": "keyword.operator.immediate.winasm65",
+          "match": "#"
+        },
+        {
+          "name": "keyword.operator.winasm65",
+          "match": "<<|>>|<=|>=|==|!=|<>|&&|\\|\\||[-+*/%~!<>=&^|]"
+        }
       ]
     },
     "scope": {
@@ -89,6 +143,14 @@
     "identifier": {
       "name": "variable.other.winasm65",
       "match": "[@.]?[A-Za-z_][A-Za-z0-9_.]*"
+    },
+    "equ": {
+      "name": "keyword.control.directive.winasm65",
+      "match": "(?i)(?<=\\s)equ(?=\\s)"
+    },
+    "pc": {
+      "name": "variable.language.pc.winasm65",
+      "match": "(?<=[#(,\\s+\\-])\\*(?=\\s*($|[+\\-),;]))|^\\s*\\*(?=\\s*=)"
     }
   }
 }

@@ -243,6 +243,18 @@ namespace WinASM65.Core
             dispatcher.Register(new EndIfDirectiveHandler());
             dispatcher.Register(new RepDirectiveHandler());
             dispatcher.Register(new EndRepDirectiveHandler());
+            dispatcher.Register(new ElseIfDirectiveHandler());
+            dispatcher.Register(new NamedValueDirectiveHandler(".equ"));
+            dispatcher.Register(new NamedValueDirectiveHandler(".set"));
+
+            // The spellings other assemblers use for the same directives.
+            dispatcher.RegisterAlias(".db", ".byte");
+            dispatcher.RegisterAlias(".byt", ".byte");
+            dispatcher.RegisterAlias(".dw", ".word");
+            dispatcher.RegisterAlias(".addr", ".word");
+            dispatcher.RegisterAlias(".endm", ".endmacro");
+            dispatcher.RegisterAlias(".rept", ".rep");
+            dispatcher.RegisterAlias(".endr", ".endrep");
             dispatcher.Register(new EndDirectiveHandler());
             dispatcher.Register(new ExportDirectiveHandler());
             dispatcher.Register(new ImportDirectiveHandler());
@@ -807,7 +819,7 @@ namespace WinASM65.Core
                     }
 
                     if (_currentMacroBeingDefined != null &&
-                        !trimmed.Equals(".endmacro", StringComparison.OrdinalIgnoreCase) &&
+                        !IsEndMacro(trimmed) &&
                         !trimmed.StartsWith(".macro", StringComparison.OrdinalIgnoreCase))
                     {
                         _currentMacroBeingDefined.Lines.Add(trimmed);
@@ -824,8 +836,36 @@ namespace WinASM65.Core
             }
         }
 
+        private static readonly Regex EndMacroRegex = new Regex(@"^\.(endmacro|endm)\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex EndRepRegex = new Regex(@"^\.(endrep|endr)\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex ConditionalDirectiveRegex = new Regex(@"^\.(if|ifdef|ifndef|elseif|else|endif)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        // NAME = value is redefinable (a counter in a .rep block needs that); NAME .set
+        // value is the same thing. NAME EQU value and NAME .equ value are constants: a
+        // second definition with another value is an error.
+        private static readonly Regex EquRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s*:?\s+\.?(?i:equ)\s+(?<value>.+)$", RegexOptions.Compiled);
+        private static readonly Regex SetRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s+(?i:\.set)\s+(?<value>.+)$", RegexOptions.Compiled);
+
+        // *= expr sets the program counter, as .org does.
+        private static readonly Regex OrgStarRegex = new Regex(@"^\s*\*\s*=\s*(?<value>.+)$", RegexOptions.Compiled);
+
+        private static bool IsEndMacro(string line)
+        {
+            return EndMacroRegex.IsMatch(line);
+        }
+
+        private static bool IsEndRep(string line)
+        {
+            return EndRepRegex.IsMatch(line);
+        }
+
+        // The address of the line being assembled: what '*' means in an expression.
+        private ushort _lineStartAddress;
+
         public void ParseLine(string line, string originalLine)
         {
+            _lineStartAddress = _emitter.CurrentAddress;
+
             // Conditional assembly filtering
             if (_conditionState.IsActive &&
                 !_conditionState.ShouldAssembleCurrentLine() &&
@@ -837,7 +877,7 @@ namespace WinASM65.Core
 
             // Repeat block buffering
             if (_repeatState.IsInRepeatBlock &&
-                !line.Equals(".endrep", StringComparison.OrdinalIgnoreCase) &&
+                !IsEndRep(line) &&
                 !line.StartsWith(".rep", StringComparison.OrdinalIgnoreCase))
             {
                 _repeatState.Lines.Add(line);
@@ -857,6 +897,18 @@ namespace WinASM65.Core
                 string err;
                 if (!_scopeManager.ExitLocalScope(out err))
                     _diagnostics.ReportError(CurrentLocation, err);
+            }
+            else if (OrgStarRegex.IsMatch(line))
+            {
+                DispatchDirective(".org", OrgStarRegex.Match(line).Groups["value"].Value);
+            }
+            else if (EquRegex.IsMatch(line))
+            {
+                HandleConstant(EquRegex.Match(line), true);
+            }
+            else if (SetRegex.IsMatch(line))
+            {
+                HandleConstant(SetRegex.Match(line), false);
             }
             else if (MemReserveRegex.IsMatch(line))
             {
@@ -882,7 +934,7 @@ namespace WinASM65.Core
             }
             else if (ConstantRegex.IsMatch(line))
             {
-                HandleConstant(ConstantRegex.Match(line));
+                HandleConstant(ConstantRegex.Match(line), false);
             }
             else if (InstructionRegex.IsMatch(line))
             {
@@ -913,11 +965,7 @@ namespace WinASM65.Core
 
         private static bool IsConditionalDirective(string line)
         {
-            return line.Equals(".endif", StringComparison.OrdinalIgnoreCase) ||
-                   line.Equals(".else", StringComparison.OrdinalIgnoreCase) ||
-                   line.StartsWith(".if ", StringComparison.OrdinalIgnoreCase) ||
-                   line.StartsWith(".ifdef ", StringComparison.OrdinalIgnoreCase) ||
-                   line.StartsWith(".ifndef ", StringComparison.OrdinalIgnoreCase);
+            return ConditionalDirectiveRegex.IsMatch(line);
         }
 
         public ExpressionResult ResolveExpression(string expr, AddressingMode addrMode = AddressingMode.None, bool isLogical = false)
@@ -925,7 +973,7 @@ namespace WinASM65.Core
             // The role comes from the decoded addressing mode, never from the value:
             // it is the addressing mode that says whether the byte about to be emitted
             // holds a data value, an address, or a branch displacement.
-            ExpressionResult result = _evaluator.Evaluate(expr, _scopeManager, CurrentLocation);
+            ExpressionResult result = _evaluator.Evaluate(ExpandProgramCounter(expr), _scopeManager, CurrentLocation);
 
             // The single place an expression that cannot be evaluated is reported, at
             // the line it was written on. The result carries the value 0, so the caller
@@ -934,6 +982,50 @@ namespace WinASM65.Core
                 _diagnostics.ReportError(CurrentLocation, result.Error);
 
             return result.WithRole(RoleFor(addrMode, isLogical));
+        }
+
+        /// <summary>
+        /// Replaces '*' in operand position with the address of the line, so that
+        /// "jmp *" and ".word *+2" read the program counter while "2*3" multiplies.
+        /// The expression is rewritten before it is stored for a later pass, so a
+        /// pending expression keeps the address of the line it was written on.
+        /// </summary>
+        private string ExpandProgramCounter(string expr)
+        {
+            if (string.IsNullOrEmpty(expr) || expr.IndexOf('*') < 0)
+                return expr;
+
+            IReadOnlyList<Token> tokens = _tokenizer.Tokenize(expr);
+            System.Text.StringBuilder text = new System.Text.StringBuilder(expr);
+            string pc = "$" + _lineStartAddress.ToString("X4", CultureInfo.InvariantCulture);
+            for (int i = tokens.Count - 1; i >= 0; i--)
+            {
+                if (tokens[i].Type != TokenType.Multiply)
+                    continue;
+                bool operandPosition = i == 0 || !EndsOperand(tokens[i - 1].Type);
+                if (!operandPosition)
+                    continue;
+                text.Remove(tokens[i].Index, tokens[i].Length).Insert(tokens[i].Index, pc);
+            }
+            return text.ToString();
+        }
+
+        private static bool EndsOperand(TokenType type)
+        {
+            switch (type)
+            {
+                case TokenType.DecimalNumber:
+                case TokenType.HexNumber:
+                case TokenType.BinaryNumber:
+                case TokenType.CharacterConstant:
+                case TokenType.Identifier:
+                case TokenType.CloseParenthesis:
+                case TokenType.True:
+                case TokenType.False:
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         /// <summary>
@@ -975,7 +1067,7 @@ namespace WinASM65.Core
             }
         }
 
-        private void HandleConstant(Match match)
+        private void HandleConstant(Match match, bool strict)
         {
             string label = match.Groups["label"].Value;
             string valueExpr = match.Groups["value"].Value;
@@ -983,6 +1075,14 @@ namespace WinASM65.Core
             ExpressionResult res = ResolveExpression(valueExpr);
             if (res.IsResolved)
             {
+                Value existing;
+                if (strict && _scopeManager.TryResolveSymbol(label, out existing)
+                    && existing.AsInteger != res.Value.AsInteger)
+                {
+                    _diagnostics.ReportError(CurrentLocation, string.Format(ErrorCodes.CONSTANT_REDEFINED, label));
+                    return;
+                }
+
                 string err;
                 _scopeManager.AddSymbol(label, res.Value.AsInteger, true, out err);
                 _listingService.PrintLine(LineType.CONST, res.Value.ToInt32());
@@ -992,7 +1092,7 @@ namespace WinASM65.Core
                 UnresolvedSymbol unResSymb = new UnresolvedSymbol
                 {
                     NbrUndefinedSymb = res.UndefinedSymbols.Count,
-                    Expr = valueExpr
+                    Expr = res.Expression
                 };
 
                 foreach (string symb in res.UndefinedSymbols)
@@ -1426,13 +1526,32 @@ namespace WinASM65.Core
 
             if (!string.IsNullOrEmpty(argsValue))
             {
-                string[] paramValues = Regex.Replace(argsValue, @"\s+", "").Split(',');
+                // Arguments split like any argument list, so "($10),y" or "a b" is one
+                // argument; a parameter is replaced as a whole word, so a parameter
+                // named x does not rewrite "tax".
+                List<string> paramValues = SourceText.SplitArguments(argsValue);
+
+                // More arguments than parameters: the last parameter takes the rest,
+                // so "get ($10),y" passes the whole operand to a one-parameter macro.
+                int declared = macroDef.Parameters.Length;
+                if (declared > 0 && paramValues.Count > declared)
+                {
+                    string rest = string.Join(",", paramValues.GetRange(declared - 1, paramValues.Count - declared + 1));
+                    paramValues.RemoveRange(declared - 1, paramValues.Count - declared + 1);
+                    paramValues.Add(rest);
+                }
                 foreach (string line in macroDef.Lines)
                 {
                     string expandedLine = line;
-                    for (int i = 0; i < paramValues.Length && i < macroDef.Parameters.Length; i++)
+                    for (int i = 0; i < paramValues.Count && i < macroDef.Parameters.Length; i++)
                     {
-                        expandedLine = expandedLine.Replace(macroDef.Parameters[i], paramValues[i]);
+                        string parameter = macroDef.Parameters[i];
+                        if (string.IsNullOrEmpty(parameter))
+                            continue;
+                        string value = paramValues[i];
+                        expandedLine = Regex.Replace(expandedLine,
+                            @"(?<![\w@])" + Regex.Escape(parameter) + @"(?![\w])",
+                            m => value, RegexOptions.IgnoreCase);
                     }
                     _listingService.PrintLine(expandedLine);
                     ParseLine(expandedLine, expandedLine);
