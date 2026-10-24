@@ -41,24 +41,42 @@ namespace WinASM65.Cpu
         public string Syntax { get; private set; }
 
         /// <summary>
-        /// Cycles taken, or null when unknown.
-        /// <para>
-        /// Always null today: no cycle data exists anywhere in this project, and
-        /// a cycle count written here would be a second source of truth free of
-        /// any check. It stays a nullable slot until the per-opcode cycle table
-        /// the execution core needs arrives, at which point the agreement test
-        /// in the suite is where it gets filled and verified.
-        /// </para>
+        /// Base cycles taken, or null when the form has none (JAM halts). The
+        /// documented NMOS forms read the execution core's own table, which a test
+        /// checks against the published one; see <see cref="CycleTimings"/>.
         /// </summary>
         public int? Cycles { get; private set; }
 
+        /// <summary>When the form takes more cycles ("+1 if a page is crossed"), or null.</summary>
+        public string CycleNote { get; private set; }
+
         public InstructionDocumentation(string mnemonic, AddressingMode mode, byte opcode, int length, string syntax)
+            : this(mnemonic, mode, opcode, length, syntax, null, null)
+        {
+        }
+
+        public InstructionDocumentation(string mnemonic, AddressingMode mode, byte opcode, int length, string syntax,
+            int? cycles, string cycleNote)
         {
             Mnemonic = mnemonic;
             Mode = mode;
             Opcode = opcode;
             Length = length;
             Syntax = syntax;
+            Cycles = cycles;
+            CycleNote = cycleNote;
+        }
+
+        /// <summary>"4 cycles (+1 if a page is crossed)", or null when there is no count.</summary>
+        public string CyclesText
+        {
+            get
+            {
+                if (!Cycles.HasValue)
+                    return CycleNote;
+                string text = Cycles.Value + (Cycles.Value == 1 ? " cycle" : " cycles");
+                return CycleNote == null ? text : text + " (" + CycleNote + ")";
+            }
         }
 
         public override string ToString()
@@ -112,8 +130,11 @@ namespace WinASM65.Cpu
             List<InstructionDocumentation> docs = new List<InstructionDocumentation>();
             foreach (OpcodeEntry entry in cpu.Opcodes)
             {
+                int? cycles;
+                string note;
+                CycleTimings.Of(cpu, entry.Mnemonic, entry.Mode, entry.Opcode, out cycles, out note);
                 docs.Add(new InstructionDocumentation(entry.Mnemonic.ToUpperInvariant(), entry.Mode, entry.Opcode,
-                    Disassembler.ModeLength(entry.Mode), SyntaxFor(entry.Mode)));
+                    Disassembler.ModeLength(entry.Mode), SyntaxFor(entry.Mode), cycles, note));
             }
 
             Cache.Add(cpu, docs);
