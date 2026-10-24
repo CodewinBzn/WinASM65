@@ -10,11 +10,11 @@ namespace WinASM65.Cpu
     {
         private static readonly HashSet<string> CmosRelativeBranchMnemonics = CreateRelativeBranches();
         private static readonly HashSet<string> CmosAccumulatorMnemonics = CreateAccumulatorMnemonics();
-        private static readonly Dictionary<string, byte[]> CmosOpcodeTable = CreateOpcodeTable();
+        private static readonly Dictionary<string, Dictionary<AddressingMode, byte>> CmosMap = CreateOpcodeMap();
 
-        protected override Dictionary<string, byte[]> OpcodeTable
+        protected override Dictionary<string, Dictionary<AddressingMode, byte>> OpcodeMap
         {
-            get { return CmosOpcodeTable; }
+            get { return CmosMap; }
         }
 
         protected override HashSet<string> RelativeBranchMnemonics
@@ -65,11 +65,9 @@ namespace WinASM65.Cpu
             return set;
         }
 
-        private static Dictionary<string, byte[]> CreateOpcodeTable()
+        private static Dictionary<string, Dictionary<AddressingMode, byte>> CreateOpcodeMap()
         {
-            Dictionary<string, byte[]> table = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
-            foreach (KeyValuePair<string, byte[]> pair in NmosOpcodeTable)
-                table[pair.Key] = PadRow(pair.Value);
+            Dictionary<string, Dictionary<AddressingMode, byte>> table = Copy(FromRows(NmosOpcodeTable));
 
             Set(table, "ADC", AddressingMode.ZeroPageIndirect, 0x72);
             Set(table, "AND", AddressingMode.ZeroPageIndirect, 0x32);
@@ -88,65 +86,24 @@ namespace WinASM65.Cpu
             Set(table, "INC", AddressingMode.Accumulator, 0x1A);
             Set(table, "DEC", AddressingMode.Accumulator, 0x3A);
 
-            table["BRA"] = EmptyRow();
             Set(table, "BRA", AddressingMode.Relative, 0x80);
 
-            table["PHX"] = EmptyRow();
             Set(table, "PHX", AddressingMode.Implicit, 0xDA);
-            table["PHY"] = EmptyRow();
             Set(table, "PHY", AddressingMode.Implicit, 0x5A);
-            table["PLX"] = EmptyRow();
             Set(table, "PLX", AddressingMode.Implicit, 0xFA);
-            table["PLY"] = EmptyRow();
             Set(table, "PLY", AddressingMode.Implicit, 0x7A);
 
-            table["STZ"] = EmptyRow();
             Set(table, "STZ", AddressingMode.ZeroPage, 0x64);
             Set(table, "STZ", AddressingMode.ZeroPageX, 0x74);
             Set(table, "STZ", AddressingMode.Absolute, 0x9C);
             Set(table, "STZ", AddressingMode.AbsoluteX, 0x9E);
 
-            table["TRB"] = EmptyRow();
             Set(table, "TRB", AddressingMode.ZeroPage, 0x14);
             Set(table, "TRB", AddressingMode.Absolute, 0x1C);
-            table["TSB"] = EmptyRow();
             Set(table, "TSB", AddressingMode.ZeroPage, 0x04);
             Set(table, "TSB", AddressingMode.Absolute, 0x0C);
 
             return table;
-        }
-
-        private static byte[] PadRow(byte[] nmos)
-        {
-            byte[] row = EmptyRow();
-            int count = Math.Min(nmos.Length, row.Length);
-            for (int i = 0; i < count; i++)
-                row[i] = nmos[i];
-            return row;
-        }
-
-        private static byte[] EmptyRow()
-        {
-            return new byte[]
-            {
-                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
-            };
-        }
-
-        private static void Set(Dictionary<string, byte[]> table, string mnemonic, AddressingMode mode, byte opcode)
-        {
-            byte[] row;
-            if (!table.TryGetValue(mnemonic, out row))
-            {
-                row = EmptyRow();
-                table[mnemonic] = row;
-            }
-            else if (row.Length < 15)
-            {
-                row = PadRow(row);
-                table[mnemonic] = row;
-            }
-            row[(int)mode] = opcode;
         }
     }
 }

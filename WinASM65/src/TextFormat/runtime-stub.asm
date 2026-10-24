@@ -238,11 +238,12 @@ MoreSites:
 ;       3. Call the routine, and return to the caller of the stub.
 ;
 ;       The call has to be indirect, because where the routine lands is only
-;       known now: the block's address plus its entry offset. JSR (zp),Y is
-;       then not a call *to* that address but a call through it, so the address
-;       is put in Ptr first and the jump reads it back from there — the two
-;       are not the same cell, and a stub that jumped through the address it
-;       had computed would call the first two bytes of the routine.
+;       known now: the block's address plus its entry offset. The 6502 has no
+;       indirect JSR, so the call goes through a trampoline: JSR to a JMP (Ptr).
+;       The routine's RTS then returns here, and the RTS below returns to the
+;       caller of the stub. (This used to be written "JSR (Ptr),Y", which no 6502
+;       has; the assembler emitted $FF for it without a word, and only the test
+;       CPU, which had been taught that $FF, could run it.)
 Call:
         LDA STUB_HEADER
         CLC
@@ -251,6 +252,7 @@ Call:
         LDA STUB_HEADER+1
         ADC STUB_HEADER+5
         STA Ptr+1
-        LDY #$00
-        JSR (Ptr),Y
+        JSR CallPtr
         RTS
+CallPtr:
+        JMP (Ptr)

@@ -181,22 +181,18 @@ namespace WinASM65.Tests
             Disassembler dis = new Disassembler(cpu);
             int checkedEntries = 0;
 
-            foreach (KeyValuePair<string, byte[]> pair in cpu.InstructionTable)
+            foreach (OpcodeEntry entry in cpu.Opcodes)
             {
-                byte[] row = pair.Value;
-                for (int mode = 0; mode < row.Length; mode++)
                 {
-                    byte opcode = row[mode];
-                    if (opcode == 0xFF)
-                        continue;
+                    byte opcode = entry.Opcode;
 
                     OpcodeInfo info;
                     Assert.IsTrue(dis.TryLookup(opcode, out info),
                         "Opcode $" + opcode.ToString("X2") + " absent de l'index inverse.");
 
-                    Assert.AreEqual(pair.Key.ToUpperInvariant(), info.Mnemonic,
+                    Assert.AreEqual(entry.Mnemonic.ToUpperInvariant(), info.Mnemonic,
                         "opcode $" + opcode.ToString("X2") + " : mnemonique errone.");
-                    Assert.AreEqual((AddressingMode)mode, info.Mode,
+                    Assert.AreEqual(entry.Mode, info.Mode,
                         "opcode $" + opcode.ToString("X2") + " : mode errone.");
                     Assert.AreEqual(Disassembler.ModeLength(info.Mode), info.Length);
                     checkedEntries++;

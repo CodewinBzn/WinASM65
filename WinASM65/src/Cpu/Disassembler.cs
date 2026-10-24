@@ -79,7 +79,7 @@ namespace WinASM65.Cpu
             if (cpu == null)
                 throw new ArgumentNullException("cpu");
 
-            _index = BuildIndex(cpu.InstructionTable);
+            _index = BuildIndex(cpu.Opcodes);
         }
 
         /// <summary>
@@ -87,24 +87,14 @@ namespace WinASM65.Cpu
         /// mnemonic/mode pairs: silently disassembling wrong is worse than refusing
         /// to start.
         /// </summary>
-        private static Dictionary<byte, OpcodeInfo> BuildIndex(IReadOnlyDictionary<string, byte[]> table)
+        private static Dictionary<byte, OpcodeInfo> BuildIndex(IReadOnlyList<OpcodeEntry> entries)
         {
             Dictionary<byte, OpcodeInfo> index = new Dictionary<byte, OpcodeInfo>();
-            foreach (KeyValuePair<string, byte[]> pair in table)
+            foreach (OpcodeEntry entry in entries)
             {
-                byte[] row = pair.Value;
-                if (row == null)
-                    continue;
-
-                // La longueur de la rangee vaut 13 en NMOS et 15 en CMOS : les modes
-                // ZeroPageIndirect et AbsoluteIndexedIndirect sont propres au 65C02.
-                for (int mode = 0; mode < row.Length; mode++)
                 {
-                    byte opcode = row[mode];
-                    if (opcode == 0xFF)
-                        continue;
-
-                    OpcodeInfo info = new OpcodeInfo(pair.Key.ToUpperInvariant(), (AddressingMode)mode);
+                    byte opcode = entry.Opcode;
+                    OpcodeInfo info = new OpcodeInfo(entry.Mnemonic.ToUpperInvariant(), entry.Mode);
                     OpcodeInfo existing;
                     if (index.TryGetValue(opcode, out existing))
                     {

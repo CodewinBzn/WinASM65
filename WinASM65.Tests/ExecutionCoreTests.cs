@@ -594,7 +594,7 @@ namespace WinASM65.Tests
             "C0:2 C1:6 C4:3 C5:3 C6:5 C8:2 C9:2 CA:2 CC:4 CD:4 CE:6 " +
             "D0:2 D1:5 D5:4 D6:6 D8:2 D9:4 DD:4 DE:7 " +
             "E0:2 E1:6 E4:3 E5:3 E6:5 E8:2 E9:2 EA:2 EC:4 ED:4 EE:6 " +
-            "F0:2 F1:5 F5:4 F6:6 F8:2 F9:4 FC:6 FD:4 FE:7 FF:6";
+            "F0:2 F1:5 F5:4 F6:6 F8:2 F9:4 FD:4 FE:7";
 
         [TestMethod]
         public void EveryInstructionTheCoreImplementsHasThePublishedCycleCount()
@@ -616,7 +616,7 @@ namespace WinASM65.Tests
             }
 
             Assert.AreEqual(0, wrong.Count, string.Join("; ", wrong));
-            Assert.AreEqual(153, entries.Length, "every implemented opcode is on the list");
+            Assert.AreEqual(151, entries.Length, "the 151 documented NMOS opcodes, and nothing else");
         }
 
         [TestMethod]

@@ -41,8 +41,8 @@ namespace WinASM65.Tooling.Tests
             SortedSet<string> grammar = Alternatives(Repository().GetProperty("mnemonic").GetProperty("match").GetString());
 
             SortedSet<string> assembler = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
-            assembler.UnionWith(new Cpu6502().InstructionTable.Keys);
-            assembler.UnionWith(new Cpu65C02().InstructionTable.Keys);
+            assembler.UnionWith(new Cpu6502().Mnemonics);
+            assembler.UnionWith(new Cpu65C02().Mnemonics);
 
             CollectionAssert.AreEquivalent(assembler.Select(m => m.ToLowerInvariant()).ToList(),
                 grammar.Select(m => m.ToLowerInvariant()).ToList());

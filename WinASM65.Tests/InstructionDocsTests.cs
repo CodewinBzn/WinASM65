@@ -120,7 +120,7 @@ namespace WinASM65.Tests
         {
             foreach (ICpuInstructionSet cpu in new ICpuInstructionSet[] { new Cpu6502(), new Cpu65C02() })
             {
-                foreach (string mnemonic in cpu.InstructionTable.Keys)
+                foreach (string mnemonic in cpu.Mnemonics)
                 {
                     IReadOnlyList<InstructionDocumentation> forms = InstructionDocs.ForMnemonic(mnemonic, cpu);
                     Assert.IsTrue(forms.Count > 0, mnemonic + " is accepted by the assembler but documented nowhere");
