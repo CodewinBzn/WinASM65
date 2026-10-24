@@ -98,7 +98,7 @@
     },
     "directive": {
       "name": "keyword.control.directive.winasm65",
-      "match": "(?i)(?<![A-Za-z0-9_])\\.(addr|byt|byte|db|dw|else|elseif|end|endif|endm|endmacro|endr|endrep|equ|export|if|ifdef|ifndef|import|incbin|include|macro|memarea|org|rep|rept|res|set|word)\\b"
+      "match": "(?i)(?<![A-Za-z0-9_])\\.(addr|align|asciiz|assert|byt|byte|db|ds|dsb|dsw|dw|else|elseif|end|endif|endm|endmacro|endr|endrep|equ|error|export|fill|hibytes|if|ifdef|ifndef|import|incbin|include|lobytes|macro|memarea|org|pad|rep|rept|res|set|warning|word)\\b"
     },
     "mnemonic": {
       "name": "keyword.other.mnemonic.winasm65",

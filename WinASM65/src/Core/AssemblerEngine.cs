@@ -244,6 +244,17 @@ namespace WinASM65.Core
             dispatcher.Register(new RepDirectiveHandler());
             dispatcher.Register(new EndRepDirectiveHandler());
             dispatcher.Register(new ElseIfDirectiveHandler());
+            dispatcher.Register(new AsciizDirectiveHandler());
+            dispatcher.Register(new ByteTableDirectiveHandler(".lobytes", "<"));
+            dispatcher.Register(new ByteTableDirectiveHandler(".hibytes", ">"));
+            dispatcher.Register(new FillDirectiveHandler(".dsb", 1));
+            dispatcher.Register(new FillDirectiveHandler(".dsw", 2));
+            dispatcher.Register(new ReserveDirectiveHandler());
+            dispatcher.Register(new PadDirectiveHandler());
+            dispatcher.Register(new AlignDirectiveHandler());
+            dispatcher.Register(new ErrorDirectiveHandler());
+            dispatcher.Register(new WarningDirectiveHandler());
+            dispatcher.Register(new AssertDirectiveHandler());
             dispatcher.Register(new NamedValueDirectiveHandler(".equ"));
             dispatcher.Register(new NamedValueDirectiveHandler(".set"));
 
@@ -255,6 +266,8 @@ namespace WinASM65.Core
             dispatcher.RegisterAlias(".endm", ".endmacro");
             dispatcher.RegisterAlias(".rept", ".rep");
             dispatcher.RegisterAlias(".endr", ".endrep");
+            dispatcher.RegisterAlias(".ds", ".dsb");
+            dispatcher.RegisterAlias(".fill", ".dsb");
             dispatcher.Register(new EndDirectiveHandler());
             dispatcher.Register(new ExportDirectiveHandler());
             dispatcher.Register(new ImportDirectiveHandler());
@@ -350,6 +363,7 @@ namespace WinASM65.Core
         private AssemblyResult Complete(string outputFile, string sourceName, bool fromFile)
         {
             ResolvePendingSymbols();
+            CheckDeferredAssertions();
 
             // A name nobody ever defined leaves a placeholder in the buffer, and
             // the placeholder is zero. The image therefore builds clean, writes a
@@ -736,8 +750,46 @@ namespace WinASM65.Core
             return CurrentLocation;
         }
 
+        private sealed class DeferredAssertion
+        {
+            public string Expression;
+            public string Message;
+            public SourceLocation Location;
+        }
+
+        private readonly List<DeferredAssertion> _deferredAssertions = new List<DeferredAssertion>();
+
+        public void DeferAssertion(string expression, string message)
+        {
+            _deferredAssertions.Add(new DeferredAssertion { Expression = expression, Message = message, Location = CurrentLocation });
+        }
+
+        /// <summary>
+        /// The .assert lines that read a symbol defined later, now that the unit is
+        /// complete. In a multi-unit build a name may still belong to another unit;
+        /// that case is left to the build's own undefined-name check.
+        /// </summary>
+        private void CheckDeferredAssertions()
+        {
+            foreach (DeferredAssertion assertion in _deferredAssertions)
+            {
+                ExpressionResult res = _evaluator.Evaluate(assertion.Expression, _scopeManager, assertion.Location);
+                if (res.HasError)
+                    _diagnostics.ReportError(assertion.Location, res.Error);
+                else if (!res.IsResolved)
+                {
+                    if (_reportUndefinedSymbols)
+                        _diagnostics.ReportError(assertion.Location, ErrorCodes.UNDEFINED_SYMBOL + ": " + string.Join(", ", res.UndefinedSymbols));
+                }
+                else if (!res.Value.ToBoolean())
+                    _diagnostics.ReportError(assertion.Location, string.Format(ErrorCodes.ASSERTION_FAILED, assertion.Message));
+            }
+            _deferredAssertions.Clear();
+        }
+
         private void Reset()
         {
+            _deferredAssertions.Clear();
             _emitter.Reset();
             _scopeManager.Reset();
             _diagnostics.Clear();
