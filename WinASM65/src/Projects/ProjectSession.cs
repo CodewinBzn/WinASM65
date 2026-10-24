@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using WinASM65.Core;
 using WinASM65.Cpu;
@@ -61,6 +62,34 @@ namespace WinASM65.Projects
         /// the project directory.
         /// </summary>
         public string ImagePath { get; set; }
+
+        /// <summary>
+        /// Keeps each unit's listing rows and emission origins in memory, and where
+        /// each object file lands in the image. This is what a debugger maps a
+        /// program counter back to a source line with. While set, no <c>.lst</c> is
+        /// written: the listing goes to memory instead.
+        /// </summary>
+        public bool CaptureListing { get; set; }
+    }
+
+    /// <summary>Where one file of the <c>Output</c> section sits in the image.</summary>
+    public sealed class ImagePlacement
+    {
+        public ImagePlacement(string fileName, int offset, int length)
+        {
+            FileName = fileName ?? string.Empty;
+            Offset = offset;
+            Length = length;
+        }
+
+        /// <summary>Absolute path of the file, as the build resolved it.</summary>
+        public string FileName { get; private set; }
+
+        /// <summary>Byte offset of the file's first byte in the image.</summary>
+        public int Offset { get; private set; }
+
+        /// <summary>Bytes the file occupies in the image, padding included.</summary>
+        public int Length { get; private set; }
     }
 
     /// <summary>What one unit of a project contributed to a build.</summary>
@@ -81,13 +110,40 @@ namespace WinASM65.Projects
         /// </summary>
         public IDictionary<string, long> Symbols { get; private set; }
 
+        /// <summary>
+        /// The unit's listing rows, includes tagged with their own source. Empty
+        /// unless the build ran with <see cref="ProjectBuildOptions.CaptureListing"/>.
+        /// </summary>
+        public IReadOnlyList<ListingRow> Listing { get; private set; }
+
+        /// <summary>
+        /// Every origin of the unit's object file, in emission order: the byte
+        /// offset in the object file where the address was set. An object file is
+        /// the emitted bytes back to back, so this is the only record of which
+        /// address each byte was assembled for. Empty unless captured.
+        /// </summary>
+        public IReadOnlyList<EmitterOrigin> Origins { get; private set; }
+
+        /// <summary>Bytes the unit emitted, which is the length of its object file.</summary>
+        public int EmittedLength { get; private set; }
+
         public ProjectUnitResult(string sourceFile, string objectFile, IReadOnlyList<string> dependencies,
             IDictionary<string, long> symbols)
+            : this(sourceFile, objectFile, dependencies, symbols, null, null, 0)
+        {
+        }
+
+        public ProjectUnitResult(string sourceFile, string objectFile, IReadOnlyList<string> dependencies,
+            IDictionary<string, long> symbols, IReadOnlyList<ListingRow> listing,
+            IReadOnlyList<EmitterOrigin> origins, int emittedLength)
         {
             SourceFile = sourceFile ?? string.Empty;
             ObjectFile = objectFile ?? string.Empty;
             Dependencies = dependencies ?? new List<string>();
             Symbols = symbols ?? new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            Listing = listing ?? new List<ListingRow>();
+            Origins = origins ?? new List<EmitterOrigin>();
+            EmittedLength = emittedLength;
         }
     }
 
@@ -118,9 +174,23 @@ namespace WinASM65.Projects
         /// <summary>One entry per declared input, in declaration order.</summary>
         public IReadOnlyList<ProjectUnitResult> Units { get; private set; }
 
+        /// <summary>
+        /// Where each file of the <c>Output</c> section sits in <see cref="Image"/>,
+        /// in declaration order. Empty unless the build captured its listing.
+        /// </summary>
+        public IReadOnlyList<ImagePlacement> Placements { get; private set; }
+
         public ProjectBuildResult(bool success, byte[] image, string imagePath,
             IReadOnlyList<Diagnostic> diagnostics, IReadOnlyList<ProjectUnitResult> units)
+            : this(success, image, imagePath, diagnostics, units, null)
         {
+        }
+
+        public ProjectBuildResult(bool success, byte[] image, string imagePath,
+            IReadOnlyList<Diagnostic> diagnostics, IReadOnlyList<ProjectUnitResult> units,
+            IReadOnlyList<ImagePlacement> placements)
+        {
+            Placements = placements ?? new List<ImagePlacement>();
             Success = success;
             Image = image ?? new byte[0];
             ImagePath = imagePath ?? string.Empty;
@@ -332,6 +402,7 @@ namespace WinASM65.Projects
                         Cpu = cpu,
                         PredefinedSymbols = symbols,
                         EnableListing = options.EnableListing,
+                        ListingService = options.CaptureListing ? new InMemoryListingService() : null,
                         DefaultOrigin = target.LoadAddress,
                         SideFileDirectory = sideFiles,
 
@@ -378,7 +449,8 @@ namespace WinASM65.Projects
             }
 
             Remember(units);
-            return new ProjectBuildResult(true, payload, imagePath, diagnostics, units);
+            return new ProjectBuildResult(true, payload, imagePath, diagnostics, units,
+                options.CaptureListing ? Placements() : null);
         }
 
         // --------------------------------------------------------------- listing
@@ -514,6 +586,18 @@ namespace WinASM65.Projects
                 LexicalScopeData scope = assembler.ScopeManager.GlobalScope;
                 foreach (KeyValuePair<string, long> pair in scope.SymbolTable)
                     symbols[pair.Key] = pair.Value;
+
+                InMemoryListingService captured = assembler.ListingService as InMemoryListingService;
+                if (captured != null)
+                {
+                    // An emitter that never saw an .org still placed its bytes at
+                    // its origin; say so, as the assembler's own placement does.
+                    IReadOnlyList<EmitterOrigin> origins = assembler.Emitter.Origins;
+                    if (origins.Count == 0)
+                        origins = new List<EmitterOrigin> { new EmitterOrigin(0, assembler.Emitter.OriginAddress) };
+                    return new ProjectUnitResult(segment.FileName, segment.OutputFile, segment.Dependencies, symbols,
+                        captured.Rows, origins, assembler.Emitter.Length);
+                }
             }
 
             return new ProjectUnitResult(segment.FileName, segment.OutputFile, segment.Dependencies, symbols);
@@ -576,6 +660,37 @@ namespace WinASM65.Projects
                 };
             }
             return _binaryCombiner.Concatenate(absolute, out payload);
+        }
+
+        /// <summary>
+        /// Where each file of the <c>Output</c> section sits in the image, by the
+        /// rule <see cref="BinaryCombiner"/> concatenates them with: in order, each
+        /// padded to its declared size.
+        /// </summary>
+        private List<ImagePlacement> Placements()
+        {
+            List<ImagePlacement> placements = new List<ImagePlacement>();
+            if (Configuration.Output == null || Configuration.Output.Files == null)
+                return placements;
+
+            int offset = 0;
+            foreach (FileConf declared in Configuration.Output.Files)
+            {
+                string name = Resolve(declared == null ? null : declared.FileName);
+                if (string.IsNullOrEmpty(name) || !File.Exists(name))
+                    break;
+
+                int length = (int)new FileInfo(name).Length;
+                int size;
+                if (declared.Size != null
+                    && int.TryParse(declared.Size.Trim().TrimStart('$'), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out size)
+                    && size > length)
+                    length = size;
+
+                placements.Add(new ImagePlacement(name, offset, length));
+                offset += length;
+            }
+            return placements;
         }
 
         private string ResolveImagePath(ProjectBuildOptions options)
