@@ -183,8 +183,13 @@ namespace WinASM65.Monitor.Tests
                     int after = window.BreakpointCount;
 
                     Assert.AreEqual(before + 1, after, "a breakpoint was added");
-                    Assert.IsTrue(window.Commands.Contains("BREAK $8000"),
+                    Assert.IsTrue(window.Commands.Contains("BREAK SET exec $8000"),
                         "the session received the BREAK command for the cursor line");
+
+                    window.ToggleBreakpoint();
+                    Assert.AreEqual(before, window.BreakpointCount, "the second F8 removed it");
+                    Assert.IsTrue(window.Commands.Contains("BREAK REMOVE exec $8000"),
+                        "the removal reached the session as a command it understands");
                 });
             }
         }

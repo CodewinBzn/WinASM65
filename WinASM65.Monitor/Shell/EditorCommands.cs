@@ -62,11 +62,6 @@ namespace WinASM65.Monitor.Shell
 
         /// <summary>
         /// <c>BREAK CLEAR</c>: every breakpoint the emulator holds is released.
-        ///
-        /// Needed because the session refuses a single removal — Mesen exposes no way
-        /// to read a callback handle back, so there is no one-callback removal to
-        /// offer. A toggle that clears therefore has to clear and re-set, which is
-        /// exactly what a REPL user would type.
         /// </summary>
         public static string ClearBreakpoints()
         {

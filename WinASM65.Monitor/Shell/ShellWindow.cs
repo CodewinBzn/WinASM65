@@ -864,18 +864,22 @@ namespace WinASM65.Monitor.Shell
                 if (row != null && row.Address >= 0)
                 {
                     int address = row.Address;
-                    if (_breakpoints.Contains(address))
+                    bool removing = _breakpoints.Contains(address);
+                    string command = removing
+                        ? EditorCommands.RemoveBreakpoint(BreakpointKind.Exec, address)
+                        : EditorCommands.SetBreakpoint(BreakpointKind.Exec, address);
+                    _commands.Add(command);
+                    IReadOnlyList<string> answer = _session.Execute(command);
+                    _messageText = string.Join(" ", answer);
+
+                    // The local set follows what the emulator accepted, so a refused
+                    // toggle leaves the gutter showing the truth.
+                    if (answer.Count > 0 && answer[0].StartsWith(MonitorProtocol.OkPrefix, StringComparison.Ordinal))
                     {
-                        _breakpoints.Remove(address);
-                        _commands.Add("BREAK CLEAR $" + address.ToString("X4"));
-                        _messageText = "breakpoint cleared at $" + address.ToString("X4");
-                    }
-                    else
-                    {
-                        _breakpoints.Add(address);
-                        _commands.Add("BREAK $" + address.ToString("X4"));
-                        IReadOnlyList<string> answer = _session.Execute("BREAK $" + address.ToString("X4"));
-                        _messageText = string.Join(" ", answer);
+                        if (removing)
+                            _breakpoints.Remove(address);
+                        else
+                            _breakpoints.Add(address);
                     }
                 }
                 else
