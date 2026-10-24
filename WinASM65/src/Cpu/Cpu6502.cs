@@ -187,7 +187,8 @@ namespace WinASM65.Cpu
                 return new InstructionInfo(AddressingMode.Relative, opc, 2, operand.Trim());
             }
 
-            string clean = Regex.Replace(operand, @"\s+", "");
+            // Whitespace goes, except inside a literal: "lda #' '" is a space.
+            string clean = WinASM65.Core.SourceText.RemoveWhitespaceOutsideQuotes(operand);
 
             if (clean.StartsWith("#"))
             {

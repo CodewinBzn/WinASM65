@@ -138,7 +138,10 @@ namespace WinASM65.Core
         // the instruction with nothing to match, so the line was silently dropped
         // and only the label survived.
         private static readonly Regex LabelDeclareRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*):\s*$", RegexOptions.Compiled);
-        private static readonly Regex DirectiveRegex = new Regex(@"\s*(?<directive>\.[a-zA-Z]+)(\s+(?<value>(.)+))?", RegexOptions.Compiled);
+        // Anchored: a directive is the first thing on its line (a label before it is
+        // LabelDirectiveRegex's case). Unanchored, ".word" anywhere in a line won the
+        // dispatch, whatever came before it.
+        private static readonly Regex DirectiveRegex = new Regex(@"^\s*(?<directive>\.[a-zA-Z][a-zA-Z0-9_]*)(\s+(?<value>(.)+))?$", RegexOptions.Compiled);
         private static readonly Regex InstructionRegex = new Regex(@"^(\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s*:?\s+)?(?<opcode>[a-zA-Z]{3})((\s+(?<operands>(.)+))|$)", RegexOptions.Compiled);
         private static readonly Regex ConstantRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s*=\s*(?<value>(.)+)$", RegexOptions.Compiled);
         private static readonly Regex MemReserveRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s+\.(RES|res)\s+(?<value>(.)+)$", RegexOptions.Compiled);
@@ -155,7 +158,7 @@ namespace WinASM65.Core
         /// this line from a bare label, a constant and an instruction.
         /// </para>
         /// </summary>
-        private static readonly Regex LabelDirectiveRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s*:?\s+\.[a-zA-Z]+", RegexOptions.Compiled);
+        private static readonly Regex LabelDirectiveRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s*:?\s+\.[a-zA-Z][a-zA-Z0-9_]*", RegexOptions.Compiled);
 
         #region Properties & IAssemblyContext
 
@@ -788,8 +791,9 @@ namespace WinASM65.Core
                     string trimmed = rawLine.Trim();
                     _currentFile.CurrentLineNumber++;
 
-                    // Strip comment
-                    trimmed = Regex.Replace(trimmed, ";(.)*", "").Trim();
+                    // Strip the comment: the first ';' that is not inside a string or a
+                    // character literal, so ".byte "a;b"" and "cmp #';'" keep their data.
+                    trimmed = SourceText.StripComment(trimmed).Trim();
                     if (string.IsNullOrWhiteSpace(trimmed))
                     {
                         _listingService.EndLine();
@@ -856,8 +860,9 @@ namespace WinASM65.Core
             {
                 // The label takes the address the directive is about to emit at, so
                 // it is defined first and the directive then fills that address.
-                HandleLabel(LabelDirectiveRegex.Match(line));
-                Match labelled = DirectiveRegex.Match(line);
+                Match labelMatch = LabelDirectiveRegex.Match(line);
+                HandleLabel(labelMatch);
+                Match labelled = DirectiveRegex.Match(line.Substring(labelMatch.Groups["label"].Index + labelMatch.Groups["label"].Length).TrimStart(':', ' ', '\t'));
                 _directiveDispatcher.TryDispatch(
                     labelled.Groups["directive"].Value.ToLowerInvariant(),
                     labelled.Groups["value"].Value,
@@ -909,6 +914,13 @@ namespace WinASM65.Core
             // it is the addressing mode that says whether the byte about to be emitted
             // holds a data value, an address, or a branch displacement.
             ExpressionResult result = _evaluator.Evaluate(expr, _scopeManager, CurrentLocation);
+
+            // The single place an expression that cannot be evaluated is reported, at
+            // the line it was written on. The result carries the value 0, so the caller
+            // still emits a field of the right size and registers nothing pending.
+            if (result.HasError)
+                _diagnostics.ReportError(CurrentLocation, result.Error);
+
             return result.WithRole(RoleFor(addrMode, isLogical));
         }
 

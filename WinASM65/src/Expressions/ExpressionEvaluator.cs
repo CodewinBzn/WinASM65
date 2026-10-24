@@ -40,6 +40,10 @@ namespace WinASM65.Expressions
             if (tokens.Count == 0)
                 return ExpressionResult.Success(new Value(0), ExpressionRole.None, null, string.Empty, location);
 
+            string shapeError = CheckShape(tokens, expression);
+            if (shapeError != null)
+                return ExpressionResult.Failure(shapeError, expression, location);
+
             List<string> undefinedSymbols = new List<string>();
             List<SymbolReference> usedSymbols = new List<SymbolReference>();
             List<EvaluatorToken> evalTokens = new List<EvaluatorToken>();
@@ -54,21 +58,22 @@ namespace WinASM65.Expressions
                 switch (token.Type)
                 {
                     case TokenType.DecimalNumber:
-                        evalTokens.Add(EvaluatorToken.ForValue(new Value(long.Parse(token.Value, CultureInfo.InvariantCulture))));
-                        break;
-
                     case TokenType.HexNumber:
-                        evalTokens.Add(EvaluatorToken.ForValue(new Value(long.Parse(token.Value.TrimStart('$'), NumberStyles.HexNumber, CultureInfo.InvariantCulture))));
-                        break;
-
                     case TokenType.BinaryNumber:
-                        evalTokens.Add(EvaluatorToken.ForValue(new Value(Convert.ToInt64(token.Value.TrimStart('%'), 2))));
+                        long number;
+                        if (!TryParseNumber(token, out number))
+                            return ExpressionResult.Failure(string.Format(ErrorCodes.NUMBER_TOO_LARGE, token.Value), expression, location);
+                        evalTokens.Add(EvaluatorToken.ForValue(new Value(number)));
                         break;
 
                     case TokenType.CharacterConstant:
-                        string charVal = token.Value.Trim('"');
-                        char c = charVal.Length > 0 ? charVal[0] : '\0';
-                        evalTokens.Add(EvaluatorToken.ForValue(new Value((byte)c)));
+                        byte[] decoded;
+                        string charError;
+                        if (!StringLiteral.TryDecodeBody(token.Value, out decoded, out charError))
+                            return ExpressionResult.Failure(charError, expression, location);
+                        if (decoded.Length != 1)
+                            return ExpressionResult.Failure(string.Format(ErrorCodes.CHAR_LITERAL, token.Value), expression, location);
+                        evalTokens.Add(EvaluatorToken.ForValue(new Value(decoded[0])));
                         break;
 
                     case TokenType.True:
@@ -112,8 +117,101 @@ namespace WinASM65.Expressions
                     usedSymbols, expression, location, selector);
             }
 
-            Value result = EvaluateTokens(evalTokens);
+            Value result;
+            try
+            {
+                result = EvaluateTokens(evalTokens);
+            }
+            catch (DivideByZeroException)
+            {
+                return ExpressionResult.Failure(string.Format(ErrorCodes.DIVISION_BY_ZERO, expression), expression, location);
+            }
+            catch (OverflowException)
+            {
+                return ExpressionResult.Failure(string.Format(ErrorCodes.NUMBER_TOO_LARGE, expression), expression, location);
+            }
             return ExpressionResult.Success(result, ExpressionRole.None, usedSymbols, expression, location, selector);
+        }
+
+        private static bool TryParseNumber(Token token, out long number)
+        {
+            try
+            {
+                switch (token.Type)
+                {
+                    case TokenType.HexNumber:
+                        return long.TryParse(token.Value.TrimStart('$'), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out number);
+                    case TokenType.BinaryNumber:
+                        number = Convert.ToInt64(token.Value.TrimStart('%'), 2);
+                        return true;
+                    default:
+                        return long.TryParse(token.Value, NumberStyles.None, CultureInfo.InvariantCulture, out number);
+                }
+            }
+            catch (OverflowException)
+            {
+                number = 0;
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Checks the expression alternates operands and operators and that its
+        /// parentheses balance, before anything is evaluated. Without this, text the
+        /// tokenizer did not recognise was dropped and "0x10" evaluated as 0 followed by
+        /// a symbol; both were silently wrong values.
+        /// </summary>
+        private static string CheckShape(IReadOnlyList<Token> tokens, string expression)
+        {
+            bool expectOperand = true;
+            int depth = 0;
+            foreach (Token token in tokens)
+            {
+                switch (token.Type)
+                {
+                    case TokenType.Invalid:
+                        return string.Format(ErrorCodes.EXPRESSION_INVALID_TOKEN, token.Value, expression);
+
+                    case TokenType.DecimalNumber:
+                    case TokenType.HexNumber:
+                    case TokenType.BinaryNumber:
+                    case TokenType.CharacterConstant:
+                    case TokenType.Identifier:
+                    case TokenType.True:
+                    case TokenType.False:
+                        if (!expectOperand)
+                            return string.Format(ErrorCodes.EXPRESSION_SYNTAX, expression);
+                        expectOperand = false;
+                        break;
+
+                    case TokenType.OpenParenthesis:
+                        if (!expectOperand)
+                            return string.Format(ErrorCodes.EXPRESSION_SYNTAX, expression);
+                        depth++;
+                        break;
+
+                    case TokenType.CloseParenthesis:
+                        if (expectOperand || depth == 0)
+                            return string.Format(ErrorCodes.EXPRESSION_SYNTAX, expression);
+                        depth--;
+                        break;
+
+                    default:
+                        if (expectOperand)
+                        {
+                            if (!CanBeUnary(token.Type))
+                                return string.Format(ErrorCodes.EXPRESSION_SYNTAX, expression);
+                        }
+                        else
+                        {
+                            expectOperand = true;
+                        }
+                        break;
+                }
+            }
+            if (expectOperand || depth != 0)
+                return string.Format(ErrorCodes.EXPRESSION_SYNTAX, expression);
+            return null;
         }
 
         /// <summary>

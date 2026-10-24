@@ -94,6 +94,36 @@ namespace WinASM65.Core
         public const string NO_LOCAL_SCOPE = "No local scope is defined";
         public const string VALUE_OUT_OF_RANGE_BYTE = "Value {0} is out of range for a 1-byte operand (expected -128 to 255)";
         public const string VALUE_OUT_OF_RANGE_WORD = "Value {0} is out of range for a 2-byte operand (expected -32768 to 65535)";
+
+        // Failures that used to be silent: a wrong byte, a skipped line or a zero.
+        public const string UNKNOWN_MNEMONIC = "Unknown instruction or macro '{0}'";
+        public const string UNSUPPORTED_ADDRESSING_MODE = "{0} does not support {1} addressing";
+        public const string UNKNOWN_DIRECTIVE = "Unknown directive '{0}'";
+        public const string EXPRESSION_INVALID_TOKEN = "Invalid token '{0}' in expression '{1}'";
+        public const string EXPRESSION_SYNTAX = "Malformed expression '{0}'";
+        public const string DIVISION_BY_ZERO = "Division by zero in '{0}'";
+        public const string NUMBER_TOO_LARGE = "Number '{0}' is too large";
+        public const string UNTERMINATED_STRING = "Unterminated string literal";
+        public const string INVALID_ESCAPE = "Invalid escape sequence '{0}'";
+        public const string CHAR_LITERAL = "A character literal holds exactly one character: {0}";
+
+        // Constants and labels.
+        public const string CONSTANT_REDEFINED = "Constant '{0}' already defined with a different value";
+        public const string EQU_WITHOUT_NAME = "{0} requires a name: NAME {0} value";
+        public const string LOCAL_LABEL_UNDEFINED = "Local label '{0}' is not defined in the scope of '{1}'";
+        public const string LOCAL_LABEL_NO_SCOPE = "Local label '{0}' has no global label before it";
+        public const string ANON_LABEL_NOT_FOUND = "No anonymous label '{0}' {1}";
+
+        // Directives.
+        public const string USER_ERROR = "{0}";
+        public const string USER_WARNING = "{0}";
+        public const string ASSERTION_FAILED = "Assertion failed: {0}";
+        public const string PAD_BACKWARDS = ".pad target ${0:X4} is below the current address ${1:X4}";
+        public const string ALIGN_INVALID = ".align requires a positive power of two, got {0}";
+        public const string INCBIN_RANGE = ".incbin offset/length outside '{0}' ({1} bytes)";
+        public const string ELSE_AFTER_ELSE = ".else/.elseif after .else";
+        public const string DIRECTIVE_ARGUMENTS = "{0} expects {1}";
+        public const string PC_IN_MODULE = "'*' is an absolute address; it is not relocated in a module";
     }
 
     public interface IDiagnosticReporter
