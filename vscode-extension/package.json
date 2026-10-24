@@ -28,7 +28,8 @@
     "onDebugResolve:winasm65",
     "onDebugDynamicConfigurations:winasm65",
     "workspaceContains:**/config.json",
-    "onCommand:workbench.action.tasks.runTask"
+    "onCommand:workbench.action.tasks.runTask",
+    "onLanguage:winasm65"
   ],
   "contributes": {
     "languages": [
@@ -166,6 +167,11 @@
           "type": "string",
           "default": "",
           "description": "Mesen.exe, used when neither launch.json nor config.json names one."
+        },
+        "winasm65.languageServer.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Report assembler errors as you type and show addresses and bytes on hover."
         }
       }
     },
@@ -224,5 +230,8 @@
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^2.24.0",
     "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
   }
 }

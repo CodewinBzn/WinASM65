@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using WinASM65.Projects;
 using WinASM65.Tooling.Dap;
+using WinASM65.Tooling.Lsp;
 using WinASM65.Tooling.Rpc;
 
 namespace WinASM65.Tooling
@@ -18,6 +19,8 @@ namespace WinASM65.Tooling
             {
                 case "--dap":
                     return RunDebugAdapter();
+                case "--lsp":
+                    return RunLanguageServer();
                 case "--build":
                     if (args.Length != 2)
                         break;
@@ -26,6 +29,7 @@ namespace WinASM65.Tooling
 
             Console.Error.WriteLine("WinASM65 tooling for editors");
             Console.Error.WriteLine("  --dap              Debug Adapter Protocol on stdin/stdout");
+            Console.Error.WriteLine("  --lsp              Language Server Protocol on stdin/stdout");
             Console.Error.WriteLine("  --build <config>   build a project, one file:line: message per diagnostic");
             return 2;
         }
@@ -68,6 +72,32 @@ namespace WinASM65.Tooling
                 { IsBackground = true, Name = "dap-reader" };
                 reader.Start();
                 session.Run();
+            }
+            return 0;
+        }
+
+        private static int RunLanguageServer()
+        {
+            MessageStream stream = TakeProtocolStreams();
+            using (LanguageServer server = new LanguageServer(stream.Write))
+            {
+                Thread reader = new Thread(() =>
+                {
+                    try
+                    {
+                        JsonObject message;
+                        while ((message = stream.Read()) != null)
+                            server.Dispatch(message);
+                    }
+                    catch (Exception ex) when (ex is IOException || ex is InvalidDataException || ex is System.Text.Json.JsonException)
+                    {
+                        Console.Error.WriteLine("lsp: " + ex.Message);
+                    }
+                    server.InputClosed();
+                })
+                { IsBackground = true, Name = "lsp-reader" };
+                reader.Start();
+                server.Run();
             }
             return 0;
         }

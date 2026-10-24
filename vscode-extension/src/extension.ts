@@ -1,8 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { LanguageClient, LanguageClientOptions, ServerOptions } from 'vscode-languageclient/node';
 
 const DEBUG_TYPE = 'winasm65';
+
+let client: LanguageClient | undefined;
 
 /**
  * How to start WinASM65.Tooling: an explicit setting, the copy shipped in the
@@ -153,6 +156,28 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.debug.registerDebugConfigurationProvider(DEBUG_TYPE, new ConfigurationProvider()),
     vscode.tasks.registerTaskProvider(DEBUG_TYPE, new BuildTaskProvider(context))
   );
+  startLanguageServer(context);
 }
 
-export function deactivate(): void {}
+/** Diagnostics as you type and hover, from WinASM65.Tooling --lsp. */
+function startLanguageServer(context: vscode.ExtensionContext): void {
+  if (!vscode.workspace.getConfiguration('winasm65').get<boolean>('languageServer.enabled', true)) {
+    return;
+  }
+  const tooling = resolveTooling(context);
+  if (!tooling) {
+    void vscode.window.showWarningMessage('WinASM65.Tooling was not found: no diagnostics. Set "winasm65.toolingPath".');
+    return;
+  }
+  const server: ServerOptions = { command: tooling.command, args: [...tooling.args, '--lsp'] };
+  const options: LanguageClientOptions = {
+    documentSelector: [{ scheme: 'file', language: 'winasm65' }],
+    synchronize: { fileEvents: vscode.workspace.createFileSystemWatcher('**/config.json') }
+  };
+  client = new LanguageClient('winasm65', 'WinASM65', server, options);
+  void client.start();
+}
+
+export function deactivate(): Thenable<void> | undefined {
+  return client?.stop();
+}
