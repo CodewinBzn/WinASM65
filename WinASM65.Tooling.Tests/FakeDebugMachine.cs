@@ -16,6 +16,26 @@ namespace WinASM65.Tooling.Tests
     {
         private readonly byte[] _memory = new byte[0x10000];
 
+        // Events leave on one thread, in the order they happened, as the bridge's
+        // receiver delivers them: a resume must never overtake the stop after it.
+        private readonly System.Collections.Concurrent.BlockingCollection<Action> _events =
+            new System.Collections.Concurrent.BlockingCollection<Action>();
+
+        public FakeDebugMachine()
+        {
+            new System.Threading.Thread(() =>
+            {
+                foreach (Action raise in _events.GetConsumingEnumerable())
+                    raise();
+            }) { IsBackground = true, Name = "fake-receiver" }.Start();
+        }
+
+        private void Raise(Action raise)
+        {
+            if (!_events.IsAddingCompleted)
+                _events.Add(raise);
+        }
+
         public List<string> Calls { get; } = new List<string>();
         public HashSet<int> Breakpoints { get; } = new HashSet<int>();
         public int Pc { get; set; }
@@ -40,7 +60,7 @@ namespace WinASM65.Tooling.Tests
             StopInfo stop = new StopInfo(reason, pc, prg);
             LastStop = stop;
             IsStopped = true;
-            Task.Run(() => Stopped?.Invoke(stop));
+            Raise(() => Stopped?.Invoke(stop));
         }
 
         public string EmulatorName => "Mesen2";
@@ -81,7 +101,7 @@ namespace WinASM65.Tooling.Tests
         {
             IsStopped = false;
             LastStop = null;
-            Task.Run(() => Resumed?.Invoke());
+            Raise(() => Resumed?.Invoke());
         }
 
         public void AddBreakpoint(int address, string kind)

@@ -2,10 +2,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions } from 'vscode-languageclient/node';
+import { ListingColumn } from './listing';
+import { RamPanel } from './ramPanel';
 
 const DEBUG_TYPE = 'winasm65';
 
 let client: LanguageClient | undefined;
+let clientReady: Promise<LanguageClient | undefined> = Promise.resolve(undefined);
 
 /**
  * How to start WinASM65.Tooling: an explicit setting, the copy shipped in the
@@ -157,6 +160,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.tasks.registerTaskProvider(DEBUG_TYPE, new BuildTaskProvider(context))
   );
   startLanguageServer(context);
+  context.subscriptions.push(
+    new ListingColumn(context, () => clientReady),
+    new RamPanel(context)
+  );
 }
 
 /** Diagnostics as you type and hover, from WinASM65.Tooling --lsp. */
@@ -174,8 +181,9 @@ function startLanguageServer(context: vscode.ExtensionContext): void {
     documentSelector: [{ scheme: 'file', language: 'winasm65' }],
     synchronize: { fileEvents: vscode.workspace.createFileSystemWatcher('**/config.json') }
   };
-  client = new LanguageClient('winasm65', 'WinASM65', server, options);
-  void client.start();
+  const started = new LanguageClient('winasm65', 'WinASM65', server, options);
+  client = started;
+  clientReady = started.start().then(() => started, () => undefined);
 }
 
 export function deactivate(): Thenable<void> | undefined {

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -181,6 +182,23 @@ namespace WinASM65.Tests
             CollectionAssert.AreEqual(new byte[] { 0x4C, 0x03, 0xC0, 0xEA },
                 listing.Assembly.OutputBytes,
                 "knowing the project's names must not stop a forward reference resolving");
+        }
+
+        [TestMethod]
+        public void AListingPlacesAUnitWithoutOrgAtTheTargetsLoadAddress()
+        {
+            // The build assembles a unit with no .org at the target's load address;
+            // a listing that ignored the target would show every line elsewhere.
+            ProjectSession session = ProjectSession.Open(new ConfigFile
+            {
+                Target = new TargetConf { System = "c64", Format = "prg", LoadAddress = "$0801" }
+            }, Path.GetTempPath());
+
+            SourceListing listing = session.ListSourceText("  lda #$01\n  rts\n", "probe.asm");
+
+            Assert.IsTrue(listing.Success, Describe(listing.Assembly.Diagnostics));
+            ListingRow first = listing.Rows.First(r => r.Kind == ListingRowKind.Instruction);
+            Assert.AreEqual(0x0801, first.Address);
         }
 
         [TestMethod]

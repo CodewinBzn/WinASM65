@@ -574,6 +574,10 @@ namespace WinASM65.Core
 
         private void ApplyDefaultOrigin()
         {
+            InMemoryListingService inMemory = _listingService as InMemoryListingService;
+            if (inMemory != null)
+                inMemory.StartAddress = _defaultOrigin ?? 0;
+
             if (!_defaultOrigin.HasValue)
                 return;
             _emitter.CurrentAddress = _defaultOrigin.Value;

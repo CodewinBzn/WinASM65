@@ -65,6 +65,7 @@ namespace WinASM65.Tooling.Lsp
             public string Config;
             public ProjectSession Session;
             public bool Built;
+            public ProjectBuildResult LastBuild;
             public Dictionary<string, List<Diagnostic>> ByFile = new Dictionary<string, List<Diagnostic>>(StringComparer.OrdinalIgnoreCase);
             public HashSet<string> Published = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
@@ -177,6 +178,9 @@ namespace WinASM65.Tooling.Lsp
                 case "textDocument/hover":
                     Reply(id, Hover(parameters));
                     return;
+                case "winasm65/listing":
+                    Reply(id, Listing(parameters));
+                    return;
             }
 
             if (id != null)
@@ -282,9 +286,12 @@ namespace WinASM65.Tooling.Lsp
             Directory.CreateDirectory(_scratch);
             ProjectBuildResult result = project.Session.Build(new ProjectBuildOptions
             {
+                CaptureListing = true,
                 SideFileDirectory = Path.Combine(_scratch, Math.Abs(project.Config.GetHashCode()).ToString(CultureInfo.InvariantCulture))
             });
             project.Built = result.Success;
+            if (result.Success)
+                project.LastBuild = result;
 
             project.ByFile.Clear();
             foreach (Diagnostic diagnostic in result.Diagnostics)
@@ -416,6 +423,65 @@ namespace WinASM65.Tooling.Lsp
             {
                 ["contents"] = new JsonObject { ["kind"] = "markdown", ["value"] = markdown.ToString() }
             };
+        }
+
+        /// <summary>
+        /// The listing column the editor draws left of the source: for each line that
+        /// emitted something, its address and bytes. A unit is listed from its unsaved
+        /// text; an included file only exists inside a unit, so its rows come from the
+        /// last successful build.
+        /// </summary>
+        private JsonObject Listing(JsonObject parameters)
+        {
+            string uri = (string)parameters["textDocument"]?["uri"] ?? (string)parameters["uri"];
+            if (uri == null)
+                return new JsonObject { ["rows"] = new JsonArray() };
+
+            Document document;
+            string path = _documents.TryGetValue(uri, out document) ? document.Path : PathOf(uri);
+            string text = document != null ? document.Text : TextOf(path) ?? string.Empty;
+
+            Project project = ProjectOf(path);
+            IEnumerable<ListingRow> rows;
+            if (project != null && !IsUnit(project, path))
+            {
+                string directory = project.Session.BaseDirectory;
+                rows = project.LastBuild == null
+                    ? Enumerable.Empty<ListingRow>()
+                    : project.LastBuild.Units.SelectMany(u => u.Listing)
+                        .Where(r => !string.IsNullOrEmpty(r.SourceName) && SamePath(Rooted(r.SourceName, directory), path));
+            }
+            else
+            {
+                ProjectSession session = project != null
+                    ? project.Session
+                    : ProjectSession.Open(new ConfigFile(), Path.GetDirectoryName(path));
+                string directory = Path.GetDirectoryName(path);
+                rows = session.ListSourceText(text, path).Rows
+                    .Where(r => string.IsNullOrEmpty(r.SourceName) || SamePath(Rooted(r.SourceName, directory), path));
+            }
+
+            JsonArray result = new JsonArray();
+            foreach (IGrouping<int, ListingRow> line in rows
+                .Where(r => r.Kind == ListingRowKind.Instruction && r.Address.HasValue && r.Bytes.Count > 0)
+                .GroupBy(r => r.LineNumber)
+                .OrderBy(g => g.Key))
+            {
+                ListingRow first = line.First();
+                result.Add(new JsonObject
+                {
+                    ["line"] = first.LineNumber - 1,
+                    ["address"] = first.Address.Value,
+                    ["bytes"] = string.Join(" ", first.Bytes.Select(b => b.ToString("X2"))),
+                    ["more"] = line.Count() > 1
+                });
+            }
+            return new JsonObject { ["rows"] = result };
+        }
+
+        private static string Rooted(string name, string directory)
+        {
+            return Path.IsPathRooted(name) || string.IsNullOrEmpty(directory) ? name : Path.Combine(directory, name);
         }
 
         private static bool TrySymbolOf(SourceListing listing, string word, out long value)

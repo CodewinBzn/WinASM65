@@ -503,10 +503,38 @@ namespace WinASM65.Projects
         {
             string name = string.IsNullOrWhiteSpace(sourceName) ? AssemblerEngine.DefaultSourceName : sourceName;
             InMemoryListingService sink = new InMemoryListingService();
+
+            // The target the build would use: its CPU, load address and hardware
+            // names. Without them a unit with no .org lists at another address than
+            // the one it is built at, and a debugger or editor showing that address
+            // would be showing a fiction. A target the configuration cannot resolve
+            // leaves the listing as plain as before; the build reports why.
+            ICpuInstructionSet cpu = null;
+            ushort? origin = null;
+            Dictionary<string, long> predefined = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                ResolvedTarget target = TargetResolver.Resolve(Configuration.Target, null, null, null);
+                cpu = CpuFactory.Create(target.CpuName);
+                origin = target.LoadAddress;
+                if (target.DefineHardwareSymbols && target.HardwareSymbols != null)
+                {
+                    foreach (KeyValuePair<string, long> pair in target.HardwareSymbols)
+                        predefined[pair.Key] = pair.Value;
+                }
+            }
+            catch (ArgumentException)
+            {
+            }
+            foreach (KeyValuePair<string, long> pair in ProjectSymbols)
+                predefined[pair.Key] = pair.Value;
+
             IAssembler assembler = _assemblerFactory.Create(new AssemblerOptions
             {
                 ListingService = sink,
-                PredefinedSymbols = ProjectSymbols.Count == 0 ? null : ProjectSymbols
+                Cpu = cpu,
+                DefaultOrigin = origin,
+                PredefinedSymbols = predefined.Count == 0 ? null : predefined
             });
 
             AssemblyResult result = assembler.AssembleSource(sourceText ?? string.Empty, null, name);

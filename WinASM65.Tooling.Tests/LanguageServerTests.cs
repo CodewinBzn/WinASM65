@@ -187,6 +187,62 @@ namespace WinASM65.Tooling.Tests
             }
         }
 
+        private static JsonArray Listing(Harness h, string path)
+        {
+            JsonObject reply = h.Request("winasm65/listing", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = Harness.Uri(path) }
+            });
+            return (JsonArray)reply["result"]["rows"];
+        }
+
+        [TestMethod]
+        public void TheListingColumnFollowsTheUnsavedText()
+        {
+            using (Harness h = new Harness())
+            {
+                string source = h.Write("alone.asm", ".org $8000\n  lda #$5A\n  rts\n");
+                h.Open(source);
+                h.Diagnostics(source);
+
+                JsonArray rows = Listing(h, source);
+                Assert.AreEqual(2, rows.Count);
+                Assert.AreEqual(1, (int)rows[0]["line"]);
+                Assert.AreEqual(0x8000, (int)rows[0]["address"]);
+                Assert.AreEqual("A9 5A", (string)rows[0]["bytes"]);
+                Assert.AreEqual("60", (string)rows[1]["bytes"]);
+
+                h.Change(source, ".org $8000\n  nop\n  lda #$5A\n  rts\n");
+                rows = Listing(h, source);
+                Assert.AreEqual(3, rows.Count);
+                Assert.AreEqual(0x8001, (int)rows[1]["address"], "the edit moved lda one byte on");
+            }
+        }
+
+        [TestMethod]
+        public void AnIncludedFileIsListedFromTheBuild()
+        {
+            using (Harness h = new Harness())
+            {
+                string main = h.Write("main.asm", ".org $8000\n  nop\n  .include \"inc.asm\"\n  rts\n");
+                string include = h.Write("inc.asm", "; helper\n  lda #$01\n");
+                h.Write("config.json", "{ \"Input\": [ { \"FileName\": \"main.asm\", \"Dependencies\": [] } ],"
+                    + " \"Output\": { \"ObjectFile\": \"out.bin\", \"Files\": [ { \"FileName\": \"main.o\" } ] } }");
+                h.Open(main);
+                h.Diagnostics(main);
+
+                JsonArray rows = Listing(h, include);
+                Assert.AreEqual(1, rows.Count);
+                Assert.AreEqual(1, (int)rows[0]["line"]);
+                Assert.AreEqual(0x8001, (int)rows[0]["address"]);
+                Assert.AreEqual("A9 01", (string)rows[0]["bytes"]);
+
+                JsonArray mine = Listing(h, main);
+                CollectionAssert.AreEqual(new[] { 1, 3 }, mine.Select(r => (int)r["line"]).ToArray(),
+                    "the unit's column skips the lines its include emitted");
+            }
+        }
+
         [TestMethod]
         public void UrisFromVsCodeBecomePathsAndBack()
         {

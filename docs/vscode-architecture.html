@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WinASM65 pour VS Code</title>
+<style>
+  :root {
+    --bg: #fbfaf8;
+    --surface: #ffffff;
+    --surface-2: #f2f0ec;
+    --text: #1f1d1a;
+    --muted: #6b665e;
+    --border: #e1ddd5;
+    --accent: #b4532a;
+    --accent-soft: #f6e7df;
+    --code-bg: #f2f0ec;
+    --ok: #2f7a4f;
+    --warn: #9a6a12;
+    --node-a: #e8eef7;
+    --node-a-stroke: #5b7fb5;
+    --node-b: #eef5ea;
+    --node-b-stroke: #5d8f4e;
+    --node-c: #f7ece6;
+    --node-c-stroke: #b4532a;
+    --node-d: #f1ecf6;
+    --node-d-stroke: #7d5ba6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #171614;
+      --surface: #1f1e1b;
+      --surface-2: #282622;
+      --text: #ece8e1;
+      --muted: #a39d93;
+      --border: #3a3732;
+      --accent: #e08a5f;
+      --accent-soft: #3a2a22;
+      --code-bg: #282622;
+      --ok: #7cc49a;
+      --warn: #d9ad5b;
+      --node-a: #1f2a3a;
+      --node-a-stroke: #7f9fd1;
+      --node-b: #213021;
+      --node-b-stroke: #8cbf7c;
+      --node-c: #382720;
+      --node-c-stroke: #e08a5f;
+      --node-d: #2c2338;
+      --node-d-stroke: #ad8fd6;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #171614;
+    --surface: #1f1e1b;
+    --surface-2: #282622;
+    --text: #ece8e1;
+    --muted: #a39d93;
+    --border: #3a3732;
+    --accent: #e08a5f;
+    --accent-soft: #3a2a22;
+    --code-bg: #282622;
+    --ok: #7cc49a;
+    --warn: #d9ad5b;
+    --node-a: #1f2a3a;
+    --node-a-stroke: #7f9fd1;
+    --node-b: #213021;
+    --node-b-stroke: #8cbf7c;
+    --node-c: #382720;
+    --node-c-stroke: #e08a5f;
+    --node-d: #2c2338;
+    --node-d-stroke: #ad8fd6;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 250px minmax(0, 1fr);
+    max-width: 1180px;
+    margin: 0 auto;
+    gap: 48px;
+    padding: 40px 24px 80px;
+  }
+  nav {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    font-size: 14px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+  }
+  nav p { margin: 0 0 8px; font-weight: 600; color: var(--muted); text-transform: uppercase; font-size: 12px; letter-spacing: .06em; }
+  nav ol { list-style: none; margin: 0; padding: 0; counter-reset: s; }
+  nav li { counter-increment: s; }
+  nav a {
+    display: block;
+    padding: 5px 10px;
+    color: var(--text);
+    text-decoration: none;
+    border-left: 2px solid var(--border);
+  }
+  nav a::before { content: counter(s) ". "; color: var(--muted); }
+  nav a:hover { border-left-color: var(--accent); color: var(--accent); }
+  main { min-width: 0; }
+  header { margin-bottom: 40px; }
+  h1 { font-size: 34px; line-height: 1.2; margin: 0 0 12px; letter-spacing: -.01em; }
+  .lede { font-size: 18px; color: var(--muted); margin: 0; max-width: 60ch; }
+  h2 {
+    font-size: 24px;
+    margin: 56px 0 16px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    scroll-margin-top: 16px;
+  }
+  h3 { font-size: 18px; margin: 32px 0 8px; }
+  p, li { max-width: 72ch; }
+  a { color: var(--accent); }
+  code {
+    font-family: "Cascadia Code", Consolas, ui-monospace, monospace;
+    font-size: .88em;
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-size: 13.5px;
+    line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14.5px; }
+  .table-wrap { overflow-x: auto; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--surface-2); font-weight: 600; }
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-soft);
+    padding: 12px 16px;
+    border-radius: 0 8px 8px 0;
+    margin: 20px 0;
+  }
+  .callout p { margin: 4px 0; }
+  .figure {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin: 20px 0;
+    overflow-x: auto;
+  }
+  .figure svg { display: block; width: 100%; height: auto; min-width: 640px; }
+  .caption { font-size: 13.5px; color: var(--muted); margin-top: 10px; }
+  svg text { fill: var(--text); font-family: "Segoe UI", system-ui, sans-serif; }
+  svg .muted { fill: var(--muted); }
+  svg .line { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+  svg .box-a { fill: var(--node-a); stroke: var(--node-a-stroke); }
+  svg .box-b { fill: var(--node-b); stroke: var(--node-b-stroke); }
+  svg .box-c { fill: var(--node-c); stroke: var(--node-c-stroke); }
+  svg .box-d { fill: var(--node-d); stroke: var(--node-d-stroke); }
+  svg .frame { fill: none; stroke: var(--border); stroke-dasharray: 5 4; }
+  svg .life { stroke: var(--border); stroke-width: 1.5; stroke-dasharray: 4 4; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .card h4 { margin: 0 0 6px; font-size: 15px; }
+  .card p { margin: 0; font-size: 14.5px; color: var(--muted); }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 99px; background: var(--surface-2); color: var(--muted); margin-left: 6px; vertical-align: 2px; }
+  footer { margin-top: 64px; color: var(--muted); font-size: 13.5px; }
+  .theme-toggle {
+    position: fixed; top: 16px; right: 16px;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer;
+  }
+
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: minmax(0, 1fr); gap: 24px; padding: 24px 16px 64px; }
+    nav { position: static; max-height: none; }
+    .grid-2 { grid-template-columns: 1fr; }
+    h1 { font-size: 28px; }
+  }
+</style>
+</head>
+<body>
+<button class="theme-toggle" type="button" onclick="toggleTheme()">Thème</button>
+<div class="layout">
+  <nav aria-label="Sommaire">
+    <p>Sommaire</p>
+    <ol>
+      <li><a href="#vue">Vue d'ensemble</a></li>
+      <li><a href="#projets">Les projets</a></li>
+      <li><a href="#bridge">Le bridge Mesen2</a></li>
+      <li><a href="#backend">Le client .NET du bridge</a></li>
+      <li><a href="#carte">La carte source</a></li>
+      <li><a href="#dap">Le débogueur (DAP)</a></li>
+      <li><a href="#lsp">Le serveur de langage</a></li>
+      <li><a href="#extension">L'extension VS Code</a></li>
+      <li><a href="#listing">Colonne de listing</a></li>
+      <li><a href="#ram">Panneau RAM</a></li>
+      <li><a href="#build">Build et paquet</a></li>
+      <li><a href="#tests">Tests et validation</a></li>
+      <li><a href="#limites">Limites connues</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <header>
+      <h1>WinASM65 pour VS Code</h1>
+      <p class="lede">Ce document explique comment l'extension construit un projet 6502, lance Mesen2 et permet de déboguer au niveau des lignes de source. Il couvre chaque couche, du script Lua dans l'émulateur jusqu'au TypeScript de l'extension.</p>
+    </header>
+
+    <!-- ============================================================ -->
+    <h2 id="vue">Vue d'ensemble</h2>
+    <p>L'extension écrite en TypeScript ne fait presque rien elle-même. Elle lance <code>WinASM65.Tooling.exe</code>, un programme .NET qui fonctionne en trois modes. Chacun réutilise l'assembleur et le noyau du moniteur, sans les dupliquer.</p>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 430" role="img" aria-label="Architecture : VS Code, l'extension, WinASM65.Tooling dans ses trois modes, l'assembleur, Monitor.Core et Mesen2">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <!-- VS Code -->
+        <rect class="frame" x="10" y="10" width="250" height="410" rx="12"/>
+        <text x="24" y="36" font-size="14" font-weight="600">VS Code</text>
+        <rect class="box-a" x="30" y="60" width="210" height="62" rx="8"/>
+        <text x="45" y="86" font-size="14" font-weight="600">Débogage (F5)</text>
+        <text x="45" y="106" font-size="12" class="muted">points d'arrêt, variables, mémoire</text>
+        <rect class="box-a" x="30" y="150" width="210" height="62" rx="8"/>
+        <text x="45" y="176" font-size="14" font-weight="600">Éditeur</text>
+        <text x="45" y="196" font-size="12" class="muted">diagnostics, survol, coloration</text>
+        <rect class="box-a" x="30" y="240" width="210" height="62" rx="8"/>
+        <text x="45" y="266" font-size="14" font-weight="600">Tâches</text>
+        <text x="45" y="286" font-size="12" class="muted">build, panneau Problèmes</text>
+        <rect class="box-d" x="30" y="330" width="210" height="62" rx="8"/>
+        <text x="45" y="356" font-size="14" font-weight="600">extension.ts</text>
+        <text x="45" y="376" font-size="12" class="muted">lance l'outil, fournit les configs</text>
+
+        <!-- Tooling -->
+        <rect class="frame" x="330" y="10" width="240" height="320" rx="12"/>
+        <text x="344" y="36" font-size="14" font-weight="600">WinASM65.Tooling.exe</text>
+        <rect class="box-c" x="350" y="60" width="200" height="62" rx="8"/>
+        <text x="365" y="86" font-size="14" font-weight="600">--dap</text>
+        <text x="365" y="106" font-size="12" class="muted">DebugSession</text>
+        <rect class="box-c" x="350" y="150" width="200" height="62" rx="8"/>
+        <text x="365" y="176" font-size="14" font-weight="600">--lsp</text>
+        <text x="365" y="196" font-size="12" class="muted">LanguageServer</text>
+        <rect class="box-c" x="350" y="240" width="200" height="62" rx="8"/>
+        <text x="365" y="266" font-size="14" font-weight="600">--build config.json</text>
+        <text x="365" y="286" font-size="12" class="muted">fichier:ligne: error: …</text>
+
+        <!-- libraries -->
+        <rect class="box-b" x="350" y="352" width="200" height="62" rx="8"/>
+        <text x="365" y="378" font-size="14" font-weight="600">WinASM65</text>
+        <text x="365" y="398" font-size="12" class="muted">assembleur, ProjectSession</text>
+        <rect class="box-b" x="640" y="150" width="230" height="62" rx="8"/>
+        <text x="655" y="176" font-size="14" font-weight="600">WinASM65.Monitor.Core</text>
+        <text x="655" y="196" font-size="12" class="muted">bridge, session, carte source</text>
+
+        <!-- Mesen -->
+        <rect class="box-d" x="640" y="40" width="230" height="82" rx="8"/>
+        <text x="655" y="66" font-size="14" font-weight="600">Mesen2 2.1.1</text>
+        <text x="655" y="86" font-size="12" class="muted">bridge_mesen2.lua</text>
+        <text x="655" y="104" font-size="12" class="muted">écoute 127.0.0.1:port</text>
+
+        <!-- arrows VS Code -> Tooling -->
+        <path class="line" d="M240 91 H350" marker-end="url(#arr)"/>
+        <text x="262" y="84" font-size="11" class="muted">DAP stdio</text>
+        <path class="line" d="M240 181 H350" marker-end="url(#arr)"/>
+        <text x="262" y="174" font-size="11" class="muted">LSP stdio</text>
+        <path class="line" d="M240 271 H350" marker-end="url(#arr)"/>
+        <text x="262" y="264" font-size="11" class="muted">processus</text>
+        <!-- dap -> mesen -->
+        <path class="line" d="M550 91 H640" marker-end="url(#arr)"/>
+        <text x="566" y="84" font-size="11" class="muted">TCP texte</text>
+        <!-- tooling -> core / assembler -->
+        <path class="line" d="M550 181 H640" marker-end="url(#arr)"/>
+        <path class="line" d="M450 302 V352" marker-end="url(#arr)"/>
+        <path class="line" d="M755 212 V383 H550" marker-end="url(#arr)"/>
+      </svg>
+      <p class="caption">Les flèches indiquent qui appelle qui. Monitor.Core s'appuie lui-même sur l'assembleur WinASM65.</p>
+    </div>
+
+    <div class="grid-2">
+      <div class="card"><h4>Un seul binaire</h4><p>Les trois modes sont dans un même exécutable autonome (fichier unique, sans .NET installé), livré dans le <code>bin/</code> de l'extension avec les scripts Lua.</p></div>
+      <div class="card"><h4>Aucune logique dupliquée</h4><p>Le build, les listings et le protocole du bridge sont les mêmes que dans le moniteur terminal. Une correction profite aux deux interfaces.</p></div>
+      <div class="card"><h4>stdout réservé au protocole</h4><p>En modes <code>--dap</code> et <code>--lsp</code>, stdout sert de canal protocolaire. <code>Console.Out</code> est redirigé vers stderr dès le démarrage.</p></div>
+      <div class="card"><h4>Pas de bibliothèque protocolaire</h4><p>DAP et LSP utilisent le même encadrement <code>Content-Length</code>. Le tout est écrit à la main sur <code>System.Text.Json</code>, sans nouveau paquet NuGet.</p></div>
+    </div>
+
+    <!-- ============================================================ -->
+    <h2 id="projets">Les projets</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Projet</th><th>Type</th><th>Rôle</th></tr></thead>
+      <tbody>
+        <tr><td><code>WinASM65</code></td><td>exe + bibliothèque</td><td>L'assembleur. <code>ProjectSession</code> construit un projet <code>config.json</code> en mémoire. L'option <code>CaptureListing</code> fournit en plus le listing de chaque unité et la place de chaque <code>.o</code> dans l'image.</td></tr>
+        <tr><td><code>WinASM65.Monitor.Abstractions</code></td><td>bibliothèque</td><td>Le contrat des émulateurs : <code>IExecutionAdapter</code> et les drapeaux <code>ExecutionCapability</code>.</td></tr>
+        <tr><td><code>WinASM65.Monitor.Core</code></td><td>bibliothèque</td><td>Tout le moniteur sauf l'interface : <code>MonitorSession</code>, <code>BridgeMemoryBackend</code>, protocole, lanceur d'émulateur, listings, carte source (<code>Debugging/</code>), scripts Lua (<code>Bridge/</code>). Aucune dépendance d'interface, aucune écriture sur stdout.</td></tr>
+        <tr><td><code>WinASM65.Monitor</code></td><td>exe</td><td>Le moniteur terminal (SharpConsoleUI) et son REPL. Il s'appuie sur Core.</td></tr>
+        <tr><td><code>WinASM65.Tooling</code></td><td>exe</td><td>Le côté éditeur : <code>--dap</code>, <code>--lsp</code>, <code>--build</code>.</td></tr>
+        <tr><td><code>vscode-extension/</code></td><td>TypeScript</td><td>Contributions VS Code : débogueur, langage, grammaire, tâche, problem matcher.</td></tr>
+        <tr><td><code>*.Tests</code></td><td>MSTest</td><td>Une suite par projet. Voir <a href="#tests">Tests</a>.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <!-- ============================================================ -->
+    <h2 id="bridge">Le bridge Mesen2</h2>
+    <p><code>bridge_mesen2.lua</code> tourne dans Mesen2. Il écoute un seul client TCP sur <code>127.0.0.1</code>. Le port est lu dans la variable d'environnement <code>MACHINE_PORT</code> (45678 par défaut). Le lanceur ouvre d'abord trois réglages dans le <code>settings.json</code> de Mesen2 : <code>AllowIoOsAccess</code>, <code>AllowNetworkAccess</code> et <code>ScriptTimeout</code>.</p>
+
+    <h3>Protocole</h3>
+    <p>Le protocole est en texte ASCII, une ligne par message. Chaque commande reçoit exactement une réponse, <code>OK …</code> ou <code>ERR raison</code>, dans l'ordre. Les lignes qui commencent par <code>PUSH</code> ne sont pas des réponses : ce sont des messages que le bridge envoie de lui-même.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Commande</th><th>Réponse</th></tr></thead>
+      <tbody>
+        <tr><td><code>PING</code></td><td><code>OK Mesen2 2.1.1</code>. Le nom et la version déterminent les capacités annoncées.</td></tr>
+        <tr><td><code>READ $addr n</code> · <code>WRITE $addr hex</code></td><td>Mémoire, 4096 octets au plus par commande. Une écriture est relue pour vérification ; une écriture en ROM est refusée.</td></tr>
+        <tr><td><code>CPU</code></td><td><code>OK pc=$C01A a=90 x=00 y=5E sp=F8 ps=85 cycles=…</code></td></tr>
+        <tr><td><code>PAUSE</code> · <code>RESUME</code> · <code>STEP</code> · <code>RESET</code></td><td>Contrôle de l'exécution.</td></tr>
+        <tr><td><code>BREAK SET|REMOVE exec $addr</code> · <code>BREAK CLEAR</code> · <code>BREAK LIST</code></td><td>Points d'arrêt (et points de surveillance <code>read</code>/<code>write</code>, qui ne font que journaliser).</td></tr>
+        <tr><td><code>STATUS</code></td><td><code>OK running</code> ou <code>OK stopped reason=… pc=$… prg=…</code>. Sert à se resynchroniser si un PUSH a été perdu.</td></tr>
+        <tr><td><code>STATE SAVE</code> · <code>STATE LOAD hex</code> · <code>ROM</code></td><td>Sauvegardes d'état et informations sur la cartouche.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Message spontané</th><th>Quand</th></tr></thead>
+      <tbody>
+        <tr><td><code>PUSH RAM $0010:42 $0011:43 …</code></td><td>Les octets écrits par le programme, regroupés par trame.</td></tr>
+        <tr><td><code>PUSH STOPPED reason=breakpoint|step|pause pc=$C01A prg=$0001A</code></td><td>La machine vient de s'arrêter. <code>prg</code> est l'offset du PC dans la PRG-ROM (<code>emu.convertAddress</code>), ou <code>-</code> s'il est inconnu.</td></tr>
+        <tr><td><code>PUSH RESUMED</code></td><td>La machine repart, après <code>RESUME</code> ou <code>RESET</code>. Un <code>STEP</code> n'envoie pas de RESUMED : il est suivi directement d'un STOPPED.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Deux façons de servir les commandes</h3>
+    <ul>
+      <li><strong>Machine en marche.</strong> <code>on_tick</code> s'exécute à chaque lecture de la manette (<code>inputPolled</code>), soit environ une fois par trame. Il arrête l'exécution, traite jusqu'à 64 commandes en attente, envoie le <code>PUSH RAM</code>, puis relance.</li>
+      <li><strong>Machine arrêtée.</strong> L'événement <code>codeBreak</code> appelle <code>serve_blocked</code>. Celui-ci annonce <code>PUSH STOPPED</code>, puis traite les commandes dans une boucle bloquante jusqu'à <code>RESUME</code>, <code>STEP</code> ou <code>RESET</code>. Il envoie <code>PUSH RESUMED</code> en sortant, sauf après un pas.</li>
+    </ul>
+
+    <div class="callout">
+      <p><strong>S'arrêter avant l'instruction.</strong> Le callback d'exécution de Mesen2 se déclenche au chargement de l'opcode. Un <code>emu.breakExecution()</code> à cet instant arrête la machine <em>après</em> l'instruction. Le bridge demande donc à la place un pas d'un seul cycle CPU (<code>emu.step(1, cpuCycleStep)</code>). La machine s'arrête juste après le chargement de l'opcode, alors que les registres et la mémoire n'ont pas encore changé. Le <code>STEP</code> ou <code>RESUME</code> suivant exécute l'instruction une seule fois. Ce comportement a été mesuré sur Mesen2 2.1.1.</p>
+    </div>
+    <div class="callout">
+      <p><strong>Points d'arrêt muets pendant un reset.</strong> <code>reset_now</code> relance la machine avant d'appeler <code>emu.reset()</code>. Le programme exécute donc encore quelques instructions entre les deux. Un point d'arrêt touché à ce moment-là arrêterait la machine juste après le reset, sur le vecteur de reset, avec la mauvaise raison. Les callbacks sont donc ignorés jusqu'à l'événement <code>reset</code> de l'émulateur.</p>
+    </div>
+
+    <!-- ============================================================ -->
+    <h2 id="backend">Le client .NET du bridge</h2>
+    <h3>ProtocolClient</h3>
+    <p>Un thread récepteur lit les lignes qui arrivent. Les lignes <code>PUSH</code> déclenchent l'événement <code>PushReceived</code>, les autres vont dans une file de réponses. <code>Send()</code> est sérialisé par un verrou : les réponses n'ont pas d'identifiant, donc deux threads qui enverraient en même temps (le polling RAM et la session) risqueraient de prendre chacun la réponse de l'autre.</p>
+
+    <h3>BridgeMemoryBackend</h3>
+    <p>Il implémente <code>IMemoryBackend</code> ainsi que plusieurs capacités optionnelles :</p>
+    <ul>
+      <li><code>ICpuStateSource</code> : les registres, via <code>CPU</code>.</li>
+      <li><code>IExecutionEvents</code> : les événements <code>Stopped</code>/<code>Resumed</code>, <code>IsStopped</code> et <code>LastStop</code>, alimentés par les PUSH et par <code>STATUS</code> à la connexion. Si le bridge répond <code>ERR</code> à <code>STATUS</code> (MesenCE), <code>ReportsExecutionState</code> vaut false.</li>
+      <li><code>IBreakpointRemoval</code> : <code>BREAK REMOVE</code> d'un point d'arrêt unique.</li>
+      <li><code>IReconnectable</code>, <code>IRomTransferTarget</code>, <code>IExecutionAdapter</code>.</li>
+    </ul>
+    <p>Le polling RAM de secours lit <code>$0000–$07FF</code> toutes les 250 ms et le compare à une copie prise <em>avant</em> la lecture. Il est désactivé quand la machine est arrêtée. L'adaptateur DAP le coupe complètement avec <code>poll: false</code>, puisqu'il ne lit la mémoire qu'à la demande.</p>
+
+    <div class="callout">
+      <p><strong>Règle du thread récepteur.</strong> <code>Stopped</code> et <code>Resumed</code> sont déclenchés sur le thread récepteur. Or c'est ce même thread qui livre les réponses : un gestionnaire qui enverrait une commande depuis ce thread attendrait sa réponse indéfiniment. Les gestionnaires doivent donc seulement <em>mettre le travail en file</em>. C'est ce que fait l'adaptateur DAP.</p>
+    </div>
+
+    <!-- ============================================================ -->
+    <h2 id="carte">La carte source</h2>
+    <p>Pour relier un PC à une ligne de source, il faut les adresses que le <em>build</em> a réellement produites, et non celles d'un fichier assemblé isolément. Les adresses d'une unité dépendent en effet de l'adresse de chargement de la cible, de la carte mémoire et de l'ordre des unités dans le projet.</p>
+
+    <h3>Ce que le build capture</h3>
+    <p>Avec <code>ProjectBuildOptions.CaptureListing</code>, chaque unité reçoit un <code>InMemoryListingService</code>. Le résultat contient alors :</p>
+    <ul>
+      <li><code>ProjectUnitResult.Listing</code> : les lignes de listing (numéro de ligne, fichier source avec les inclusions, adresse, octets).</li>
+      <li><code>ProjectUnitResult.Origins</code> : chaque <code>.org</code> sous forme de paire (offset dans le <code>.o</code>, adresse). Un <code>.o</code> contient les octets émis bout à bout, sans remplissage entre les <code>.org</code>.</li>
+      <li><code>ProjectBuildResult.Placements</code> : l'offset de chaque fichier de <code>Output.Files</code> dans l'image, calculé avec la même règle que <code>BinaryCombiner</code> (dans l'ordre, chaque fichier complété jusqu'à sa <code>Size</code>).</li>
+    </ul>
+
+    <h3>Calcul de l'offset PRG</h3>
+<pre><code>offset dans le .o   = début de l'origine + (adresse − adresse de l'origine)
+offset dans l'image = placement du .o + offset dans le .o
+offset PRG          = offset dans l'image − 16 (en-tête iNES, + 512 si trainer)</code></pre>
+
+    <h3>SourceMap</h3>
+    <ul>
+      <li><code>AtLine(fichier, ligne)</code> : toutes les émissions d'une ligne (une macro ou un <code>.rep</code> peuvent en produire plusieurs).</li>
+      <li><code>AtAddress(pc)</code> : toutes les lignes assemblées à une adresse CPU. Il y en a plusieurs quand des banques partagent l'adresse.</li>
+      <li><code>Resolve(pc, prg)</code> : la réponse est exacte si l'offset PRG est connu ; sinon le premier candidat est renvoyé, marqué « ambigu ».</li>
+      <li><code>TryNearestEmittingLine</code> : un point d'arrêt sur un label ou un commentaire est déplacé sur la première ligne qui émet du code, dans les 5 lignes suivantes.</li>
+      <li><code>NearestLabel</code> et <code>Symbols</code> : nomment la frame (<code>NMI+2</code>) et servent à l'évaluation dans la console.</li>
+    </ul>
+    <p>Un test le vérifie sur l'exemple Bomberman : pour chaque ligne cartographiée, l'image construite contient bien l'opcode de cette ligne à l'offset PRG calculé.</p>
+    <div class="callout">
+      <p><strong>Unités sans <code>.org</code>.</strong> L'assembleur place leurs premiers octets à son origine par défaut, c'est-à-dire l'adresse de chargement de la cible. Le listing en mémoire part donc de cette adresse (<code>InMemoryListingService.StartAddress</code>, réglée par <code>ApplyDefaultOrigin</code>) et non de 0. <code>ProjectSession.ListSourceText</code> applique aussi la cible du projet (CPU, adresse de chargement, symboles matériels), comme le fait <code>Build</code>.</p>
+    </div>
+
+    <!-- ============================================================ -->
+    <h2 id="dap">Le débogueur (DAP)</h2>
+    <p><code>DebugSession</code> traite les requêtes VS Code et les événements de la machine sur <em>un seul</em> thread, à travers une <code>BlockingCollection&lt;Action&gt;</code>. Le build, le lancement et la connexion passent par <code>IDebugEnvironment</code>, que les tests remplacent par une machine factice.</p>
+
+    <h3>Séquence de lancement</h3>
+    <div class="figure">
+      <svg viewBox="0 0 900 560" role="img" aria-label="Diagramme de séquence du lancement : VS Code, adaptateur, Mesen2 et bridge">
+        <defs>
+          <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <rect class="box-a" x="40" y="10" width="160" height="40" rx="8"/>
+        <text x="120" y="35" font-size="14" font-weight="600" text-anchor="middle">VS Code</text>
+        <rect class="box-c" x="370" y="10" width="160" height="40" rx="8"/>
+        <text x="450" y="35" font-size="14" font-weight="600" text-anchor="middle">Adaptateur</text>
+        <rect class="box-d" x="700" y="10" width="160" height="40" rx="8"/>
+        <text x="780" y="35" font-size="14" font-weight="600" text-anchor="middle">Mesen2 + bridge</text>
+        <line class="life" x1="120" y1="50" x2="120" y2="550"/>
+        <line class="life" x1="450" y1="50" x2="450" y2="550"/>
+        <line class="life" x1="780" y1="50" x2="780" y2="550"/>
+
+        <path class="line" d="M120 80 H448" marker-end="url(#arr2)"/>
+        <text x="135" y="74" font-size="12">initialize, launch { config }</text>
+        <text x="465" y="102" font-size="12" class="muted">build (CaptureListing) → SourceMap</text>
+        <path class="line" d="M450 128 H778" marker-end="url(#arr2)"/>
+        <text x="465" y="122" font-size="12">lance Mesen.exe rom bridge.lua (MACHINE_PORT)</text>
+        <path class="line" d="M450 166 H778" marker-end="url(#arr2)"/>
+        <text x="465" y="160" font-size="12">connexion TCP, PING, STATUS</text>
+        <path class="line" d="M450 204 H778" marker-end="url(#arr2)"/>
+        <text x="465" y="198" font-size="12">PAUSE (personne ne regarde encore)</text>
+        <path class="line" d="M448 242 H122" marker-end="url(#arr2)"/>
+        <text x="135" y="236" font-size="12">réponse launch + événement initialized</text>
+        <path class="line" d="M120 280 H448" marker-end="url(#arr2)"/>
+        <text x="135" y="274" font-size="12">setBreakpoints (par fichier)</text>
+        <path class="line" d="M450 300 H778" marker-end="url(#arr2)"/>
+        <text x="465" y="294" font-size="12">BREAK SET exec $C01A</text>
+        <path class="line" d="M120 338 H448" marker-end="url(#arr2)"/>
+        <text x="135" y="332" font-size="12">configurationDone</text>
+        <path class="line" d="M450 358 H778" marker-end="url(#arr2)"/>
+        <text x="465" y="352" font-size="12">RESET (le jeu repart, points d'arrêt en place)</text>
+        <path class="line" d="M778 410 H452" marker-end="url(#arr2)"/>
+        <text x="465" y="404" font-size="12">PUSH STOPPED reason=breakpoint pc=$C01A prg=$0001A</text>
+        <path class="line" d="M448 448 H122" marker-end="url(#arr2)"/>
+        <text x="135" y="442" font-size="12">événement stopped (breakpoint)</text>
+        <path class="line" d="M120 486 H448" marker-end="url(#arr2)"/>
+        <text x="135" y="480" font-size="12">stackTrace, scopes, variables</text>
+        <path class="line" d="M450 506 H778" marker-end="url(#arr2)"/>
+        <text x="465" y="500" font-size="12">CPU, READ</text>
+        <path class="line" d="M448 536 H122" marker-end="url(#arr2)"/>
+        <text x="135" y="530" font-size="12">BMAN_BANK1.NAS:30, « NMI », registres</text>
+      </svg>
+      <p class="caption">Avec <code>stopOnEntry</code>, l'adaptateur pose avant le RESET un point d'arrêt temporaire sur le vecteur de reset (<code>$FFFC</code>). L'arrêt est alors rapporté avec la raison « entry ».</p>
+    </div>
+
+    <h3>Requêtes prises en charge</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Requête</th><th>Ce que fait l'adaptateur</th></tr></thead>
+      <tbody>
+        <tr><td><code>launch</code></td><td>Build avec écriture de l'image, lancement de l'émulateur, connexion en réessayant tant que le processus vit, vérification que le bridge rapporte les arrêts (sinon refus, par exemple MesenCE), puis <code>PAUSE</code>. Si Mesen2 se termine aussitôt, l'adaptateur explique le problème d'instance unique.</td></tr>
+        <tr><td><code>attach</code></td><td>Connexion à un bridge déjà ouvert sur <code>port</code>. Le build de la carte est optionnel.</td></tr>
+        <tr><td><code>setBreakpoints</code></td><td>Déplacement vers la première ligne qui émet du code, vérification, puis différence avec l'ensemble précédent : <code>BREAK SET</code> et <code>BREAK REMOVE</code> seulement quand le compte de références d'une adresse passe de 0 à 1 ou de 1 à 0.</td></tr>
+        <tr><td><code>continue</code> · <code>pause</code></td><td><code>RESUME</code> · <code>PAUSE</code>.</td></tr>
+        <tr><td><code>next</code></td><td>Si l'opcode au PC est <code>JSR</code> ($20) : point d'arrêt temporaire à PC+3, puis <code>RESUME</code>. Sinon : <code>STEP</code>.</td></tr>
+        <tr><td><code>stepIn</code> · <code>stepOut</code></td><td><code>STEP</code> · adresse de retour lue sur la pile (<code>$0100+SP+1</code>), +1, puis point d'arrêt temporaire.</td></tr>
+        <tr><td><code>stackTrace</code></td><td>Une frame : la ligne obtenue par <code>Resolve(pc, prg)</code>, nommée d'après le label le plus proche, avec <code>instructionPointerReference</code>.</td></tr>
+        <tr><td><code>scopes</code> · <code>variables</code></td><td>Registres (PC, A, X, Y, SP, PS, cycles), Flags (N V B D I Z C), Page zéro.</td></tr>
+        <tr><td><code>readMemory</code> · <code>writeMemory</code></td><td>Par blocs de 4096 octets, en base64. Une écriture refusée (ROM) remonte avec le texte du bridge. Un événement <code>memory</code> suit chaque écriture.</td></tr>
+        <tr><td><code>evaluate</code></td><td>Dans la console, un verbe du moniteur ou une ligne préfixée par <code>&gt;</code> passe par <code>MonitorSession.Execute</code>. Sinon, un registre, un symbole du build ou <code>$addr</code> est évalué (pour <code>$addr</code>, l'octet lu à cette adresse).</td></tr>
+        <tr><td><code>disconnect</code> · <code>terminate</code></td><td><code>BREAK CLEAR</code>, puis l'émulateur est arrêté si l'adaptateur l'a lancé ; en mode attach, la machine est relancée.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Interprétation d'un arrêt</h3>
+    <ol>
+      <li>Avant <code>configurationDone</code>, l'arrêt est seulement mémorisé (c'est la pause du lancement).</li>
+      <li>Si l'arrêt tombe sur un point d'arrêt temporaire et sur aucun point d'arrêt de l'utilisateur, la raison rapportée est « step » ou « entry », et les temporaires sont retirés.</li>
+      <li>Si l'adresse porte un point d'arrêt de l'utilisateur mais que l'offset PRG désigne une autre banque, l'adaptateur relance la machine sans rien dire à VS Code.</li>
+      <li>Sinon, la raison est « breakpoint » (avec <code>hitBreakpointIds</code>), « step » ou « pause ».</li>
+    </ol>
+    <p>Un <code>PUSH RESUMED</code> que l'adaptateur n'a pas provoqué lui-même (par exemple un clic dans la fenêtre de Mesen2) devient un événement <code>continued</code>. Un minuteur détecte la perte de connexion et la sortie de l'émulateur, puis envoie <code>terminated</code>.</p>
+
+    <h3>launch.json</h3>
+<pre><code>{
+  "type": "winasm65",
+  "request": "launch",
+  "name": "Debug on Mesen2",
+  "config": "${workspaceFolder}/config.json",  // requis
+  "emulatorPath": "",        // sinon réglage winasm65.emulatorPath, puis Emulator.Path de config.json
+  "emulator": "mesen2",      // mesence est refusé : son bridge ne signale pas les arrêts
+  "rom": "",                 // par défaut Output.ObjectFile
+  "port": 0,                 // 0 = port libre
+  "stopOnEntry": false,
+  "connectTimeoutMs": 15000
+}</code></pre>
+
+    <!-- ============================================================ -->
+    <h2 id="lsp">Le serveur de langage</h2>
+    <p><code>LanguageServer</code> fonctionne en synchronisation complète : le client envoie le texte entier du fichier à chaque modification. Toutes les requêtes sont traitées sur un thread de travail. Il s'appuie sur deux sources, chacune utilisée là où elle est exacte :</p>
+    <div class="grid-2">
+      <div class="card"><h4>À l'ouverture et à l'enregistrement <span class="tag">exact</span></h4><p>Build complet du projet qui gouverne le fichier, avec les fichiers <code>.symb</code> dans un dossier temporaire. Les diagnostics sont publiés sur chaque fichier cité, inclusions comprises. Les fichiers corrigés reçoivent une liste vide.</p></div>
+      <div class="card"><h4>Pendant la frappe <span class="tag">250 ms</span></h4><p>Le texte non enregistré est assemblé par <code>ProjectSession.ListSourceText</code> avec les symboles du dernier build réussi. Tant qu'aucun build n'a réussi, les « Undefined symbol » sont retenus, car le nom peut être défini dans une autre unité.</p></div>
+    </div>
+    <ul>
+      <li><strong>Projet gouvernant.</strong> C'est le <code>config.json</code> qui déclare le fichier comme entrée (<code>ProjectConfigLocator</code>). À défaut, c'est le plus proche au-dessus : le fichier est alors traité comme une inclusion, et seul le build parle de lui. S'il n'y en a aucun, le fichier est assemblé seul.</li>
+      <li><strong>Survol.</strong> Sur une mnémonique : ses formes, avec mode, opcode et taille issus de <code>InstructionDocs</code>. Sur un symbole : sa valeur. Sur une ligne : l'adresse et les octets assemblés.</li>
+      <li><strong>URI.</strong> VS Code encode les deux-points du lecteur (<code>file:///c%3A/…</code>). Le serveur les décode, et republie avec l'URI exacte reçue pour les fichiers ouverts.</li>
+    </ul>
+
+    <!-- ============================================================ -->
+    <h2 id="extension">L'extension VS Code</h2>
+    <p><code>src/extension.ts</code> enregistre quatre éléments :</p>
+    <ul>
+      <li><strong>Résolution de l'outil.</strong> Dans l'ordre : le réglage <code>winasm65.toolingPath</code>, puis <code>bin/WinASM65.Tooling.exe</code> dans l'extension, puis le build Debug du dépôt (<code>../WinASM65.Tooling/bin/Debug/net8.0/WinASM65.Tooling.dll</code>, lancé par <code>dotnet</code>).</li>
+      <li><strong>DebugAdapterDescriptorFactory.</strong> Démarre l'outil avec <code>--dap</code>.</li>
+      <li><strong>DebugConfigurationProvider.</strong> Avec F5 sans <code>launch.json</code>, il prend le <code>config.json</code> le plus proche du fichier ouvert (sinon le premier du workspace). Il ajoute <code>winasm65.emulatorPath</code> si la configuration n'en donne pas.</li>
+      <li><strong>TaskProvider.</strong> Une tâche « build &lt;config.json&gt; » par projet, qui lance <code>--build</code> avec le problem matcher <code>$winasm65</code> (<code>^(.+?)(?::(\d+))?: (error|warning): (.*)$</code>).</li>
+      <li><strong>LanguageClient.</strong> Démarre l'outil avec <code>--lsp</code>, pour le langage <code>winasm65</code> (<code>.nas</code>, <code>.asm</code>). Le réglage <code>winasm65.languageServer.enabled</code> le désactive.</li>
+    </ul>
+    <p>Dans <code>package.json</code>, l'extension déclare aussi la grammaire TextMate <code>syntaxes/winasm65.tmLanguage.json</code>, la configuration de langage (commentaires <code>;</code>) et l'autorisation de poser des points d'arrêt dans les fichiers <code>winasm65</code>.</p>
+
+    <!-- ============================================================ -->
+    <h2 id="listing">Colonne de listing</h2>
+    <p>Le menu contextuel de l'éditeur propose <em>Show Listing</em> / <em>Hide Listing</em> pour les fichiers <code>winasm65</code>. Ces commandes basculent une colonne grise, à gauche du source, avec l'adresse et les octets de chaque ligne, comme dans un fichier <code>.lst</code> :</p>
+<pre><code>C000 78        SEI
+C001 A9 00     LDA #0
+C003 8D 01 20  STA PPU_CTRL_REG2
+               NMI:
+C01A 48        PHA</code></pre>
+    <ul>
+      <li><strong>Données.</strong> Requête LSP personnalisée <code>winasm65/listing { textDocument.uri }</code>, qui renvoie <code>rows: [{ line, address, bytes, more }]</code>. Une unité est listée à partir de son texte <em>non enregistré</em>, avec les symboles du projet. Un fichier inclus n'existe que dans une unité : ses lignes viennent donc du dernier build réussi (<code>CaptureListing</code>). <code>more</code> signale qu'une ligne a produit plusieurs émissions (macro, <code>.rep</code>).</li>
+      <li><strong>Affichage.</strong> <code>src/listing.ts</code> pose une décoration <code>before</code> sur <em>chaque</em> ligne : vide (espaces insécables) pour les lignes sans code, afin de garder l'alignement. Au plus 3 octets sont affichés, suivis de <code>…</code> s'il y en a d'autres.</li>
+      <li><strong>Mise à jour.</strong> Au changement d'éditeur visible, 300 ms après une frappe, et 500 ms après un enregistrement (le serveur reconstruit alors le projet). L'état affiché ou masqué est mémorisé par workspace, et le contexte <code>winasm65.listingVisible</code> choisit l'entrée de menu.</li>
+    </ul>
+
+    <!-- ============================================================ -->
+    <h2 id="ram">Panneau RAM</h2>
+    <p>Le panneau RAM montre les 2 Ko de RAM de la NES (<code>$0000-$07FF</code>) en hexadécimal et en ASCII. Il s'ouvre au premier arrêt d'une session (réglage <code>winasm65.ram.openOnStop</code>), avec la commande <em>WinASM65: Show RAM</em>, ou avec le bouton de la barre de débogage.</p>
+    <ul>
+      <li><strong>Lecture.</strong> Requête DAP standard <code>readMemory { memoryReference: "0x0000", count: 2048 }</code>, envoyée par <code>session.customRequest</code>. SP est obtenu par <code>evaluate SP</code>. Les noms viennent une fois par session de la requête personnalisée <code>winasm65.symbols { from, to }</code>, qui renvoie les symboles du build dont la valeur tombe dans la plage.</li>
+      <li><strong>Déclencheurs.</strong> Un <code>DebugAdapterTracker</code> écoute les messages de l'adaptateur : <code>stopped</code> provoque un rafraîchissement, <code>continued</code> affiche « running ». La case <em>Live</em> relit la RAM toutes les 500 ms pendant que la machine tourne.</li>
+      <li><strong>Affichage.</strong> La page zéro et la pile sont teintées, l'octet en <code>$0100+SP</code> est encadré, et les octets modifiés depuis l'arrêt précédent sont surlignés. L'infobulle donne l'adresse, les noms et la valeur. Une variable déclarée comme <code>NAME = $0B</code> est une constante comme les autres : une petite constante peut donc partager une adresse avec une variable, et tous les noms sont affichés.</li>
+      <li><strong>Édition.</strong> Un double-clic sur un octet ouvre une saisie hexadécimale. Entrée envoie <code>writeMemory</code> ; un refus du bridge (écriture en ROM) s'affiche dans la barre d'état du panneau.</li>
+    </ul>
+
+    <!-- ============================================================ -->
+    <h2 id="build">Build et paquet</h2>
+<pre><code>cd vscode-extension
+npm install
+npm run package
+#  1. dotnet publish WinASM65.Tooling -r win-x64 --self-contained -p:PublishSingleFile=true -o bin
+#     (bin/WinASM65.Tooling.exe + bin/Bridge/*.lua)
+#  2. copie de LICENSE.txt (zlib)
+#  3. vsce package --target win32-x64  →  winasm65-win32-x64-0.2.0.vsix (≈ 30 Mo)
+code --install-extension winasm65-win32-x64-0.2.0.vsix</code></pre>
+    <p>Pour développer sans paquet, ouvrez <code>vscode-extension/</code> dans VS Code et appuyez sur F5. La configuration « Run the extension » compile le TypeScript et <code>WinASM65.Tooling</code>, puis ouvre l'exemple Bomberman dans une fenêtre de développement.</p>
+    <p>La publication est sérialisée (<code>-maxcpucount:1</code>) : WinASM65 est référencé à la fois par Tooling et par Monitor.Core, et deux compilations parallèles se disputaient la même DLL.</p>
+
+    <!-- ============================================================ -->
+    <h2 id="tests">Tests et validation</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Suite</th><th>Ce qu'elle garantit</th></tr></thead>
+      <tbody>
+        <tr><td><code>WinASM65.Tests</code></td><td>L'assembleur.</td></tr>
+        <tr><td><code>WinASM65.Monitor.Tests</code></td><td>Le moniteur et Core. <code>ExecutionEventsTests</code> couvre STOPPED/RESUMED/STATUS, l'absence d'interblocage et RAM poussée, avec <code>ScriptedBridge</code>, un faux bridge TCP capable d'envoyer des PUSH. <code>SourceMapTests</code> vérifie chaque opcode à son offset PRG dans l'image et la distinction des banques.</td></tr>
+        <tr><td><code>WinASM65.Tooling.Tests</code></td><td>Le DAP de bout en bout avec <code>FakeDebugMachine</code> et le vrai assembleur. Le LSP (diagnostics, inclusions, survol, URI). L'encadrement des messages. La grammaire, qui doit correspondre exactement aux tables d'opcodes et aux directives. Le problem matcher, lu dans <code>package.json</code> et appliqué à la sortie réelle de <code>--build</code>.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Ce qu'aucun test unitaire ne peut vérifier est validé avec le vrai Mesen2 par deux scripts. Fermez toute fenêtre Mesen2 avant de les lancer :</p>
+<pre><code>python tools/mesen2-bridge-check.py &lt;Mesen.exe&gt; example_bomberman-nes/bomber.nes C01A
+python tools/dap-smoke.py &lt;WinASM65.Tooling.exe|.dll&gt; &lt;config.json&gt; &lt;source&gt; &lt;ligne&gt;</code></pre>
+    <p>Le premier vérifie le bridge seul : arrêt avant l'instruction, pas, suppression et effacement des points d'arrêt, pause, RESUMED. Le second pilote l'adaptateur exactement comme VS Code : lancement, point d'arrêt, frame et registres, <code>next</code>, mémoire, console, <code>continue</code>, <code>pause</code>, déconnexion.</p>
+
+    <!-- ============================================================ -->
+    <h2 id="limites">Limites connues</h2>
+    <ul>
+      <li><strong>Instance unique de Mesen2.</strong> Si une fenêtre est déjà ouverte, le nouveau lancement lui est transmis et le bridge n'écoute pas sur le port prévu. L'adaptateur détecte la sortie immédiate du processus et le signale.</li>
+      <li><strong>Une trame de latence.</strong> En marche, les commandes ne sont servies qu'à la lecture de la manette. Un programme qui ne lit jamais la manette ne répond donc pas à <code>pause</code>.</li>
+      <li><strong>Pile d'appels.</strong> Il n'y a qu'une frame, nommée d'après le label le plus proche ; la pile JSR n'est pas reconstituée. <code>stepOut</code> suppose que le haut de la pile est l'adresse de retour.</li>
+      <li><strong>Désassemblage.</strong> La vue désassemblage de VS Code n'est pas prise en charge (<code>supportsDisassembleRequest</code> est absent).</li>
+      <li><strong>Banques.</strong> La distinction par offset PRG est testée sur des projets construits pour l'occasion, pas encore sur une ROM réelle qui change de banque en cours d'exécution.</li>
+      <li><strong>Fichiers .o.</strong> Le build du serveur de langage écrit les <code>.o</code> à côté des sources, comme le build en ligne de commande. Les <code>.symb</code> vont dans un dossier temporaire.</li>
+      <li><strong>Plateforme.</strong> Seul le paquet <code>win32-x64</code> est construit.</li>
+    </ul>
+
+    <footer>Branche <code>vscode-extension</code>, état au 24 octobre 2026.</footer>
+  </main>
+</div>
+<script>
+  function toggleTheme() {
+    var root = document.documentElement;
+    var dark = root.getAttribute('data-theme')
+      ? root.getAttribute('data-theme') === 'dark'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+  }
+</script>
+</body>
+</html>
