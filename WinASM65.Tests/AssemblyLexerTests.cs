@@ -304,22 +304,12 @@ namespace WinASM65.Tests
 
             foreach (string directive in AssemblyLexer.DefaultDirectives)
             {
-                if (directive == ".res")
-                {
-                    // .res has no handler: it is a pattern the line dispatch
-                    // matches before any handler runs. Pinned here so that the
-                    // exception stays deliberate.
-                    AssemblyResult reserved = new AssemblerEngine()
-                        .AssembleSource(".org $8000\nBuffer .res 4\n", null);
-                    Assert.IsTrue(reserved.Success, ".res assembles");
-                    continue;
-                }
-
                 Assert.IsTrue(dispatched.Contains(directive),
                     directive + " is highlighted as a directive but the assembler dispatches no such handler");
             }
 
-            Assert.IsFalse(dispatched.Contains(".res"));
+            // And the other way round: the lexer's list is the assembler's.
+            CollectionAssert.AreEquivalent(new List<string>(dispatched), new List<string>(AssemblyLexer.DefaultDirectives));
         }
     }
 }

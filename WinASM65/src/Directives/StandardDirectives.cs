@@ -130,17 +130,46 @@ namespace WinASM65.Directives
     {
         public string Name { get { return ".incbin"; } }
 
+        /// <summary>
+        /// <c>.incbin "file"[, offset[, length]]</c>. The file name is taken as written
+        /// (no escapes), so a Windows path keeps its backslashes. Without a length the
+        /// rest of the file from the offset is included.
+        /// </summary>
         public void Execute(string argument, IAssemblyContext context)
         {
-            string fileName = (argument ?? string.Empty).Replace("\"", string.Empty).Trim();
+            System.Collections.Generic.List<string> args = SourceText.SplitArguments(argument);
+            if (args.Count == 0 || args.Count > 3)
+            {
+                context.Diagnostics.ReportError(context.CurrentLocation,
+                    string.Format(ErrorCodes.DIRECTIVE_ARGUMENTS, ".incbin", "a file name, an optional offset and an optional length"));
+                return;
+            }
+
+            string fileName = args[0].Replace("\"", string.Empty).Trim();
             string directoryName = Path.GetDirectoryName(context.CurrentLocation.FilePath);
             string toInclude = string.IsNullOrEmpty(directoryName) ? fileName : Path.Combine(directoryName, fileName);
 
             if (File.Exists(toInclude))
             {
                 byte[] bytesToInc = File.ReadAllBytes(toInclude);
-                context.Emitter.EmitBytes(bytesToInc);
-                context.ListingService.PrintLine(LineType.INST, bytesToInc.Length);
+                long offset = 0;
+                long length = -1;
+                if (args.Count > 1 && !DirectiveArguments.TryResolveNow(context, args[1], ".incbin", "an offset", out offset))
+                    return;
+                if (args.Count > 2 && !DirectiveArguments.TryResolveNow(context, args[2], ".incbin", "a length", out length))
+                    return;
+                if (length < 0 && args.Count <= 2)
+                    length = bytesToInc.Length - offset;
+                if (offset < 0 || length < 0 || offset + length > bytesToInc.Length)
+                {
+                    context.Diagnostics.ReportError(context.CurrentLocation, string.Format(ErrorCodes.INCBIN_RANGE, fileName, bytesToInc.Length));
+                    return;
+                }
+
+                byte[] slice = new byte[length];
+                System.Array.Copy(bytesToInc, offset, slice, 0, length);
+                context.Emitter.EmitBytes(slice);
+                context.ListingService.PrintLine(LineType.INST, slice.Length);
             }
             else
             {

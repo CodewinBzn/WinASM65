@@ -150,6 +150,12 @@ namespace WinASM65.Directives
         void StopAssembling();
         void ParseLine(string line, string originalLine);
         ExpressionResult ResolveExpression(string expr, AddressingMode addrMode = AddressingMode.None, bool isLogical = false);
+
+        /// <summary>
+        /// Checks an assertion once every symbol of the unit is known. The expression
+        /// is the one already rewritten for the current line ('*' replaced).
+        /// </summary>
+        void DeferAssertion(string expression, string message);
     }
 
     public interface IDirectiveHandler

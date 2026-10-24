@@ -100,12 +100,10 @@ namespace WinASM65.TextFormat
     /// </summary>
     public sealed class AssemblyLexer
     {
-        private static readonly HashSet<string> DirectiveLookup = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ".org", ".memarea", ".incbin", ".include", ".byte", ".word", ".res",
-            ".macro", ".endmacro", ".if", ".ifdef", ".ifndef", ".else", ".endif",
-            ".rep", ".endrep", ".end", ".export", ".import"
-        };
+        // Taken from the assembler itself, aliases included, so a directive the
+        // assembler gains is highlighted without a second list to keep in step.
+        private static readonly HashSet<string> DirectiveLookup =
+            new HashSet<string>(WinASM65.Core.AssemblerEngine.DefaultDirectiveNames, StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// The words the expression tokenizer reads as operators rather than
