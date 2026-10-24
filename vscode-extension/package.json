@@ -2,7 +2,7 @@
   "name": "winasm65",
   "displayName": "WinASM65",
   "description": "6502 assembly for WinASM65 projects: build, debug on Mesen2 with source breakpoints, live diagnostics.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "codewinbzn",
   "license": "Zlib",
   "repository": {
@@ -227,12 +227,14 @@
       {
         "command": "winasm65.showListing",
         "title": "Show Listing",
-        "category": "WinASM65"
+        "category": "WinASM65",
+        "icon": "$(list-ordered)"
       },
       {
         "command": "winasm65.hideListing",
         "title": "Hide Listing",
-        "category": "WinASM65"
+        "category": "WinASM65",
+        "icon": "$(list-flat)"
       },
       {
         "command": "winasm65.showRam",
@@ -246,12 +248,12 @@
         {
           "command": "winasm65.showListing",
           "when": "editorLangId == winasm65 && !winasm65.listingVisible",
-          "group": "winasm65@1"
+          "group": "navigation@100"
         },
         {
           "command": "winasm65.hideListing",
           "when": "editorLangId == winasm65 && winasm65.listingVisible",
-          "group": "winasm65@1"
+          "group": "navigation@100"
         }
       ],
       "commandPalette": [
@@ -268,6 +270,30 @@
         {
           "command": "winasm65.showRam",
           "when": "debugType == winasm65"
+        }
+      ],
+      "editor/lineNumber/context": [
+        {
+          "command": "winasm65.showListing",
+          "when": "editorLangId == winasm65 && !winasm65.listingVisible",
+          "group": "winasm65"
+        },
+        {
+          "command": "winasm65.hideListing",
+          "when": "editorLangId == winasm65 && winasm65.listingVisible",
+          "group": "winasm65"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "winasm65.showListing",
+          "when": "editorLangId == winasm65 && !winasm65.listingVisible",
+          "group": "navigation"
+        },
+        {
+          "command": "winasm65.hideListing",
+          "when": "editorLangId == winasm65 && winasm65.listingVisible",
+          "group": "navigation"
         }
       ]
     }
