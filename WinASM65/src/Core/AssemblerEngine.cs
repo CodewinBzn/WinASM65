@@ -142,7 +142,7 @@ namespace WinASM65.Core
         // LabelDirectiveRegex's case). Unanchored, ".word" anywhere in a line won the
         // dispatch, whatever came before it.
         private static readonly Regex DirectiveRegex = new Regex(@"^\s*(?<directive>\.[a-zA-Z][a-zA-Z0-9_]*)(\s+(?<value>(.)+))?$", RegexOptions.Compiled);
-        private static readonly Regex InstructionRegex = new Regex(@"^(\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s*:?\s+)?(?<opcode>[a-zA-Z]{3})((\s+(?<operands>(.)+))|$)", RegexOptions.Compiled);
+        private static readonly Regex InstructionRegex = new Regex(@"^(\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s*:?\s+)?(?<opcode>[a-zA-Z]{3}[0-7]?)((\s+(?<operands>(.)+))|$)", RegexOptions.Compiled);
         private static readonly Regex ConstantRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s*=\s*(?<value>(.)+)$", RegexOptions.Compiled);
         private static readonly Regex MemReserveRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s+\.(RES|res)\s+(?<value>(.)+)$", RegexOptions.Compiled);
         private static readonly Regex MacroCallRegex = new Regex(@"^(\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*))(\s+(?<value>(.)+))?", RegexOptions.Compiled);
@@ -1135,6 +1135,12 @@ namespace WinASM65.Core
                 return;
             }
 
+            if (mode == AddressingMode.ZeroPageRelative)
+            {
+                EmitBitBranch(opcode, info, opcodeAddress);
+                return;
+            }
+
             // Instructions with operands
             ExpressionResult exprRes = ResolveExpression(info.OperandExpression, mode);
             if (exprRes.IsResolved)
@@ -1252,6 +1258,98 @@ namespace WinASM65.Core
         }
 
         /// <summary>
+        /// <c>BBRn zp,target</c>: the opcode, the zero-page byte tested, then the branch
+        /// displacement, counted from the end of the three-byte instruction. Either
+        /// operand may be a forward reference and is then patched on its own.
+        /// </summary>
+        private void EmitBitBranch(string mnemonic, InstructionInfo info, ushort opcodeAddress)
+        {
+            if (string.IsNullOrWhiteSpace(info.OperandExpression) || string.IsNullOrWhiteSpace(info.SecondOperandExpression))
+            {
+                _diagnostics.ReportError(CurrentLocation, string.Format(ErrorCodes.DIRECTIVE_ARGUMENTS, mnemonic, "a zero-page address and a branch target"));
+                return;
+            }
+
+            _emitter.EmitByte(info.Opcode);
+
+            ExpressionResult zp = ResolveExpression(info.OperandExpression, AddressingMode.ZeroPage);
+            if (zp.IsResolved)
+            {
+                long value = zp.Value.AsInteger;
+                if (value < 0 || value > 0xFF)
+                {
+                    ReportOperandOutOfRange(value, true);
+                    _emitter.EmitByte(0);
+                }
+                else
+                {
+                    _emitter.EmitByte((byte)value);
+                    RecordRelocation(zp, 1, value);
+                }
+            }
+            else
+            {
+                int bufferOffset = _emitter.Length;
+                _emitter.EmitByte(0);
+                RegisterPending(zp, (ushort)(opcodeAddress - _emitter.OriginAddress + 1), bufferOffset,
+                    SymbolType.Byte, AddressingMode.ZeroPage);
+                RecordRelocation(zp, 1, 0, false);
+            }
+
+            ExpressionResult target = ResolveExpression(info.SecondOperandExpression, AddressingMode.Relative);
+            if (target.IsResolved)
+            {
+                byte offset;
+                string relErr;
+                // The displacement counts from opcode+3; TryCalculateRelativeOffset
+                // adds 2 to the address it is given.
+                if (_cpu.TryCalculateRelativeOffset(target.Value.AsInteger, opcodeAddress + 1, out offset, out relErr))
+                {
+                    _emitter.EmitByte(offset);
+                    RecordRelocation(target, 1, (sbyte)offset);
+                }
+                else
+                {
+                    _diagnostics.ReportError(CurrentLocation, relErr);
+                    _emitter.EmitByte(0);
+                }
+            }
+            else
+            {
+                int bufferOffset = _emitter.Length;
+                _emitter.EmitByte(0);
+                RegisterPending(target, (ushort)(opcodeAddress - _emitter.OriginAddress + 2), bufferOffset,
+                    SymbolType.Byte, AddressingMode.ZeroPageRelative);
+                RecordRelocation(target, 1, 0, false);
+            }
+
+            _listingService.PrintLine(LineType.INST, 3);
+        }
+
+        /// <summary>Records a field to patch once the symbols its expression waits for are defined.</summary>
+        private void RegisterPending(ExpressionResult res, ushort position, int bufferOffset, SymbolType type, AddressingMode mode)
+        {
+            UnresolvedExpr pending = new UnresolvedExpr
+            {
+                Position = position,
+                BufferOffset = bufferOffset,
+                Type = type,
+                AddrMode = mode,
+                NbrUndefinedSymb = res.UndefinedSymbols.Count,
+                Expr = res.Expression,
+                Location = CurrentLocation
+            };
+            _scopeManager.AddUnresolvedExpression(position, pending);
+
+            foreach (string symbol in res.UndefinedSymbols)
+            {
+                UnresolvedSymbol unresolved = new UnresolvedSymbol();
+                unresolved.ExprList.Add(position);
+                _scopeManager.AddUnresolvedSymbol(symbol, unresolved);
+            }
+        }
+
+        /// <summary>
         /// Records a relocation for a site whose value depends on a symbol. Nothing is
         /// recorded when the expression read no symbol: <c>lda #$05</c> holds a fixed
         /// byte and a relocation there would be a lie.
@@ -1362,8 +1460,10 @@ namespace WinASM65.Core
             // relocation lookup uses.
             int relocationOffset = expr.BufferOffset > 0 ? expr.BufferOffset : expr.Position;
 
-            if (expr.AddrMode == AddressingMode.Relative)
+            if (expr.AddrMode == AddressingMode.Relative || expr.AddrMode == AddressingMode.ZeroPageRelative)
             {
+                // Both displacements count from the byte after the field: a branch
+                // from opcode+2, a BBRn from opcode+3, and the field is the last byte.
                 byte offset;
                 string relErr;
                 // expr.Position is after the opcode, so instructionAddress = (expr.Position + OriginAddress - 1)

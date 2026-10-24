@@ -210,6 +210,14 @@ namespace WinASM65.Cpu
             get { return NmosAccumulatorMnemonics; }
         }
 
+        private static readonly HashSet<string> NoBitBranches = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Mnemonics written <c>zp,target</c> (the Rockwell BBRn/BBSn).</summary>
+        protected virtual HashSet<string> BitBranchMnemonics
+        {
+            get { return NoBitBranches; }
+        }
+
         public bool IsInstruction(string mnemonic)
         {
             if (string.IsNullOrEmpty(mnemonic))
@@ -257,6 +265,15 @@ namespace WinASM65.Cpu
 
             if (IsRelativeBranch(mnemonic))
                 return Form(mnemonic, AddressingMode.Relative, 2, operand.Trim());
+
+            if (BitBranchMnemonics.Contains(mnemonic))
+            {
+                // BBRn zp,target: a zero-page byte to test, then a branch target.
+                List<string> parts = WinASM65.Core.SourceText.SplitArguments(operand);
+                string zp = parts.Count > 0 ? parts[0] : string.Empty;
+                string target = parts.Count > 1 ? string.Join(",", parts.GetRange(1, parts.Count - 1)) : string.Empty;
+                return Form(mnemonic, AddressingMode.ZeroPageRelative, 3, zp).WithSecondOperand(target);
+            }
 
             // Whitespace goes, except inside a literal: "lda #' '" is a space.
             string clean = WinASM65.Core.SourceText.RemoveWhitespaceOutsideQuotes(operand);

@@ -214,6 +214,8 @@ namespace WinASM65.Cpu
                     return string.Empty;
                 case AddressingMode.Accumulator:
                     return "A";
+                case AddressingMode.ZeroPageRelative:
+                    return "$nn,target";
                 case AddressingMode.Immediate:
                     return "#$nn";
                 case AddressingMode.Absolute:

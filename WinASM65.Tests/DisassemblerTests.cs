@@ -33,8 +33,8 @@ namespace WinASM65.Tests
         [TestMethod]
         public void ChaqueEntreeDeTableAUneSortie()
         {
-            AssertCoherence(new Cpu6502());
-            AssertCoherence(new Cpu65C02());
+            foreach (ICpuInstructionSet cpu in CpuFactory.All.Values)
+                AssertCoherence(cpu);
         }
 
         [TestMethod]

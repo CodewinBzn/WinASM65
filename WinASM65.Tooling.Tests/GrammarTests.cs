@@ -30,22 +30,40 @@ namespace WinASM65.Tooling.Tests
 
         private static SortedSet<string> Alternatives(string match)
         {
-            Match group = Regex.Match(match, @"\((?:\?i:)?([a-z|]+)\)");
-            Assert.IsTrue(group.Success, "no alternation in " + match);
-            return new SortedSet<string>(group.Groups[1].Value.Split('|'), StringComparer.OrdinalIgnoreCase);
+            // The longest alternation in the pattern: a mnemonic list has dozens of
+            // names, digits included (bbr0), where other groups have a handful.
+            Match longest = null;
+            foreach (Match group in Regex.Matches(match, @"\((?:\?i:)?([a-z0-9|]+)\)"))
+            {
+                if (longest == null || group.Groups[1].Length > longest.Groups[1].Length)
+                    longest = group;
+            }
+            Assert.IsNotNull(longest, "no alternation in " + match);
+            return new SortedSet<string>(longest.Groups[1].Value.Split('|'), StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static List<string> AllMnemonics()
+        {
+            SortedSet<string> assembler = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (ICpuInstructionSet cpu in CpuFactory.All.Values)
+                assembler.UnionWith(cpu.Mnemonics);
+            return assembler.Select(m => m.ToLowerInvariant()).ToList();
         }
 
         [TestMethod]
         public void EveryMnemonicOfTheOpcodeTablesIsColouredAndNoOther()
         {
             SortedSet<string> grammar = Alternatives(Repository().GetProperty("mnemonic").GetProperty("match").GetString());
+            CollectionAssert.AreEquivalent(AllMnemonics(), grammar.Select(m => m.ToLowerInvariant()).ToList());
+        }
 
-            SortedSet<string> assembler = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
-            assembler.UnionWith(new Cpu6502().Mnemonics);
-            assembler.UnionWith(new Cpu65C02().Mnemonics);
-
-            CollectionAssert.AreEquivalent(assembler.Select(m => m.ToLowerInvariant()).ToList(),
-                grammar.Select(m => m.ToLowerInvariant()).ToList());
+        [TestMethod]
+        public void TheLabelBeforeAnInstructionKnowsEveryMnemonicToo()
+        {
+            // "Name lda #1": the label is recognised by the mnemonic that follows it.
+            JsonElement rules = Repository().GetProperty("label-definition").GetProperty("patterns");
+            SortedSet<string> lookahead = Alternatives(rules[1].GetProperty("match").GetString());
+            CollectionAssert.AreEquivalent(AllMnemonics(), lookahead.Select(m => m.ToLowerInvariant()).ToList());
         }
 
         [TestMethod]
