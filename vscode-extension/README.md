@@ -8,7 +8,7 @@
   - registers, flags and the zero page in the Variables view
   - the 64 KiB address space in the hex memory view
 - **Debug console.** Type a symbol, a register or `$0010` to see its value. Monitor commands (`CPU`, `READ $0200 16`, `BREAK LIST`, …) are passed straight to the monitor.
-- **Listing column.** Choose **Show Listing** from the file's menu in the Explorer, from the editor's right-click menu, from the line-number margin, or with the button in the editor title bar. Each line then shows the address and bytes it assembled to, in a column to its left, as in a `.lst`. The column follows your edits before you save.
+- **Listing column.** Right-click a source (in the Explorer, the editor or the line-number margin) and choose **WinASM65 → Show Listing**, or use the button in the editor title bar. Each line then shows the address and bytes it assembled to, in a column to its left, as in a `.lst`. The column follows your edits before you save.
 - **RAM panel.** All 2 KiB of RAM ($0000-$07FF) in hex and ASCII. It opens at the first stop and refreshes at every stop:
   - bytes changed since the last stop are highlighted;
   - the zero page and the stack are shaded, and the byte at SP is marked;
