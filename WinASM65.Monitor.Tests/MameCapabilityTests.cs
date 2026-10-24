@@ -268,7 +268,7 @@ string pair = trimmed.Substring(ProbePrefix.Length);
 
         private static string FindProbe()
         {
-            string path = Path.Combine(RepositoryRoot(), "WinASM65.Monitor", "Bridge", "probe_mame.lua");
+            string path = Path.Combine(RepositoryRoot(), "WinASM65.Monitor.Core", "Bridge", "probe_mame.lua");
             Assert.IsTrue(File.Exists(path), "the capability probe is missing: " + path);
             return path;
         }

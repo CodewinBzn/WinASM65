@@ -112,7 +112,7 @@ namespace WinASM65.Monitor
                 });
             }
             else
-                _process = Cli.Program.LaunchEmulator(_emulatorName, _romPath, _emulatorId, _port, _bridgeScript);
+                _process = BridgeLauncher.LaunchEmulator(_emulatorName, _romPath, _emulatorId, _port, _bridgeScript);
             return _process;
         }
 

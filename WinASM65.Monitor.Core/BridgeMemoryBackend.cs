@@ -57,6 +57,8 @@ public sealed class BridgeMemoryBackend : IMemoryBackend, ICpuStateSource, IRomI
         private volatile bool _pollingStopped;
         private DateTime _lastPushAt = DateTime.MinValue;
         private const int PollIntervalMs = 250;
+        private const int PollBase = 0x0000;
+        private const int PollLength = 0x0800;
         private const int PushGraceMs = 500;
 
         // Reads the registers through the bridge's CPU command.
@@ -139,7 +141,10 @@ public CpuSnapshot ReadCpuState()
                 : 0;
         }
 
-        public BridgeMemoryBackend(ProtocolClient client, int port)
+        /// <param name="poll">Whether to run the RAM polling fallback. A front end
+        /// that reads on demand (the debug adapter) or that counts requests (tests)
+        /// turns it off.</param>
+        public BridgeMemoryBackend(ProtocolClient client, int port, bool poll = true)
         {
             if (client == null)
                 throw new ArgumentNullException("client");
@@ -179,6 +184,12 @@ public CpuSnapshot ReadCpuState()
             // or whose pushes are lost. It starts after the handshake, so it
             // runs only against a live bridge; a backend that could not reach
             // the bridge would not have a constructor to start it in.
+            if (!poll)
+            {
+                _pollingEnabled = false;
+                return;
+            }
+
             _poller = new Thread(PollLoop)
             {
                 IsBackground = true,
@@ -240,23 +251,22 @@ public CpuSnapshot ReadCpuState()
                         continue;
                     }
 
-                    // Read the whole RAM region and diff it against the cache.
-                    // A full read is expensive, so it is done only when no push
-                    // has landed recently; the pane gets live updates from the
-                    // push path while the machine runs and falls back here.
-                    byte[] current = Read(0x0000, FlatRegionLength);
+                    // Read work RAM and diff it against what the cache held
+                    // before the read. The snapshot is taken first because a
+                    // read refreshes the cache itself, so comparing against the
+                    // cache afterwards would never see a change.
+                    //
+                    // Only $0000-$07FF: anything above can be a hardware register
+                    // whose read has side effects, and the protocol bounds one
+                    // read to MaxReadLength anyway.
+                    byte[] before = new byte[PollLength];
+                    Array.Copy(_cache, PollBase - CacheBase, before, 0, PollLength);
+                    byte[] current = Read(PollBase, PollLength);
                     List<(int Address, byte Value)> changes = new List<(int Address, byte Value)>();
                     for (int i = 0; i < current.Length; i++)
                     {
-                        int offset = i - CacheBase;
-                        if (offset < 0 || offset >= _cache.Length)
-                            continue;
-
-                        if (_cache[offset] != current[i])
-                        {
-                            _cache[offset] = current[i];
-                            changes.Add((i, current[i]));
-                        }
+                        if (before[i] != current[i])
+                            changes.Add((PollBase + i, current[i]));
                     }
 
                     if (changes.Count > 0)
@@ -275,9 +285,9 @@ public CpuSnapshot ReadCpuState()
         }
 
         /// <summary>Connects to a bridge listening on 127.0.0.1.</summary>
-        public static BridgeMemoryBackend Connect(int port, int timeoutMs = 5000)
+        public static BridgeMemoryBackend Connect(int port, int timeoutMs = 5000, bool poll = true)
         {
-            return new BridgeMemoryBackend(ProtocolClient.Connect(port, timeoutMs), port);
+            return new BridgeMemoryBackend(ProtocolClient.Connect(port, timeoutMs), port, poll);
         }
 
         /// <summary>

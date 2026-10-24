@@ -33,6 +33,7 @@ namespace WinASM65.Monitor.Protocol
 
         private readonly NetworkStream _stream;
         private readonly StreamReader _reader;
+        private readonly object _sendLock = new object();
         private readonly object _queueLock = new object();
         private readonly Queue<string> _responses = new Queue<string>();
         private readonly Thread _receiver;
@@ -129,25 +130,31 @@ namespace WinASM65.Monitor.Protocol
             if (_disposed)
                 throw new MonitorException("the bridge is closed");
 
-            byte[] bytes = Encoding.ASCII.GetBytes(line + "\n");
-            _stream.Write(bytes, 0, bytes.Length);
-
-            string reply;
-            lock (_queueLock)
+            // One exchange at a time. Replies carry no request id, so two
+            // threads sending at once (the RAM poller and the session) could
+            // each dequeue the other's answer.
+            lock (_sendLock)
             {
-                while (_responses.Count == 0 && !_receiverExited)
-                    System.Threading.Monitor.Wait(_queueLock);
+                byte[] bytes = Encoding.ASCII.GetBytes(line + "\n");
+                _stream.Write(bytes, 0, bytes.Length);
 
-                if (_responses.Count == 0)
+                string reply;
+                lock (_queueLock)
                 {
-                    throw new MonitorException(
-                        "the bridge closed before answering " + line);
+                    while (_responses.Count == 0 && !_receiverExited)
+                        System.Threading.Monitor.Wait(_queueLock);
+
+                    if (_responses.Count == 0)
+                    {
+                        throw new MonitorException(
+                            "the bridge closed before answering " + line);
+                    }
+
+                    reply = _responses.Dequeue();
                 }
 
-                reply = _responses.Dequeue();
+                return reply;
             }
-
-            return reply;
         }
 
         /// <summary>

@@ -26,6 +26,9 @@
   <ItemGroup>
     <ProjectReference Include="..\WinASM65\WinASM65.csproj" />
 
+    <!-- Session, backends, protocol and listings: everything but the shell. -->
+    <ProjectReference Include="..\WinASM65.Monitor.Core\WinASM65.Monitor.Core.csproj" />
+
     <!-- The host <-> plugin contract. Referenced, never redefined: the host asks
          IExecutionAdapter for what a backend can do, and a second copy of that
          interface here would be a second type identity, which is the failure the
@@ -45,11 +48,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The bridge travels with the executable so the monitor can start Mesen
-         itself instead of depending on a script sitting in the source tree. -->
-    <None Include="Bridge\**\*.lua" CopyToOutputDirectory="PreserveNewest" />
-
-    <!-- The palette travels with it, so an edited theme is one file away from the
+    <!-- The bridge scripts come from WinASM65.Monitor.Core. The palette travels
+         with the executable, so an edited theme is one file away from the
          binary and a missing copy still falls back to the built-in palette.
          Linked to the executable's own directory rather than to Shell\, because
          that is the first place ShellTheme.Load looks. -->
