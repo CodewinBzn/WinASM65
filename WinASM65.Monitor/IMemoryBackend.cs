@@ -26,6 +26,23 @@ namespace WinASM65.Monitor
         bool IsRunning { get; }
 
         /// <summary>
+        /// Whether the backend is currently connected to its host.
+        ///
+        /// A backend that is not connected cannot answer commands, and a status
+        /// line that says "connected" while the bridge is dead is worse than one
+        /// that says nothing. The default is true: a backend that does not
+        /// declare otherwise is assumed to be local and always available.
+        /// </summary>
+        bool IsConnected { get; }
+
+        /// <summary>
+        /// How RAM is being refreshed. "Live" when the backend pushes changes;
+        /// "Polling" when a fallback thread is doing the work; null when the
+        /// backend does not expose this.
+        /// </summary>
+        string RamRefreshMode { get; }
+
+        /// <summary>
         /// Reads <paramref name="length"/> bytes. Throws if the read runs past the
         /// valid range or the buffer is too small: a silently truncated read would
         /// produce a false display.
@@ -69,6 +86,12 @@ namespace WinASM65.Monitor
     public interface IRomTransferTarget
     {
         void TransferRom(string imagePath);
+    }
+
+    /// <summary>Optional capability for backends that can reconnect to a lost bridge.</summary>
+    public interface IReconnectable
+    {
+        void Reconnect();
     }
 
     /// <summary>Breakpoint kind.</summary>

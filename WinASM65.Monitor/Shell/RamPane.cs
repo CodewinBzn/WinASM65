@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -85,9 +85,10 @@ namespace WinASM65.Monitor.Shell
                 _labels.AddRange(FormatRows(row));
 
             _list.StringItems = new List<string>(_labels);
-            _list.Width = Math.Max(_contentWidth, _labels.Count == 0
+            int contentWidth = _labels.Count == 0
                 ? _contentWidth
-                : _labels.Max(label => label.Length) + 1);
+                : _labels.Max(label => label.Length) + 1;
+            _list.Width = Math.Max(_contentWidth, contentWidth);
             _list.Invalidate();
         }
 
@@ -122,9 +123,10 @@ namespace WinASM65.Monitor.Shell
                 _labels.AddRange(FormatRows(row));
 
             _list.StringItems = new List<string>(_labels);
-            _list.Width = Math.Max(_contentWidth, _labels.Count == 0
+            int contentWidth = _labels.Count == 0
                 ? _contentWidth
-                : _labels.Max(label => label.Length) + 1);
+                : _labels.Max(label => label.Length) + 1;
+            _list.Width = Math.Max(_contentWidth, contentWidth);
             _list.Invalidate();
         }
 
@@ -138,31 +140,7 @@ namespace WinASM65.Monitor.Shell
                 return lines;
             }
 
-            int firstLineCapacity = Math.Max(1, (_contentWidth - 6) / 3);
-            int continuationCapacity = Math.Max(1, (_contentWidth - 5) / 3);
-            int offset = 0;
-            while (offset < row.Bytes.Count)
-            {
-                bool firstLine = offset == 0;
-                int count = Math.Min(firstLine ? firstLineCapacity : continuationCapacity,
-                    row.Bytes.Count - offset);
-                StringBuilder text = new StringBuilder();
-                if (firstLine)
-                    text.Append('$').Append(row.Address.ToString("X4", CultureInfo.InvariantCulture)).Append("  ");
-                else
-                    text.Append("      ");
-
-                for (int i = 0; i < count; i++)
-                {
-                    if (i > 0)
-                        text.Append(' ');
-                    text.Append(row.Bytes[offset + i].ToString("X2", CultureInfo.InvariantCulture));
-                }
-
-                lines.Add(text.ToString());
-                offset += count;
-            }
-
+            lines.Add(row.Text);
             return lines;
         }
     }

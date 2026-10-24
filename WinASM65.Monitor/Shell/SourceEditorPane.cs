@@ -136,6 +136,7 @@ namespace WinASM65.Monitor.Shell
                 || string.Equals(Path.GetExtension(sourceFile), ".jsonc", StringComparison.OrdinalIgnoreCase);
             TextView.SyntaxHighlighter = _assemblerDocument ? _syntaxHighlighter
                 : jsonDocument ? _jsonSyntaxHighlighter : null;
+            TextView.Invalidate();
             _problem = null;
             string fullPath = string.IsNullOrEmpty(sourceFile) ? null
                 : Path.GetFullPath(Path.IsPathRooted(sourceFile)

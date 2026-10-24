@@ -462,6 +462,8 @@ namespace WinASM65.Monitor.Tests
             public string EmulatorName { get { return "SilentEmu"; } }
             public string EmulatorVersion { get { return "0.0.0"; } }
             public bool IsRunning { get { return false; } }
+            public bool IsConnected { get { return true; } }
+            public string RamRefreshMode { get { return null; } }
 
             public byte[] Read(int address, int length) { return new byte[length]; }
             public void Write(int address, byte[] bytes) { }
