@@ -137,14 +137,14 @@ namespace WinASM65.Core
         // instruction carrying a label. Unanchored, it swallowed the colon and left
         // the instruction with nothing to match, so the line was silently dropped
         // and only the label survived.
-        private static readonly Regex LabelDeclareRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*):\s*$", RegexOptions.Compiled);
+        private static readonly Regex LabelDeclareRegex = new Regex(@"^\s*(?<label>@?[a-zA-Z_][a-zA-Z_0-9]*):\s*$", RegexOptions.Compiled);
         // Anchored: a directive is the first thing on its line (a label before it is
         // LabelDirectiveRegex's case). Unanchored, ".word" anywhere in a line won the
         // dispatch, whatever came before it.
         private static readonly Regex DirectiveRegex = new Regex(@"^\s*(?<directive>\.[a-zA-Z][a-zA-Z0-9_]*)(\s+(?<value>(.)+))?$", RegexOptions.Compiled);
-        private static readonly Regex InstructionRegex = new Regex(@"^(\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s*:?\s+)?(?<opcode>[a-zA-Z]{3}[0-7]?)((\s+(?<operands>(.)+))|$)", RegexOptions.Compiled);
-        private static readonly Regex ConstantRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s*=\s*(?<value>(.)+)$", RegexOptions.Compiled);
-        private static readonly Regex MemReserveRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s+\.(RES|res)\s+(?<value>(.)+)$", RegexOptions.Compiled);
+        private static readonly Regex InstructionRegex = new Regex(@"^(\s*(?<label>@?[a-zA-Z_][a-zA-Z_0-9]*)\s*:?\s+)?(?<opcode>[a-zA-Z]{3}[0-7]?)((\s+(?<operands>(.)+))|$)", RegexOptions.Compiled);
+        private static readonly Regex ConstantRegex = new Regex(@"^\s*(?<label>@?[a-zA-Z_][a-zA-Z_0-9]*)\s*=\s*(?<value>(.)+)$", RegexOptions.Compiled);
+        private static readonly Regex MemReserveRegex = new Regex(@"^\s*(?<label>@?[a-zA-Z_][a-zA-Z_0-9]*)\s+\.(RES|res)\s+(?<value>(.)+)$", RegexOptions.Compiled);
         private static readonly Regex MacroCallRegex = new Regex(@"^(\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*))(\s+(?<value>(.)+))?", RegexOptions.Compiled);
 
         /// <summary>
@@ -158,7 +158,7 @@ namespace WinASM65.Core
         /// this line from a bare label, a constant and an instruction.
         /// </para>
         /// </summary>
-        private static readonly Regex LabelDirectiveRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s*:?\s+\.[a-zA-Z][a-zA-Z0-9_]*", RegexOptions.Compiled);
+        private static readonly Regex LabelDirectiveRegex = new Regex(@"^\s*(?<label>@?[a-zA-Z_][a-zA-Z_0-9]*)\s*:?\s+\.[a-zA-Z][a-zA-Z0-9_]*", RegexOptions.Compiled);
 
         #region Properties & IAssemblyContext
 
@@ -484,7 +484,7 @@ namespace WinASM65.Core
             for (int i = 0; i < _sourceLabels.Count; i++)
             {
                 string name = _sourceLabels[i].Name;
-                if (state.Exports.Contains(name))
+                if (state.Exports.Contains(name) || name.StartsWith("__anon_", StringComparison.Ordinal))
                     continue;
 
                 int placed;
@@ -694,10 +694,22 @@ namespace WinASM65.Core
         /// </summary>
         private void ReportStillUndefinedSymbols()
         {
+            Dictionary<string, UnresolvedSymbol> unsolved = _scopeManager.GlobalScope.UnsolvedSymbols;
+
+            // A local or anonymous label cannot come from another unit, so one left
+            // undefined is an error even in a multi-unit build.
+            List<string> generated = new List<string>();
+            foreach (string name in unsolved.Keys)
+            {
+                if (IsGeneratedName(name))
+                    generated.Add(name);
+            }
+            generated.Sort(StringComparer.Ordinal);
+            foreach (string name in generated)
+                ReportUndefinedGeneratedName(name);
+
             if (!_reportUndefinedSymbols)
                 return;
-
-            Dictionary<string, UnresolvedSymbol> unsolved = _scopeManager.GlobalScope.UnsolvedSymbols;
             if (unsolved.Count == 0 && _scopeManager.UnsolvedExprList.Count == 0)
                 return;
 
@@ -712,6 +724,8 @@ namespace WinASM65.Core
             List<string> missing = new List<string>();
             foreach (string name in unsolved.Keys)
             {
+                if (IsGeneratedName(name))
+                    continue;
                 if (declared.Count == 0 || !declared.Contains(name))
                     missing.Add(name);
             }
@@ -790,6 +804,11 @@ namespace WinASM65.Core
         private void Reset()
         {
             _deferredAssertions.Clear();
+            _currentGlobal = null;
+            _expansions.Clear();
+            _expansionCounter = 0;
+            _backwardLabels.Clear();
+            _forwardLabels.Clear();
             _emitter.Reset();
             _scopeManager.Reset();
             _diagnostics.Clear();
@@ -895,8 +914,8 @@ namespace WinASM65.Core
         // NAME = value is redefinable (a counter in a .rep block needs that); NAME .set
         // value is the same thing. NAME EQU value and NAME .equ value are constants: a
         // second definition with another value is an error.
-        private static readonly Regex EquRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s*:?\s+\.?(?i:equ)\s+(?<value>.+)$", RegexOptions.Compiled);
-        private static readonly Regex SetRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s+(?i:\.set)\s+(?<value>.+)$", RegexOptions.Compiled);
+        private static readonly Regex EquRegex = new Regex(@"^\s*(?<label>@?[a-zA-Z_][a-zA-Z_0-9]*)\s*:?\s+\.?(?i:equ)\s+(?<value>.+)$", RegexOptions.Compiled);
+        private static readonly Regex SetRegex = new Regex(@"^\s*(?<label>@?[a-zA-Z_][a-zA-Z_0-9]*)\s+(?i:\.set)\s+(?<value>.+)$", RegexOptions.Compiled);
 
         // *= expr sets the program counter, as .org does.
         private static readonly Regex OrgStarRegex = new Regex(@"^\s*\*\s*=\s*(?<value>.+)$", RegexOptions.Compiled);
@@ -934,6 +953,26 @@ namespace WinASM65.Core
             {
                 _repeatState.Lines.Add(line);
                 _listingService.EndLine();
+                return;
+            }
+
+            ParseLineBody(line);
+            _listingService.EndLine();
+        }
+
+        // A line that is only "-", "--", "+", "++"... (an anonymous label), possibly
+        // followed by the rest of a line: "- lda #1".
+        private static readonly Regex AnonLabelRegex = new Regex(@"^(?<anon>\++|-+)(\s+(?<rest>.+))?$", RegexOptions.Compiled);
+
+        private void ParseLineBody(string line)
+        {
+            Match anonymous = AnonLabelRegex.Match(line);
+            if (anonymous.Success)
+            {
+                DefineAnonymous(anonymous.Groups["anon"].Value);
+                string rest = anonymous.Groups["rest"].Value;
+                if (!string.IsNullOrWhiteSpace(rest))
+                    ParseLineBody(rest.Trim());
                 return;
             }
 
@@ -1000,8 +1039,157 @@ namespace WinASM65.Core
             {
                 _diagnostics.ReportError(CurrentLocation, ErrorCodes.SYNTAX);
             }
+        }
 
-            _listingService.EndLine();
+        // ---------------------------------------------------- local and anonymous labels
+
+        // The last global label that took an address: the scope of "@name".
+        private string _currentGlobal;
+
+        // Open macro expansions and .rep iterations, innermost last: inside one, "@name"
+        // belongs to the expansion, so the same macro can be used twice.
+        private readonly Stack<int> _expansions = new Stack<int>();
+        private int _expansionCounter;
+
+        // How many anonymous labels of each run length have been defined so far:
+        // "-" and "--" are different names, as in asm6.
+        private readonly Dictionary<int, int> _backwardLabels = new Dictionary<int, int>();
+        private readonly Dictionary<int, int> _forwardLabels = new Dictionary<int, int>();
+
+        public void BeginExpansion()
+        {
+            _expansions.Push(++_expansionCounter);
+        }
+
+        public void EndExpansion()
+        {
+            if (_expansions.Count > 0)
+                _expansions.Pop();
+        }
+
+        private string LocalScope()
+        {
+            if (_expansions.Count > 0)
+                return "__m" + _expansions.Peek().ToString(CultureInfo.InvariantCulture);
+            return _currentGlobal;
+        }
+
+        /// <summary>
+        /// The stored name of a definition. "@name" becomes "Scope@name"; a global
+        /// label that takes an address opens a new scope for the locals after it.
+        /// </summary>
+        private string DefineName(string written, bool opensScope)
+        {
+            if (written.StartsWith("@", StringComparison.Ordinal))
+            {
+                string scope = LocalScope();
+                if (scope == null)
+                {
+                    _diagnostics.ReportError(CurrentLocation, string.Format(ErrorCodes.LOCAL_LABEL_NO_SCOPE, written));
+                    return written;
+                }
+                return scope + written;
+            }
+            if (opensScope)
+                _currentGlobal = written;
+            return written;
+        }
+
+        private static string AnonymousName(bool forward, int length, int index)
+        {
+            return "__anon_" + (forward ? "p" : "m") + length.ToString(CultureInfo.InvariantCulture)
+                + "_" + index.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private void DefineAnonymous(string run)
+        {
+            bool forward = run[0] == '+';
+            Dictionary<int, int> counts = forward ? _forwardLabels : _backwardLabels;
+            int index;
+            counts.TryGetValue(run.Length, out index);
+            counts[run.Length] = index + 1;
+
+            string err;
+            if (AddSourceSymbol(AnonymousName(forward, run.Length, index), _emitter.CurrentAddress, out err))
+            {
+                _listingService.PrintLine(LineType.LABEL, _emitter.CurrentAddress);
+                _scopeManager.ResolveSymbols(_evaluator, PatchResolvedExpression);
+            }
+            else
+            {
+                _diagnostics.ReportError(CurrentLocation, err);
+            }
+        }
+
+        private static readonly Regex AnonReferenceRegex = new Regex(@"^\s*(?<anon>\++|-+)\s*$", RegexOptions.Compiled);
+
+        /// <summary>
+        /// Rewrites the names an expression reads into the names they are stored under:
+        /// "@loop" into "Scope@loop", and an operand that is only "-" or "+" runs into
+        /// the anonymous label it designates.
+        /// </summary>
+        private string ExpandNames(string expr)
+        {
+            if (string.IsNullOrEmpty(expr))
+                return expr;
+
+            Match anonymous = AnonReferenceRegex.Match(expr);
+            if (anonymous.Success)
+            {
+                string run = anonymous.Groups["anon"].Value;
+                bool forward = run[0] == '+';
+                int count;
+                (forward ? _forwardLabels : _backwardLabels).TryGetValue(run.Length, out count);
+                if (forward)
+                    return AnonymousName(true, run.Length, count);
+                if (count == 0)
+                {
+                    _diagnostics.ReportError(CurrentLocation, string.Format(ErrorCodes.ANON_LABEL_NOT_FOUND, run, "before this line"));
+                    return "0";
+                }
+                return AnonymousName(false, run.Length, count - 1);
+            }
+
+            if (expr.IndexOf('@') < 0)
+                return expr;
+
+            string scope = LocalScope();
+            IReadOnlyList<Token> tokens = _tokenizer.Tokenize(expr);
+            System.Text.StringBuilder text = new System.Text.StringBuilder(expr);
+            for (int i = tokens.Count - 1; i >= 0; i--)
+            {
+                if (tokens[i].Type != TokenType.Identifier || !tokens[i].Value.StartsWith("@", StringComparison.Ordinal))
+                    continue;
+                if (scope == null)
+                {
+                    _diagnostics.ReportError(CurrentLocation, string.Format(ErrorCodes.LOCAL_LABEL_NO_SCOPE, tokens[i].Value));
+                    continue;
+                }
+                text.Insert(tokens[i].Index, scope);
+            }
+            return text.ToString();
+        }
+
+        /// <summary>A stored name as the source wrote it, for messages.</summary>
+        private static bool IsGeneratedName(string name)
+        {
+            return name.StartsWith("__anon_", StringComparison.Ordinal) || name.IndexOf('@') >= 0;
+        }
+
+        private void ReportUndefinedGeneratedName(string name)
+        {
+            SourceLocation where = LocationOf(name);
+            if (name.StartsWith("__anon_", StringComparison.Ordinal))
+            {
+                int length = int.Parse(name.Substring(8, name.LastIndexOf('_') - 8), CultureInfo.InvariantCulture);
+                _diagnostics.ReportError(where, string.Format(ErrorCodes.ANON_LABEL_NOT_FOUND, new string('+', length), "after this line"));
+                return;
+            }
+            int at = name.IndexOf('@');
+            string scope = name.Substring(0, at);
+            if (scope.StartsWith("__m", StringComparison.Ordinal))
+                scope = "this macro or .rep expansion";
+            _diagnostics.ReportError(where, string.Format(ErrorCodes.LOCAL_LABEL_UNDEFINED, name.Substring(at), scope));
         }
 
         /// <summary>
@@ -1025,7 +1213,7 @@ namespace WinASM65.Core
             // The role comes from the decoded addressing mode, never from the value:
             // it is the addressing mode that says whether the byte about to be emitted
             // holds a data value, an address, or a branch displacement.
-            ExpressionResult result = _evaluator.Evaluate(ExpandProgramCounter(expr), _scopeManager, CurrentLocation);
+            ExpressionResult result = _evaluator.Evaluate(ExpandProgramCounter(ExpandNames(expr)), _scopeManager, CurrentLocation);
 
             // The single place an expression that cannot be evaluated is reported, at
             // the line it was written on. The result carries the value 0, so the caller
@@ -1106,7 +1294,7 @@ namespace WinASM65.Core
 
         private void HandleLabel(Match match)
         {
-            string label = match.Groups["label"].Value;
+            string label = DefineName(match.Groups["label"].Value, true);
             string err;
             if (AddSourceSymbol(label, _emitter.CurrentAddress, out err))
             {
@@ -1121,7 +1309,7 @@ namespace WinASM65.Core
 
         private void HandleConstant(Match match, bool strict)
         {
-            string label = match.Groups["label"].Value;
+            string label = DefineName(match.Groups["label"].Value, false);
             string valueExpr = match.Groups["value"].Value;
 
             ExpressionResult res = ResolveExpression(valueExpr);
@@ -1158,7 +1346,7 @@ namespace WinASM65.Core
 
         private void HandleMemReserve(Match match)
         {
-            string label = match.Groups["label"].Value;
+            string label = DefineName(match.Groups["label"].Value, false);
             string valueExpr = match.Groups["value"].Value;
 
             ExpressionResult res = ResolveExpression(valueExpr);
@@ -1242,7 +1430,7 @@ namespace WinASM65.Core
                     // and the second definition won. The label on its own line has
                     // always reported it; the two spellings are one concept.
                     string err;
-                    if (!AddSourceSymbol(label, _emitter.CurrentAddress, out err)
+                    if (!AddSourceSymbol(DefineName(label, true), _emitter.CurrentAddress, out err)
                         && !string.IsNullOrEmpty(err))
                         _diagnostics.ReportError(CurrentLocation, err);
                 }
@@ -1576,6 +1764,19 @@ namespace WinASM65.Core
 
             _listingService.EndLine();
 
+            BeginExpansion();
+            try
+            {
+                ExpandMacro(macroDef, argsValue);
+            }
+            finally
+            {
+                EndExpansion();
+            }
+        }
+
+        private void ExpandMacro(MacroDefinition macroDef, string argsValue)
+        {
             if (!string.IsNullOrEmpty(argsValue))
             {
                 // Arguments split like any argument list, so "($10),y" or "a b" is one
@@ -1681,10 +1882,18 @@ namespace WinASM65.Core
             // and where they have always been written.
             string baseName = SideFiles.BaseNameOf(sourceFile);
 
-            if (_scopeManager.GlobalScope.SymbolTable.Count > 0)
+            // Local and anonymous labels stay in their unit: another unit that read
+            // "__anon_p1_0" from this file would resolve its own "+" to ours.
+            Dictionary<string, long> exported = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<string, long> pair in _scopeManager.GlobalScope.SymbolTable)
+            {
+                if (!IsGeneratedName(pair.Key))
+                    exported[pair.Key] = pair.Value;
+            }
+            if (exported.Count > 0)
             {
                 string symbPath = SideFile(baseName, ".symb");
-                File.WriteAllText(symbPath, JsonConvert.SerializeObject(_scopeManager.GlobalScope.SymbolTable));
+                File.WriteAllText(symbPath, JsonConvert.SerializeObject(exported));
             }
 
             if (_scopeManager.GlobalScope.UnsolvedSymbols.Count > 0)

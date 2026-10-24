@@ -511,11 +511,13 @@ namespace WinASM65.Directives
 
             for (int i = 0; i < count; i++)
             {
+                context.BeginExpansion();
                 foreach (string line in linesToRepeat)
                 {
                     context.ListingService.PrintLine(line);
                     context.ParseLine(line, line);
                 }
+                context.EndExpansion();
             }
         }
     }

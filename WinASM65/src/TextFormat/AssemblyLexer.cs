@@ -393,7 +393,8 @@ namespace WinASM65.TextFormat
 
         private static bool IsNameStart(char c)
         {
-            return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+            // '@' starts a local label (@loop), which is a name like any other.
+            return c == '_' || c == '@' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
         }
 
         private static bool IsNamePart(char c)
