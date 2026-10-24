@@ -30,11 +30,7 @@ namespace WinASM65.Cpu
         protected override InstructionInfo ParseIndexedIndirectX(string mnemonic, string expr)
         {
             if (string.Equals(mnemonic, "JMP", StringComparison.OrdinalIgnoreCase))
-            {
-                byte opc;
-                TryGetOpcode(mnemonic, AddressingMode.AbsoluteIndexedIndirect, out opc);
-                return new InstructionInfo(AddressingMode.AbsoluteIndexedIndirect, opc, 3, expr);
-            }
+                return Form(mnemonic, AddressingMode.AbsoluteIndexedIndirect, 3, expr);
             return base.ParseIndexedIndirectX(mnemonic, expr);
         }
 
@@ -45,7 +41,7 @@ namespace WinASM65.Cpu
 
             byte zpOpc;
             if (TryGetOpcode(mnemonic, AddressingMode.ZeroPageIndirect, out zpOpc))
-                return new InstructionInfo(AddressingMode.ZeroPageIndirect, zpOpc, 2, expr);
+                return new InstructionInfo(AddressingMode.ZeroPageIndirect, zpOpc, 2, expr, true);
 
             return base.ParseIndirect(mnemonic, expr);
         }

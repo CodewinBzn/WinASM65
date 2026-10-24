@@ -209,6 +209,12 @@ namespace WinASM65.Core
             _tokenizer = tokenizer ?? new WinASM65.Expressions.Tokenizer();
             _evaluator = evaluator ?? new ExpressionEvaluator(_tokenizer);
             _scopeManager = scopeManager ?? new ScopeManager();
+            ScopeManager concreteScopes = _scopeManager as ScopeManager;
+            if (concreteScopes != null)
+            {
+                concreteScopes.LateError = (pending, message) =>
+                    _diagnostics.ReportError(pending != null && pending.HasLocation ? pending.Location : CurrentLocation, message);
+            }
             _emitter = emitter ?? new BinaryEmitter();
             _listingService = listingService ?? new ListingService();
             _diagnostics = diagnostics ?? new DiagnosticReporter();
@@ -863,17 +869,12 @@ namespace WinASM65.Core
                 Match labelMatch = LabelDirectiveRegex.Match(line);
                 HandleLabel(labelMatch);
                 Match labelled = DirectiveRegex.Match(line.Substring(labelMatch.Groups["label"].Index + labelMatch.Groups["label"].Length).TrimStart(':', ' ', '\t'));
-                _directiveDispatcher.TryDispatch(
-                    labelled.Groups["directive"].Value.ToLowerInvariant(),
-                    labelled.Groups["value"].Value,
-                    this);
+                DispatchDirective(labelled.Groups["directive"].Value, labelled.Groups["value"].Value);
             }
             else if (DirectiveRegex.IsMatch(line))
             {
                 Match match = DirectiveRegex.Match(line);
-                string directiveName = match.Groups["directive"].Value.ToLowerInvariant();
-                string argument = match.Groups["value"].Value;
-                _directiveDispatcher.TryDispatch(directiveName, argument, this);
+                DispatchDirective(match.Groups["directive"].Value, match.Groups["value"].Value);
             }
             else if (LabelDeclareRegex.IsMatch(line))
             {
@@ -897,6 +898,17 @@ namespace WinASM65.Core
             }
 
             _listingService.EndLine();
+        }
+
+        /// <summary>
+        /// Runs a directive, and says so when there is no such directive: an unknown
+        /// one used to be skipped without a word, so ".db" or a typo left a hole in
+        /// the image where the data should have been.
+        /// </summary>
+        private void DispatchDirective(string written, string argument)
+        {
+            if (!_directiveDispatcher.TryDispatch(written.ToLowerInvariant(), argument, this))
+                _diagnostics.ReportError(CurrentLocation, string.Format(ErrorCodes.UNKNOWN_DIRECTIVE, written));
         }
 
         private static bool IsConditionalDirective(string line)
@@ -1084,8 +1096,37 @@ namespace WinASM65.Core
                 }
             }
 
+            // A word in mnemonic position that is neither an instruction of this CPU nor
+            // a macro used to emit $FF; it is an error, and nothing is emitted.
+            if (!_cpu.IsInstruction(opcode))
+            {
+                _diagnostics.ReportError(CurrentLocation, string.Format(ErrorCodes.UNKNOWN_MNEMONIC, writtenOpcode));
+                return;
+            }
+
             InstructionInfo info = _cpu.ParseOperand(opcode, operands);
             AddressingMode mode = info.Mode;
+
+            if (!info.HasOpcode)
+            {
+                // Some forms exist only in zero page (STX zp,Y; LDX zp,Y has an
+                // absolute twin, STX does not). The operand reads as absolute, so
+                // the zero-page form is taken; a value that does not fit a byte is
+                // then a range error like any other one-byte operand.
+                AddressingMode zeroPage = AddressingModes.ZeroPageOf(mode);
+                byte zpOpcode;
+                if (zeroPage != AddressingMode.None && _cpu.TryGetOpcode(opcode, zeroPage, out zpOpcode))
+                {
+                    info = info.WithModeAndLength(zeroPage, zpOpcode, 2);
+                    mode = zeroPage;
+                }
+                else
+                {
+                    _diagnostics.ReportError(CurrentLocation, string.Format(ErrorCodes.UNSUPPORTED_ADDRESSING_MODE,
+                        opcode, AddressingModes.Describe(mode)));
+                    return;
+                }
+            }
 
             if (mode == AddressingMode.Implicit || mode == AddressingMode.Accumulator)
             {
@@ -1189,7 +1230,8 @@ namespace WinASM65.Core
                     Type = symbolType,
                     AddrMode = mode,
                     NbrUndefinedSymb = exprRes.UndefinedSymbols.Count,
-                    Expr = info.OperandExpression
+                    Expr = exprRes.Expression,
+                    Location = CurrentLocation
                 };
                 _scopeManager.AddUnresolvedExpression(position, unresExpr);
 
@@ -1255,8 +1297,19 @@ namespace WinASM65.Core
 
         private void ReportOperandOutOfRange(long value, bool byteSized)
         {
+            ReportOperandOutOfRange(value, byteSized, CurrentLocation);
+        }
+
+        private void ReportOperandOutOfRange(long value, bool byteSized, SourceLocation location)
+        {
             string template = byteSized ? ErrorCodes.VALUE_OUT_OF_RANGE_BYTE : ErrorCodes.VALUE_OUT_OF_RANGE_WORD;
-            _diagnostics.ReportError(CurrentLocation, string.Format(CultureInfo.InvariantCulture, template, value));
+            _diagnostics.ReportError(location, string.Format(CultureInfo.InvariantCulture, template, value));
+        }
+
+        /// <summary>Where a pending expression was written, or the current line when unknown.</summary>
+        private SourceLocation LocationOf(UnresolvedExpr expr)
+        {
+            return expr != null && expr.HasLocation ? expr.Location : CurrentLocation;
         }
 
         private void HandleMacroCall(Match match)
@@ -1322,7 +1375,7 @@ namespace WinASM65.Core
                 }
                 else
                 {
-                    _diagnostics.ReportError(CurrentLocation, relErr);
+                    _diagnostics.ReportError(LocationOf(expr), relErr);
                 }
             }
             else
@@ -1331,7 +1384,7 @@ namespace WinASM65.Core
                 {
                     if (!Value.InWordRange(value.AsInteger))
                     {
-                        ReportOperandOutOfRange(value.AsInteger, false);
+                        ReportOperandOutOfRange(value.AsInteger, false, LocationOf(expr));
                         return;
                     }
                     _emitter.PatchWord(expr.Position, (ushort)(value.AsInteger & 0xFFFF));
@@ -1341,7 +1394,7 @@ namespace WinASM65.Core
                 {
                     if (!Value.InByteRange(value.AsInteger))
                     {
-                        ReportOperandOutOfRange(value.AsInteger, true);
+                        ReportOperandOutOfRange(value.AsInteger, true, LocationOf(expr));
                         return;
                     }
                     _emitter.PatchByte(expr.Position, (byte)(value.AsInteger & 0xFF));

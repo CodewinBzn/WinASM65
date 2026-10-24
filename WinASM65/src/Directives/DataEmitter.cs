@@ -54,7 +54,8 @@ namespace WinASM65.Directives
                 Type = isByte ? SymbolType.Byte : SymbolType.Word,
                 AddrMode = AddressingMode.None,
                 NbrUndefinedSymb = res.UndefinedSymbols.Count,
-                Expr = res.Expression
+                Expr = res.Expression,
+                Location = context.CurrentLocation
             };
             context.ScopeManager.AddUnresolvedExpression(position, pending);
 

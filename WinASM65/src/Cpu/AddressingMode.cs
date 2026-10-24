@@ -39,14 +39,66 @@ namespace WinASM65.Cpu
             OperandExpression = operandExpression;
         }
 
+        /// <summary>
+        /// Whether the CPU has this mnemonic in this addressing mode. When false,
+        /// <see cref="Opcode"/> means nothing: every byte value is an opcode somewhere,
+        /// so no byte can stand for "unsupported".
+        /// </summary>
+        public bool HasOpcode { get; private set; }
+
+        public InstructionInfo(AddressingMode mode, byte opcode, byte length, string operandExpression, bool hasOpcode)
+            : this(mode, opcode, length, operandExpression)
+        {
+            HasOpcode = hasOpcode;
+        }
+
         public InstructionInfo WithExpression(string expr)
         {
-            return new InstructionInfo(Mode, Opcode, Length, expr);
+            return new InstructionInfo(Mode, Opcode, Length, expr, HasOpcode);
         }
 
         public InstructionInfo WithModeAndLength(AddressingMode mode, byte opcode, byte length)
         {
-            return new InstructionInfo(mode, opcode, length, OperandExpression);
+            return new InstructionInfo(mode, opcode, length, OperandExpression, true);
+        }
+    }
+
+    public static class AddressingModes
+    {
+        /// <summary>The name a diagnostic uses for a mode, as the 6502 literature spells it.</summary>
+        public static string Describe(AddressingMode mode)
+        {
+            switch (mode)
+            {
+                case AddressingMode.Implicit: return "implied";
+                case AddressingMode.Accumulator: return "accumulator";
+                case AddressingMode.Immediate: return "immediate (#)";
+                case AddressingMode.Absolute: return "absolute";
+                case AddressingMode.AbsoluteX: return "absolute,X";
+                case AddressingMode.AbsoluteY: return "absolute,Y";
+                case AddressingMode.ZeroPage: return "zero page";
+                case AddressingMode.ZeroPageX: return "zero page,X";
+                case AddressingMode.ZeroPageY: return "zero page,Y";
+                case AddressingMode.Indirect: return "indirect ()";
+                case AddressingMode.IndirectX: return "indexed indirect (zp,X)";
+                case AddressingMode.IndirectY: return "indirect indexed (zp),Y";
+                case AddressingMode.Relative: return "relative";
+                case AddressingMode.ZeroPageIndirect: return "zero page indirect (zp)";
+                case AddressingMode.AbsoluteIndexedIndirect: return "absolute indexed indirect (abs,X)";
+                default: return mode.ToString();
+            }
+        }
+
+        /// <summary>The zero-page form of an absolute mode, or None.</summary>
+        public static AddressingMode ZeroPageOf(AddressingMode mode)
+        {
+            switch (mode)
+            {
+                case AddressingMode.Absolute: return AddressingMode.ZeroPage;
+                case AddressingMode.AbsoluteX: return AddressingMode.ZeroPageX;
+                case AddressingMode.AbsoluteY: return AddressingMode.ZeroPageY;
+                default: return AddressingMode.None;
+            }
         }
     }
 }

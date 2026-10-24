@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using WinASM65.Core;
 using WinASM65.Cpu;
 
 namespace WinASM65.Symbols
@@ -42,6 +43,18 @@ namespace WinASM65.Symbols
 
         public SymbolType Type { get; set; }
         public AddressingMode AddrMode { get; set; }
+
+        /// <summary>
+        /// The line the expression was written on. A pending expression is evaluated
+        /// long after its line has gone, so without this an error found then (a branch
+        /// out of range, a division by zero) was reported at the end of the file.
+        /// </summary>
+        public SourceLocation Location { get; set; }
+
+        public bool HasLocation
+        {
+            get { return !string.IsNullOrEmpty(Location.FilePath); }
+        }
 
         public UnresolvedExpr()
         {
