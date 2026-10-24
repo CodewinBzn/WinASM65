@@ -100,6 +100,16 @@ local ramDirtyCount = 0
 local client = nil
 local server = nil
 
+-- Defined before anything that reports, so every caller below binds to these
+-- locals rather than to an undefined global.
+local function fail(text)
+  return "ERR " .. text
+end
+
+local function log(text)
+  pcall(function() emu.log("[mesen2] " .. text) end)
+end
+
 -- Largest number of byte changes a single PUSH line may carry. Mirrors
 -- MonitorProtocol.MaxPushPayload on the monitor side; the bridge checks
 -- its own count before formatting so a burst cannot produce a line the
@@ -165,14 +175,6 @@ local function drain_ram_push()
     ramDirty[address] = nil
   end
   ramDirtyCount = ramDirtyCount - sent
-end
-
-local function fail(text)
-  return "ERR " .. text
-end
-
-local function log(text)
-  pcall(function() emu.log("[mesen2] " .. text) end)
 end
 
 ---------------------------------------------------------------------- helpers

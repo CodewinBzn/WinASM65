@@ -45,6 +45,29 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
+        public void ThePollerReportsAByteTheMachineChangedWithoutAPush()
+        {
+            // The fallback for a host that does not push: the machine changes a
+            // byte behind the monitor's back, and the poller must still notice.
+            using (FakeMemoryBackend machine = new FakeMemoryBackend())
+            using (ProtocolServer server = Serve(machine))
+            using (BridgeMemoryBackend bridge = BridgeMemoryBackend.Connect(server.Port))
+            using (System.Threading.ManualResetEventSlim seen = new System.Threading.ManualResetEventSlim())
+            {
+                bridge.RamChanged += changes =>
+                {
+                    foreach ((int address, byte value) in changes)
+                        if (address == 0x0010 && value == 0x42)
+                            seen.Set();
+                };
+
+                machine.Write(0x0010, new byte[] { 0x42 });
+
+                Assert.IsTrue(seen.Wait(5000), "the poller never reported the changed byte");
+            }
+        }
+
+        [TestMethod]
         public void ReadWriteRoundTripAcrossTheBridge()
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
@@ -151,7 +174,7 @@ namespace WinASM65.Monitor.Tests
         {
             using (FakeMemoryBackend machine = new FakeMemoryBackend())
             using (ProtocolServer server = Serve(machine))
-            using (BridgeMemoryBackend bridge = BridgeMemoryBackend.Connect(server.Port))
+            using (BridgeMemoryBackend bridge = BridgeMemoryBackend.Connect(server.Port, poll: false))
             {
                 // 1024 bytes over a 256-byte chunk bound: four requests, not one.
                 // The assembled answer must be identical, because what the caller

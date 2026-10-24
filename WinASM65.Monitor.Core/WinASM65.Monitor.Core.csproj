@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The monitor without a user interface: the session, the emulator backends,
+    the bridge protocol, the launcher and the source listings.
+
+    Split from WinASM65.Monitor so that more than one front end can drive the
+    same machine: the terminal shell, and the VS Code debug adapter and language
+    server in WinASM65.Tooling. Nothing here may reference a UI library or write
+    to stdout, because the tooling uses stdout as its protocol channel.
+
+    The namespace stays WinASM65.Monitor: the split moved files, not meanings.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>WinASM65.Monitor</RootNamespace>
+    <AssemblyName>WinASM65.Monitor.Core</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WinASM65\WinASM65.csproj" />
+    <ProjectReference Include="..\WinASM65.Monitor.Abstractions\WinASM65.Monitor.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="WinASM65.Monitor" />
+    <InternalsVisibleTo Include="WinASM65.Monitor.Tests" />
+    <InternalsVisibleTo Include="WinASM65.Tooling" />
+    <InternalsVisibleTo Include="WinASM65.Tooling.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The bridge travels with every executable that references this library,
+         so a front end can start Mesen itself instead of depending on a script
+         sitting in the source tree. -->
+    <None Include="Bridge\**\*.lua" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
