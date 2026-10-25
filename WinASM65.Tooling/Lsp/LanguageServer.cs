@@ -386,7 +386,6 @@ namespace WinASM65.Tooling.Lsp
             ProjectSession session = project != null ? project.Session : ProjectSession.Open(new ConfigFile(), Path.GetDirectoryName(document.Path));
             SourceListing listing = session.ListSourceText(document.Text, document.Path);
 
-            StringBuilder markdown = new StringBuilder();
             string word = WordAt(lines[line], character);
             ICpuInstructionSet cpu = CpuOf(session);
 
@@ -394,43 +393,24 @@ namespace WinASM65.Tooling.Lsp
                 && r.LineNumber == line + 1 && (string.IsNullOrEmpty(r.SourceName) || SamePath(r.SourceName, document.Path)));
             InstructionDocumentation assembled = row == null ? null : FormOf(cpu, row, lines[line]);
 
-            if (word != null && InstructionDocs.IsMnemonic(word, cpu))
+            // On a mnemonic, or anywhere on an instruction line but a name: the
+            // instruction's card. On a name: its value, then what the line assembled to.
+            string markdown = null;
+            long value;
+            bool onMnemonic = word != null && InstructionDocs.IsMnemonic(word, cpu);
+            if (!onMnemonic && word != null
+                && (session.ProjectSymbols.TryGetValue(word, out value) || TrySymbolOf(listing, word, out value)))
             {
-                // The form this line assembled to first, with its cycle count; then
-                // every form of the mnemonic, for reference.
-                markdown.Append("**").Append(word.ToUpperInvariant()).Append("**");
-                if (assembled != null && assembled.CyclesText != null)
-                    markdown.Append(" — ").Append(assembled.CyclesText);
-                markdown.Append("\n\n");
-                foreach (InstructionDocumentation form in InstructionDocs.ForMnemonic(word, cpu))
-                {
-                    markdown.Append("- `").Append(form.Mnemonic).Append(string.IsNullOrEmpty(form.Syntax) ? "" : " " + form.Syntax)
-                        .Append("` — ").Append(AddressingModes.Describe(form.Mode)).Append(", $").Append(form.Opcode.ToString("X2"))
-                        .Append(", ").Append(form.Length).Append(form.Length == 1 ? " byte" : " bytes");
-                    if (form.CyclesText != null)
-                        markdown.Append(", ").Append(form.CyclesText);
-                    markdown.Append("\n");
-                }
+                markdown = HoverCard.Symbol(word, value, lines[line], assembled, row);
             }
-            else if (word != null)
+            else if (onMnemonic || assembled != null)
             {
-                long value;
-                if (session.ProjectSymbols.TryGetValue(word, out value) || TrySymbolOf(listing, word, out value))
-                    markdown.Append("`").Append(word).Append("` = $").Append(value.ToString("X4"))
-                        .Append(" (").Append(value.ToString(CultureInfo.InvariantCulture)).Append(")");
+                string mnemonic = onMnemonic ? word : assembled.Mnemonic;
+                markdown = HoverCard.Instruction(mnemonic, lines[line], assembled,
+                    InstructionDocs.ForMnemonic(mnemonic, cpu), row);
             }
 
-            if (row != null)
-            {
-                if (markdown.Length > 0)
-                    markdown.Append("\n\n---\n\n");
-                markdown.Append("`$").Append(row.Address.Value.ToString("X4")).Append("`  ")
-                    .Append(string.Join(" ", row.Bytes.Select(b => b.ToString("X2"))));
-                if (assembled != null && assembled.CyclesText != null)
-                    markdown.Append("  ·  ").Append(assembled.CyclesText);
-            }
-
-            if (markdown.Length == 0)
+            if (markdown == null)
                 return null;
             return new JsonObject
             {
@@ -533,13 +513,17 @@ namespace WinASM65.Tooling.Lsp
             value = 0;
             foreach (ListingRow row in listing.Rows)
             {
-                if (row.Kind == ListingRowKind.Label && row.Address.HasValue && row.Text != null
+                // A label has its address; a constant (and a named .res) its value.
+                int? rowValue = row.Kind == ListingRowKind.Label ? row.Address
+                    : row.Kind == ListingRowKind.Constant || row.Kind == ListingRowKind.Reserve ? row.Value ?? row.Address
+                    : null;
+                if (rowValue.HasValue && row.Text != null
                     && row.Text.TrimStart().StartsWith(word, StringComparison.OrdinalIgnoreCase))
                 {
                     string rest = row.Text.TrimStart().Substring(word.Length);
-                    if (rest.Length == 0 || rest[0] == ':' || char.IsWhiteSpace(rest[0]))
+                    if (rest.Length == 0 || rest[0] == ':' || rest[0] == '=' || char.IsWhiteSpace(rest[0]))
                     {
-                        value = row.Address.Value;
+                        value = rowValue.Value;
                         return true;
                     }
                 }
