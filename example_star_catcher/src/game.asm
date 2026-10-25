@@ -29,17 +29,11 @@ FIRST_DELAY = 60                ; frames between two objects at the start
 MIN_DELAY   = 20
 HIT_FRAMES  = 48                ; how long the ship blinks after a hit
 
-; Tiles (see chr/make_chr.py)
-T_SHIP      = $01               ; and $02, its right half
-T_STAR      = $03               ; and $04, the twinkle
-T_METEOR    = $05
-T_DOT       = $06               ; and $07, background stars
-T_HEART     = $0A
-
-; Sprite attributes: the palette of each kind
-PAL_SHIP    = 0
-PAL_STAR    = 1
-PAL_METEOR  = 2
+; The graphics are assets of the designer, in ../gfx: the palettes, the
+; metasprites (ship, star and its twinkle, meteor, burst), the title and game
+; over screens, and the play background as a map of metatiles. Their exported
+; .asm files are included at the end. One tile is used directly:
+T_HEART     = $0A               ; before the number of lives
 
 PPUCTRL_NMI  = %10000000        ; NMI on, all tiles from pattern table 0
 PPUMASK_SHOW = %00011110        ; background and sprites, left column included
@@ -72,6 +66,12 @@ obj_type     .res MAX_OBJECTS   ; 0 when the slot is free
 obj_x        .res MAX_OBJECTS
 obj_y        .res MAX_OBJECTS
 obj_speed    .res MAX_OBJECTS
+oam_index    .res 1             ; next free entry of the sprite table
+obj_index    .res 1
+ms_x         .res 1             ; where draw_metasprite puts the origin
+ms_y         .res 1
+map_row      .res 1
+map_col      .res 1
 
 ; ---------------------------------------------------------------------------
 ; Start-up
@@ -198,18 +198,17 @@ read_joypad:
 
 enter_title:
         jsr screen_off
-        jsr clear_nametable
-        jsr draw_starfield
-        lda #<TitleText
+        lda #<scr_title         ; the screen made in the designer
         sta ptr
-        lda #>TitleText
+        lda #>scr_title
         sta ptr+1
-        jsr draw_texts
+        jsr load_nametable
         jsr hide_sprites
         lda #120
         sta ship_x
         lda #0
         sta hit_timer
+        sta oam_index
         jsr draw_ship
         lda #STATE_TITLE
         sta state
@@ -230,8 +229,7 @@ update_title:
 
 enter_play:
         jsr screen_off
-        jsr clear_nametable
-        jsr draw_starfield
+        jsr draw_map            ; the starfield, a map of metatiles
         lda #<PlayText
         sta ptr
         lda #>PlayText
@@ -416,12 +414,12 @@ add_point:
 
 enter_over:
         jsr screen_off
-        lda #<OverText
+        lda #<scr_over
         sta ptr
-        lda #>OverText
+        lda #>scr_over
         sta ptr+1
-        jsr draw_texts
-        jsr draw_hud
+        jsr load_nametable
+        jsr draw_hud            ; the final score and lives over the screen
         jsr hide_sprites
         lda #120                ; two seconds before START restarts
         sta delay
@@ -443,73 +441,124 @@ update_over:
 ; ---------------------------------------------------------------------------
 ; Sprites
 
-; The ship and every object, into the sprite table.
+; The ship and every object, into the sprite table, as metasprites.
 draw_sprites:
+        lda #0
+        sta oam_index
         jsr draw_ship
         ldx #MAX_OBJECTS-1
-        ldy #8                  ; after the ship's two sprites
-@loop:  lda obj_type,x
-        beq @hidden
+@loop:  stx obj_index
+        lda obj_type,x
+        beq @next
+        lda obj_x,x
+        sta ms_x
         lda obj_y,x
-        sta OAM,y
+        sta ms_y
         lda obj_type,x
         cmp #KIND_STAR
         bne @meteor
-        lda frame_count         ; stars twinkle: the tile changes every 8 frames
-        and #8
-        lsr a
-        lsr a
-        lsr a
-        clc
-        adc #T_STAR
-        sta OAM+1,y
-        lda #PAL_STAR
-        jmp @attr
+        lda #<spr_twinkle_anim  ; stars play the twinkle animation
+        sta ptr
+        lda #>spr_twinkle_anim
+        sta ptr+1
+        lda frame_count
+        jsr anim_frame
+        jmp @draw
 @meteor:
-        lda #T_METEOR
-        sta OAM+1,y
-        lda #PAL_METEOR
-@attr:  sta OAM+2,y
-        lda obj_x,x
-        sta OAM+3,y
-        jmp @next
-@hidden:
-        lda #$FF                ; below the screen
-        sta OAM,y
-@next:  iny
-        iny
-        iny
-        iny
+        lda #SPR_MS_METEOR
+@draw:  jsr draw_metasprite
+@next:  ldx obj_index
         dex
         bpl @loop
-        rts
+        jmp hide_rest
 
-; The ship, two sprites side by side. It blinks while hit_timer runs.
+; The ship. While hit_timer runs it blinks, with a burst in its place.
 draw_ship:
+        lda ship_x
+        sta ms_x
+        lda #SHIP_Y-1           ; a sprite is drawn one line below its Y
+        sta ms_y
         lda hit_timer
         beq @show
         dec hit_timer
         and #4
         beq @show
-        lda #$FF
-        sta OAM
-        sta OAM+4
-        rts
-@show:  lda #SHIP_Y-1           ; a sprite is drawn one line below its Y
-        sta OAM
-        sta OAM+4
-        lda #T_SHIP
-        sta OAM+1
-        lda #T_SHIP+1
-        sta OAM+5
-        lda #PAL_SHIP
-        sta OAM+2
-        sta OAM+6
-        lda ship_x
-        sta OAM+3
+        lda ms_x
         clc
-        adc #8
-        sta OAM+7
+        adc #4
+        sta ms_x
+        lda #SPR_MS_BURST
+        jmp draw_metasprite
+@show:  lda #SPR_MS_SHIP
+        jmp draw_metasprite
+
+; Draws metasprite A with its origin at (ms_x, ms_y), from oam_index on.
+; A metasprite is rows of dy, tile, attributes, dx ended by $80, as the
+; designer exports them (gfx/objects.msprite.asm).
+draw_metasprite:
+        tax
+        lda spr_metasprites_lo,x
+        sta ptr
+        lda spr_metasprites_hi,x
+        sta ptr+1
+        ldy #0
+        ldx oam_index
+@next:  lda (ptr),y             ; dy, or the end
+        cmp #$80
+        beq @done
+        clc
+        adc ms_y
+        sta OAM,x
+        iny
+        lda (ptr),y             ; tile
+        sta OAM+1,x
+        iny
+        lda (ptr),y             ; attributes: palette and flips
+        sta OAM+2,x
+        iny
+        lda (ptr),y             ; dx
+        clc
+        adc ms_x
+        sta OAM+3,x
+        iny
+        inx
+        inx
+        inx
+        inx
+        jmp @next
+@done:  stx oam_index
+        rts
+
+; The metasprite an animation shows at a time: ptr = the animation (rows of
+; metasprite, duration, ended by $FF), A = the time in frames. It loops.
+anim_frame:
+        sta tmp
+@again: ldy #0
+@frame: lda (ptr),y             ; metasprite, or the end
+        cmp #$FF
+        beq @again              ; past the end: tmp is now smaller by one turn
+        iny
+        lda tmp
+        sec
+        sbc (ptr),y             ; duration
+        bcc @this
+        sta tmp
+        iny
+        bne @frame
+@this:  dey
+        lda (ptr),y
+        rts
+
+; Hides the sprites from oam_index to the end of the table.
+hide_rest:
+        ldx oam_index
+        lda #$FF
+@loop:  sta OAM,x
+        inx
+        inx
+        inx
+        inx
+        bne @loop
         rts
 
 hide_sprites:
@@ -549,40 +598,136 @@ screen_on:
 load_palettes:
         ppu_addr $3F00
         ldx #0
-@loop:  lda Palettes,x
+@loop:  lda palettes,x            ; gfx/game.pal.asm
         sta PPUDATA
         inx
         cpx #32
         bne @loop
         rts
 
-; Fills the nametable and its attributes with zeros.
-clear_nametable:
+; Copies a screen made in the designer (960 tiles, then 64 attribute bytes)
+; from ptr to the nametable. The picture is off.
+load_nametable:
         ppu_addr NT
-        lda #0
-        ldy #4
-        ldx #0
-@loop:  sta PPUDATA
-        inx
+        ldx #4                  ; 4 pages of 256 bytes
+        ldy #0
+@loop:  lda (ptr),y
+        sta PPUDATA
+        iny
         bne @loop
-        dey
+        inc ptr+1
+        dex
         bne @loop
         rts
 
-draw_starfield:
-        ldx #STAR_COUNT-1
-@loop:  bit PPUSTATUS
-        lda StarHi,x
-        sta PPUADDR
-        lda StarLo,x
-        sta PPUADDR
-        txa
-        and #1                  ; every other star is a bright one
-        clc
-        adc #T_DOT
+; Draws the play background, a map of 16x15 metatiles of 2x2 tiles
+; (gfx/play.map.asm), then its attributes from the metatiles' palettes.
+draw_map:
+        ppu_addr NT
+        lda #<bg_play_map
+        sta ptr
+        lda #>bg_play_map
+        sta ptr+1
+        lda #BG_PLAY_HEIGHT
+        sta map_row
+@row:   ldy #0                  ; the top tiles of a row of metatiles
+@top:   lda (ptr),y
+        tax
+        lda bg_metatile_tl,x
         sta PPUDATA
-        dex
-        bpl @loop
+        lda bg_metatile_tr,x
+        sta PPUDATA
+        iny
+        cpy #BG_PLAY_WIDTH
+        bne @top
+        ldy #0                  ; then their bottom tiles
+@bottom:
+        lda (ptr),y
+        tax
+        lda bg_metatile_bl,x
+        sta PPUDATA
+        lda bg_metatile_br,x
+        sta PPUDATA
+        iny
+        cpy #BG_PLAY_WIDTH
+        bne @bottom
+        lda ptr
+        clc
+        adc #BG_PLAY_WIDTH
+        sta ptr
+        bcc +
+        inc ptr+1
++       dec map_row
+        bne @row
+
+        ; The attribute table follows: one byte per 2x2 metatiles, top left in
+        ; bits 0-1, top right 2-3, bottom left 4-5, bottom right 6-7.
+        lda #0
+        sta map_row
+@arow:  lda #0
+        sta map_col
+@acol:  lda map_row             ; the top left metatile: row*2*16 + col*2
+        asl a
+        asl a
+        asl a
+        asl a
+        asl a
+        sta tmp
+        lda map_col
+        asl a
+        clc
+        adc tmp
+        tay
+        lda bg_play_map,y
+        tax
+        lda bg_metatile_pal,x
+        sta tmp
+        iny
+        lda bg_play_map,y
+        tax
+        lda bg_metatile_pal,x
+        asl a
+        asl a
+        ora tmp
+        sta tmp
+        lda map_row
+        cmp #7                  ; the last row of blocks covers one metatile row
+        beq @store
+        tya
+        clc
+        adc #BG_PLAY_WIDTH-1
+        tay
+        lda bg_play_map,y
+        tax
+        lda bg_metatile_pal,x
+        asl a
+        asl a
+        asl a
+        asl a
+        ora tmp
+        sta tmp
+        iny
+        lda bg_play_map,y
+        tax
+        lda bg_metatile_pal,x
+        asl a
+        asl a
+        asl a
+        asl a
+        asl a
+        asl a
+        ora tmp
+        sta tmp
+@store: lda tmp
+        sta PPUDATA
+        inc map_col
+        lda map_col
+        cmp #8
+        bne @acol
+        inc map_row
+        lda map_row
+        cmp #8
+        bne @arow
         rts
 
 ; Draws a list of texts: (address, characters, 0) ... then a 0 address.
@@ -665,28 +810,12 @@ random:
 ; ---------------------------------------------------------------------------
 ; Data
 
-Palettes:
-        .byte $0F, $30, $16, $28        ; background: white text, red heart, yellow stars
-        .byte $0F, $30, $16, $28
-        .byte $0F, $30, $16, $28
-        .byte $0F, $30, $16, $28
-        .byte $0F, $30, $11, $16        ; ship: white, blue, red
-        .byte $0F, $28, $38, $30        ; stars: yellow, pale yellow, white
-        .byte $0F, $07, $17, $27        ; meteors: dark brown, brown, orange
-        .byte $0F, $27, $37, $30
-
-TitleText:
-        .word NT+8*32+10
-        .asciiz "STAR CATCHER"
-        .word NT+18*32+10
-        .asciiz "PRESS START"
-        .word NT+21*32+8
-        .asciiz "CATCH THE STARS"
-        .word NT+22*32+7
-        .asciiz "AVOID THE METEORS"
-        .word NT+27*32+7
-        .asciiz "MADE WITH WINASM65"
-        .word 0
+; The graphics, as the designer exports them (see ../gfx/*.json).
+        .include "../gfx/game.pal.asm"
+        .include "../gfx/objects.msprite.asm"
+        .include "../gfx/title.screen.asm"
+        .include "../gfx/over.screen.asm"
+        .include "../gfx/play.map.asm"
 
 PlayText:
         .word NT+2*32+2
@@ -694,16 +823,3 @@ PlayText:
         .word NT+2*32+23
         .byte T_HEART, 0
         .word 0
-
-OverText:
-        .word NT+13*32+11
-        .asciiz "GAME OVER"
-        .word NT+16*32+10
-        .asciiz "PRESS START"
-        .word 0
-
-; The background stars: their nametable addresses, split into a table of
-; low bytes and a table of high bytes.
-STAR_COUNT = 24
-StarLo: .lobytes NT+4*32+25, NT+5*32+9, NT+7*32+6, NT+8*32+26, NT+11*32+3, NT+11*32+15, NT+12*32+7, NT+13*32+17, NT+14*32+9, NT+14*32+27, NT+15*32+19, NT+16*32+15, NT+17*32+3, NT+17*32+10, NT+18*32+17, NT+19*32+2, NT+20*32+24, NT+21*32+15, NT+23*32+8, NT+23*32+23, NT+24*32+14, NT+25*32+27, NT+26*32+5, NT+26*32+12
-StarHi: .hibytes NT+4*32+25, NT+5*32+9, NT+7*32+6, NT+8*32+26, NT+11*32+3, NT+11*32+15, NT+12*32+7, NT+13*32+17, NT+14*32+9, NT+14*32+27, NT+15*32+19, NT+16*32+15, NT+17*32+3, NT+17*32+10, NT+18*32+17, NT+19*32+2, NT+20*32+24, NT+21*32+15, NT+23*32+8, NT+23*32+23, NT+24*32+14, NT+25*32+27, NT+26*32+5, NT+26*32+12

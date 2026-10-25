@@ -48,9 +48,11 @@ try {
         Write-Output "  $out"
     }
 
-    # The tiles, as make_chr.py previews them.
+    # The tiles, drawn by the designer with the ship's palette.
+    dotnet build (Join-Path $repo 'WinASM65.Designer\WinASM65.Designer.csproj') -c Release -v q -nologo | Out-Null
+    $designer = Join-Path $repo 'WinASM65.Designer\bin\Release\net8.0\WinASM65.Designer.exe'
     $tiles = Join-Path $images 'game-tiles.png'
-    python (Join-Path $example 'chr\make_chr.py') --png $tiles
+    & $designer render (Join-Path $example 'chr\tiles.chr') --item '../gfx/game.pal.json#4' --scale 4 -o $tiles | Out-Null
     Write-Output "  $tiles"
 } finally {
     Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue

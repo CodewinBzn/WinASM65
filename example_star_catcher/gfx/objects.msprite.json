@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "system": "nes",
+  "chr": "../chr/tiles.chr",
+  "palettes": "game.pal.json",
+  "prefix": "spr_",
+  "metasprites": [
+    {
+      "name": "ship",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        { "x": 0, "y": 0, "tile": 1, "palette": 0, "flipH": false, "flipV": false, "behind": false },
+        { "x": 8, "y": 0, "tile": 2, "palette": 0, "flipH": false, "flipV": false, "behind": false }
+      ]
+    },
+    {
+      "name": "star",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        { "x": 0, "y": 0, "tile": 3, "palette": 1, "flipH": false, "flipV": false, "behind": false }
+      ]
+    },
+    {
+      "name": "star twinkle",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        { "x": 0, "y": 0, "tile": 4, "palette": 1, "flipH": false, "flipV": false, "behind": false }
+      ]
+    },
+    {
+      "name": "meteor",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        { "x": 0, "y": 0, "tile": 5, "palette": 2, "flipH": false, "flipV": false, "behind": false }
+      ]
+    },
+    {
+      "name": "burst",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        { "x": 0, "y": 0, "tile": 8, "palette": 3, "flipH": false, "flipV": false, "behind": false }
+      ]
+    }
+  ],
+  "animations": [
+    {
+      "name": "twinkle",
+      "loop": true,
+      "frames": [
+        { "metasprite": "star", "duration": 8 },
+        { "metasprite": "star twinkle", "duration": 8 }
+      ]
+    }
+  ]
+}

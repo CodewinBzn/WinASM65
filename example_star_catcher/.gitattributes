@@ -1,0 +1,5 @@
+# Binary data: never convert line endings.
+*.chr binary
+*.nam binary
+*.rle binary
+*.bin binary

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "system": "nes",
+  "chr": "../chr/tiles.chr",
+  "palettes": "game.pal.json",
+  "prefix": "bg_",
+  "name": "play",
+  "metatiles": [
+    { "name": "empty", "tiles": [0, 0, 0, 0], "palette": 0 },
+    { "name": "star top right", "tiles": [0, 6, 0, 0], "palette": 0 },
+    { "name": "bright star bottom right", "tiles": [0, 0, 0, 7], "palette": 0 },
+    { "name": "star bottom left", "tiles": [0, 0, 6, 0], "palette": 0 },
+    { "name": "bright star top left", "tiles": [7, 0, 0, 0], "palette": 0 },
+    { "name": "star bottom right", "tiles": [0, 0, 0, 6], "palette": 0 },
+    { "name": "bright star top right", "tiles": [0, 7, 0, 0], "palette": 0 },
+    { "name": "bright star bottom left", "tiles": [0, 0, 7, 0], "palette": 0 },
+    { "name": "star top left", "tiles": [6, 0, 0, 0], "palette": 0 }
+  ],
+  "width": 16,
+  "height": 15,
+  "cells": [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
+    0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0,
+    0, 5, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 1, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 1, 0, 0, 0, 0, 5, 0, 0, 0, 6, 0, 0,
+    0, 5, 0, 0, 0, 7, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 7, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 8, 0, 0, 0,
+    0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 2, 0, 0,
+    0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+  ]
+}
