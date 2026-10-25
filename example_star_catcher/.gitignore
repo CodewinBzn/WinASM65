@@ -1,0 +1,7 @@
+# Build outputs
+src/*.o
+src/*.symb
+src/*.lst
+src/*.Unsolved
+src/*.UnsolvedExpr
+star_catcher.nes

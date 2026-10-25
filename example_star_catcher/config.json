@@ -1,0 +1,35 @@
+{
+	"Input": [
+		{
+			"FileName": "src/header.asm",
+			"Dependencies": []
+		},
+		{
+			"FileName": "src/game.asm",
+			"Dependencies": []
+		},
+		{
+			"FileName": "src/vectors.asm",
+			"Dependencies": ["src/game.asm"]
+		}
+	],
+	"Output": {
+		"ObjectFile": "star_catcher.nes",
+		"Files": [
+			{
+				"FileName": "src/header.o",
+				"Size": "$10"
+			},
+			{
+				"FileName": "src/game.o",
+				"Size": "$3FFA"
+			},
+			{
+				"FileName": "src/vectors.o"
+			},
+			{
+				"FileName": "chr/tiles.chr"
+			}
+		]
+	}
+}

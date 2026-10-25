@@ -63,6 +63,26 @@ namespace WinASM65.Tests
         }
 
         [TestMethod]
+        public void TheStarCatcherImageIsUnchanged()
+        {
+            // The example game of the documentation: three units, a CHR file,
+            // and most of the syntax a reader is shown.
+            string temp = Path.Combine(Path.GetTempPath(), "winasm65-golden-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                CopyTree(Path.Combine(RepositoryRoot(), "example_star_catcher"), temp);
+                ProjectBuildResult build = ProjectSession.Open(Path.Combine(temp, "config.json")).Build();
+                Assert.IsTrue(build.Success, string.Join("\n", build.Diagnostics));
+                Assert.AreEqual(24592, build.Image.Length, "16-byte header, 16 KB of program, 8 KB of tiles");
+                Assert.AreEqual(StarCatcherHash, Hash(build.Image), "the Star Catcher image has changed");
+            }
+            finally
+            {
+                try { Directory.Delete(temp, true); } catch (IOException) { }
+            }
+        }
+
+        [TestMethod]
         public void TheGeosStubBytesAreUnchanged()
         {
             List<Diagnostic> problems = new List<Diagnostic>();
@@ -91,6 +111,7 @@ namespace WinASM65.Tests
         }
 
         private const string NesGameHash = "A88D8890CAEDEFFC497E1C931C14D5F4D651492D99CE312AEAB08ED6CE9FE06F";
+        private const string StarCatcherHash = "898B5143D0AA66E8059345A6E482C4D0B38CD339FDCCDBE3128DD8673E75F029";
         private const string GeosStubHash = "D2E816CE9767FDB1487566C9911FBCC630A584CE2AABFF41E3455AE15E583973";
         private const string RuntimeStubHash = "6F0FE8D68E03A844C8E22FE525F0E665CA7BDBA3C3C696320B967BBFBA7DCA7D";
     }
