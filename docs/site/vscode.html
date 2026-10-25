@@ -44,8 +44,8 @@
 <pre><code>cd vscode-extension
 npm install
 npm run package
-code --install-extension winasm65-win32-x64-0.4.1.vsix --force</code></pre>
-    <p>The version in the file name is the <code>version</code> of <code>package.json</code> (0.4.1 at the time of writing). <code>--force</code> replaces an installed copy of the same version. What <code>npm run package</code> does is described in <a href="#package">Packaging</a>.</p>
+code --install-extension winasm65-win32-x64-0.4.2.vsix --force</code></pre>
+    <p>The version in the file name is the <code>version</code> of <code>package.json</code> (0.4.2 at the time of writing). <code>--force</code> replaces an installed copy of the same version. What <code>npm run package</code> does is described in <a href="#package">Packaging</a>.</p>
     <p>To debug you also need an emulator with a WinASM65 bridge: <strong>Mesen2 2.1.1</strong> for the NES, or another one configured in the project (see <a href="bridges.html">Emulator bridges</a>). Give its path in one of three places, read in this order:</p>
     <ol>
       <li><code>"emulatorPath"</code> in <code>launch.json</code>;</li>
