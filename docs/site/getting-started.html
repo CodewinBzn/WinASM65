@@ -239,10 +239,10 @@ reset:                           init_screen:
     <p>Both units are assembled; <code>main.asm</code> uses <code>init_screen</code>, which it finds in <code>lib.symb</code> because it declared <code>lib.asm</code> as a dependency. Then <code>out/rom.bin</code> is written: <code>main.o</code> padded with zeros to <code>$100</code> bytes, followed by <code>lib.o</code>, 259 bytes in all. The directory <code>out</code> is created if needed.</p>
     <p>Leave <code>lib.asm</code> out of the <code>Dependencies</code> of <code>main.asm</code> and the build stops:</p>
 <pre><code>Line 0  - File main.asm - Type Undefined symbol</code></pre>
-    <p>The repository has a complete NES project, <code>example_nes_game</code>: three units (<code>engine/headers.asm</code>, <code>engine/background.asm</code>, <code>engine/vectors.asm</code>) and the CHR data <code>chr/mario.chr</code>, combined into the 24,592-byte <code>generated_Nes_Rom/game.nes</code>. Its <code>compile.bat</code> deletes the previous outputs and runs <code>WinASM65 -l -c config.json</code>. Its configuration is explained in <a href="segments.html#config-committed">The committed example</a>.</p>
+    <p>The repository has a complete NES project, the game <a href="example.html">Star Catcher</a> in <code>example_star_catcher</code>: three units (<code>src/header.asm</code>, <code>src/game.asm</code>, <code>src/vectors.asm</code>) and the tiles <code>chr/tiles.chr</code>, combined into the 24,592-byte <code>star_catcher.nes</code>. <code>vectors.asm</code> depends on <code>game.asm</code>, exactly as <code>main.asm</code> depends on <code>lib.asm</code> above. Its <code>compile.bat</code> deletes the previous outputs and runs <code>WinASM65 -l -c config.json</code>. The <a href="example.html">Example game</a> page walks through it; its configuration is explained in <a href="segments.html#config-committed">The committed example</a>.</p>
     <figure class="shot">
-      <a href="img/cli-build.png"><img src="img/cli-build.png" alt="Building a project with WinASM65 -c config.json, then listing the files the build produced"></a>
-      <figcaption>Building a project with <code>WinASM65 -c config.json</code>: one object file per unit, a symbol file for each unit that defines global names, and the image named by <code>Output.ObjectFile</code>.</figcaption>
+      <a href="img/cli-build.png"><img src="img/cli-build.png" alt="In example_star_catcher, WinASM65 -c config.json, then dir /b src star_catcher.nes: game.asm, game.o, game.symb, header.asm, header.o, nes.inc, vectors.asm, vectors.o and star_catcher.nes"></a>
+      <figcaption>Building Star Catcher with <code>WinASM65 -c config.json</code>: one object file per unit, a symbol file for each unit that defines global names (only <code>game.asm</code> does: the header and the vectors define none), and the image named by <code>Output.ObjectFile</code>.</figcaption>
     </figure>
     <div class="callout">
       <p>On the command line, every path in <code>config.json</code> is relative to the <strong>current directory</strong>, not to the directory of the configuration: run the build from the project directory. The VS Code extension and the monitor build through <code>ProjectSession</code>, which resolves paths against the configuration's own directory.</p>
@@ -250,7 +250,7 @@ reset:                           init_screen:
     <p>The <a href="segments.html">Projects and segments</a> page explains the configuration (with a <a href="segments.html#config">reference of every key</a>), the two-phase resolution of names across units, and the combiner.</p>
 
     <h2 id="outputs">Output files</h2>
-    <p>A build leaves several files beside its sources. Their names come from <code>SideFiles.BaseNameOf</code>: the source path with its extension removed, so <code>engine/background.asm</code> gives <code>engine/background.o</code>, <code>engine/background.symb</code> and so on.</p>
+    <p>A build leaves several files beside its sources. Their names come from <code>SideFiles.BaseNameOf</code>: the source path with its extension removed, so <code>src/game.asm</code> gives <code>src/game.o</code>, <code>src/game.symb</code> and so on.</p>
     <div class="table-wrap">
     <table>
       <thead><tr><th>File</th><th>Written when</th><th>Content</th></tr></thead>

@@ -18,8 +18,8 @@
     </header>
 
     <figure class="shot">
-      <a href="img/vscode-debug.png"><img src="img/vscode-debug.png" alt="VS Code paused on a breakpoint in the NES example, with the registers, the call stack and the RAM panel"></a>
-      <figcaption>The NES example (<code>example_nes_game</code>) paused on a breakpoint in its NMI handler. The program runs in Mesen2; the RAM panel on the right shows the console's 2 KB of work RAM.</figcaption>
+      <a href="img/vscode-debug.png"><img src="img/vscode-debug.png" alt="VS Code paused on line 134 of game.asm, the first instruction of NMI in Star Catcher, with the registers (PC = $C06E), the call stack and the RAM panel"></a>
+      <figcaption><a href="example.html">Star Catcher</a>, the NES game written for this documentation, paused on a breakpoint at the first instruction of its NMI handler. The program runs in Mesen2; the RAM panel on the right shows the console's 2 KB of work RAM.</figcaption>
     </figure>
 
     <h2 id="what">What it does</h2>
@@ -150,15 +150,15 @@
     <h2 id="tour">A short tour</h2>
     <div class="grid-2">
       <figure class="shot">
-        <a href="img/vscode-hover-instruction.png"><img src="img/vscode-hover-instruction.png" alt="Hover card on an LDA instruction"></a>
+        <a href="img/vscode-hover-instruction.png"><img src="img/vscode-hover-instruction.png" alt="Hover card on the instruction adc obj_speed,x in game.asm"></a>
         <figcaption>Hovering an instruction: what it does, the form the line assembled to, its cycles and bytes, and every addressing mode. <a href="vscode.html#hover">More</a></figcaption>
       </figure>
       <figure class="shot">
-        <a href="img/monitor-tui.png"><img src="img/monitor-tui.png" alt="The terminal monitor connected to Mesen2"></a>
+        <a href="img/monitor-tui.png"><img src="img/monitor-tui.png" alt="The terminal monitor on Star Catcher, connected to Mesen2"></a>
         <figcaption>The terminal monitor connected to Mesen2: files, the source with its listing, live RAM and ROM. <a href="monitor.html">More</a></figcaption>
       </figure>
       <figure class="shot">
-        <a href="img/vscode-diagnostics.png"><img src="img/vscode-diagnostics.png" alt="Diagnostics in the Problems panel"></a>
+        <a href="img/vscode-diagnostics.png"><img src="img/vscode-diagnostics.png" alt="Three errors in game.asm listed in the Problems panel"></a>
         <figcaption>Errors appear as you type, with the rule that was broken. <a href="vscode.html#diagnostics">More</a></figcaption>
       </figure>
       <figure class="shot">
@@ -169,7 +169,7 @@
 
     <h2 id="reading">Where to start reading</h2>
     <ul>
-      <li>To <strong>use</strong> WinASM65: <a href="getting-started.html">Getting started</a>, then the <a href="syntax.html">syntax reference</a>.</li>
+      <li>To <strong>use</strong> WinASM65: <a href="getting-started.html">Getting started</a>, the <a href="example.html">example game</a>, then the <a href="syntax.html">syntax reference</a>.</li>
       <li>To <strong>change the assembler</strong>: <a href="assembler.html">Assembly pipeline</a> and <a href="cpus.html">CPUs</a>.</li>
       <li>To <strong>change the debugger</strong>: <a href="monitor.html">Monitor</a>, then <a href="tooling.html">Tooling</a> and <a href="vscode.html">VS Code</a>.</li>
       <li>To <strong>add a target system</strong>: <a href="targets.html">Targets and formats</a>.</li>

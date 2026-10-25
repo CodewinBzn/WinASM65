@@ -15,7 +15,7 @@
     <p class="breadcrumb"><a href="index.html">WinASM65</a> › Project</p>
     <header class="page">
       <h1>Tests and tools</h1>
-      <p class="lede">Four MSTest projects with 1,136 test methods: the assembler and its formats, the monitor, the plugin contract, and the VS Code tooling. Add to that an integration test of the VS Code extension and a few scripts that check the debugger against a real Mesen2 and retake the documentation's screenshots.</p>
+      <p class="lede">Four MSTest projects with 1,137 test methods: the assembler and its formats, the monitor, the plugin contract, and the VS Code tooling. Add to that an integration test of the VS Code extension and a few scripts that check the debugger against a real Mesen2 and retake the documentation's screenshots.</p>
     </header>
 
     <aside class="sources">
@@ -40,21 +40,21 @@
     <table>
       <thead><tr><th>Project</th><th>Tests</th><th>Files</th><th>References</th><th>Covers</th></tr></thead>
       <tbody>
-        <tr><td><code>WinASM65.Tests</code></td><td>661</td><td>46</td><td><code>WinASM65</code></td><td>Syntax, CPUs and the execution core, listings and projects, modules and the linker, targets and file formats, BASIC tokenizers, golden images.</td></tr>
+        <tr><td><code>WinASM65.Tests</code></td><td>662</td><td>46</td><td><code>WinASM65</code></td><td>Syntax, CPUs and the execution core, listings and projects, modules and the linker, targets and file formats, BASIC tokenizers, golden images.</td></tr>
         <tr><td><code>WinASM65.Monitor.Tests</code></td><td>422</td><td>32</td><td><code>WinASM65.Monitor</code> (and through it Core and Abstractions)</td><td>Protocol, bridge backend, session, units, listings, source map, the terminal shell.</td></tr>
         <tr><td><code>WinASM65.Monitor.Abstractions.Tests</code></td><td>20</td><td>4</td><td><code>WinASM65.Monitor.Abstractions</code></td><td>The plugin contract: no references, capability flags, plugin loading.</td></tr>
         <tr><td><code>WinASM65.Tooling.Tests</code></td><td>33</td><td>5</td><td><code>WinASM65.Tooling</code></td><td>Debug adapter, language server, <code>--build</code> output, message framing, the TextMate grammar.</td></tr>
-        <tr><td><strong>Total</strong></td><td><strong>1,136</strong></td><td>87</td><td></td><td></td></tr>
+        <tr><td><strong>Total</strong></td><td><strong>1,137</strong></td><td>87</td><td></td><td></td></tr>
       </tbody>
     </table>
     </div>
     <div class="figure">
-      <svg viewBox="0 0 900 120" role="img" aria-label="Share of test methods: WinASM65.Tests 661, Monitor.Tests 422, Tooling.Tests 33, Abstractions.Tests 20">
+      <svg viewBox="0 0 900 120" role="img" aria-label="Share of test methods: WinASM65.Tests 662, Monitor.Tests 422, Tooling.Tests 33, Abstractions.Tests 20">
         <rect class="box-a" x="0" y="20" width="527" height="40"/>
         <rect class="box-b" x="527" y="20" width="336" height="40"/>
         <rect class="box-d" x="863" y="20" width="26" height="40"/>
         <rect class="box-c" x="889" y="20" width="11" height="40"/>
-        <text x="263" y="45" text-anchor="middle" font-weight="600">WinASM65.Tests · 661</text>
+        <text x="263" y="45" text-anchor="middle" font-weight="600">WinASM65.Tests · 662</text>
         <text x="695" y="45" text-anchor="middle" font-weight="600">Monitor.Tests · 422</text>
         <path class="line" d="M876,60 L876,82"/>
         <text x="870" y="98" text-anchor="end" class="muted" font-size="12.5">Tooling.Tests · 33</text>
@@ -92,7 +92,7 @@ dotnet test WinASM65.sln --filter "FullyQualifiedName~ProjectSession"</code></pr
         <tr><td>Modules, archives, linker, relocation</td><td>116</td><td><code>RelocationTests</code> 48, <code>LinkerTests</code> 21, <code>ArchiveTests</code> 15, <code>ModuleFormatTests</code> 13, <code>ModuleViewerTests</code> 10, <code>NesSharedRoutineTests</code> 6, <code>NesEmulatorTests</code> 3</td></tr>
         <tr><td>Targets and file formats</td><td>153</td><td><code>TargetTests</code> 30, <code>HardwareVariantTests</code> 19, <code>GeosD64Tests</code> 18, <code>BbcTargetTests</code> 15, <code>AppleDosImageTests</code> 14, <code>ProDosContainerTests</code> 14, <code>GeosRelocationTests</code> 12, <code>RuntimeStubTests</code> 12, <code>DirectBurnGoldenTests</code> 10, <code>HexRecordFormatTests</code> 5, <code>GeosStubTests</code> 4</td></tr>
         <tr><td>BASIC tokenizers</td><td>68</td><td><code>ApplesoftTokenTests</code> 21, <code>BasicSourceTests</code> 19, <code>BbcBasicTokenTests</code> 15, <code>WaterlooBasicTokenTests</code> 13</td></tr>
-        <tr><td>Golden outputs</td><td>3</td><td><code>GoldenOutputTests</code> 3</td></tr>
+        <tr><td>Golden outputs</td><td>4</td><td><code>GoldenOutputTests</code> 4</td></tr>
       </tbody>
     </table>
     </div>
@@ -148,6 +148,7 @@ dotnet test WinASM65.sln --filter "FullyQualifiedName~ProjectSession"</code></pr
       <tbody>
         <tr><td>The Bomberman NES image (<code>4E57F087…C810A244</code>)</td><td><code>ProjectSessionTests</code>, <code>ProjectBuildVerbTests</code>, <code>NesEmulatorTests</code></td><td><code>ProjectSessionTests</code> builds <code>example_bomberman-nes</code> through the library, compares it byte for byte with the image the original toolchain produced, then checks the hash. The comparison is Inconclusive when <code>bomber.nes</code> is absent.</td></tr>
         <tr><td>The <code>example_nes_game</code> image</td><td><code>GoldenOutputTests</code></td><td>Copies the example to a temporary directory, builds it with <code>ProjectSession</code>, hashes the image.</td></tr>
+        <tr><td>The <a href="example.html">Star Catcher</a> image (<code>898B5143…3E75F029</code>)</td><td><code>GoldenOutputTests.TheStarCatcherImageIsUnchanged</code></td><td>The same for <code>example_star_catcher</code>, the documentation's example game: three units, a CHR file and most of the syntax the pages show. It also checks the length, 24,592 bytes (a 16-byte header, 16 KB of program, 8 KB of tiles).</td></tr>
         <tr><td>The GEOS relocation stub, the runtime stub</td><td><code>GoldenOutputTests</code></td><td><code>GeosStub.Assemble(0x4000, 32, …)</code> and <code>RuntimeBlock.Build</code> on a one-byte module.</td></tr>
         <tr><td>The eight direct-burn output formats</td><td><code>DirectBurnGoldenTests</code></td><td>Byte-for-byte expectations derived from the format specifications (headers, endianness, bank sizes), not from observed output.</td></tr>
       </tbody>
@@ -215,10 +216,11 @@ powershell -ExecutionPolicy Bypass -File shoot-all.ps1 [-Mesen C:\path\to\Mesen.
     <table>
       <thead><tr><th>Script</th><th>Takes</th><th>How</th></tr></thead>
       <tbody>
-        <tr><td><code>shoot-all.ps1</code></td><td>everything</td><td>Runs the three below; installs the npm packages and Chromium on first use. Without <code>-Mesen</code>, it looks for a Mesen path in <code>example_nes_game/config.json</code> for the console shots.</td></tr>
-        <tr><td><code>shoot-vscode.mjs</code> (+ <code>vscode.mjs</code>)</td><td><code>vscode-*.png</code>, <code>mesen2.png</code></td><td>Starts the VS Code build that <code>@vscode/test-electron</code> caches in <code>vscode-extension/.vscode-test</code> (or <code>VSCODE_EXECUTABLE</code>), with the extension under development, a fresh user-data directory with fixed settings (Dark Modern, no minimap, 1400×860 window), and the <code>VSCODE_*</code>/<code>ELECTRON_*</code> variables removed. Playwright drives it through Electron on a clean copy of the example taken with <code>git archive HEAD</code>, so uncommitted edits never show. With Mesen2 it also takes a debug session, the RAM panel and the emulator window.</td></tr>
+        <tr><td><code>shoot-all.ps1</code></td><td>everything</td><td>Runs the scripts below; installs the npm packages and Chromium on first use. Without <code>-Mesen</code>, it looks for a Mesen path in <code>example_nes_game/config.json</code> for the console shots. With a Mesen2 path it also runs <code>shoot-game.ps1</code>.</td></tr>
+        <tr><td><code>shoot-vscode.mjs</code> (+ <code>vscode.mjs</code>)</td><td><code>vscode-*.png</code>, <code>mesen2.png</code></td><td>Starts the VS Code build that <code>@vscode/test-electron</code> caches in <code>vscode-extension/.vscode-test</code> (or <code>VSCODE_EXECUTABLE</code>), with the extension under development, a fresh user-data directory with fixed settings (Dark Modern, no minimap, 1400×860 window), and the <code>VSCODE_*</code>/<code>ELECTRON_*</code> variables removed. Playwright drives it through Electron on a clean copy of <code>example_star_catcher</code> taken with <code>git archive HEAD</code>, so uncommitted edits never show. With Mesen2 it also takes a debug session, the RAM panel and the emulator window.</td></tr>
         <tr><td><code>shoot-pages.mjs</code></td><td><code>module-viewer*.png</code></td><td>Builds the assembler, links <code>samples/lib.asm</code> and <code>samples/app.asm</code>, and opens the module viewer's report in Chromium.</td></tr>
-        <tr><td><code>shoot-windows.ps1</code></td><td><code>cli-*.png</code>, <code>monitor-tui.png</code></td><td>Builds the assembler and the monitor in Release, then runs each command in a classic <code>conhost</code> console of fixed size (for example <code>mode con cols=170 lines=50</code> for the monitor), waits, captures the window, and kills it. The monitor shot runs <code>WinASM65.Monitor --tui --emulator mesen2 --mesen … --rom bomber.nes --source BMAN_BANK1.NAS</code> and minimises Mesen's window first. Without Mesen2 it runs without a bridge and waits out the 15 s connection timeout.</td></tr>
+        <tr><td><code>shoot-windows.ps1</code></td><td><code>cli-*.png</code>, <code>monitor-tui.png</code></td><td>Builds the assembler and the monitor in Release, then runs each command in a classic <code>conhost</code> console of fixed size (for example <code>mode con cols=170 lines=50</code> for the monitor), waits, captures the window, and kills it. <code>cli-help</code>, <code>cli-build</code> and the monitor run in a clean copy of <code>example_star_catcher</code> (<code>git archive HEAD</code>); <code>cli-errors</code> on a small <code>errors.asm</code> the script writes. The monitor shot runs <code>WinASM65.Monitor --tui --emulator mesen2 --mesen … --rom star_catcher.nes --source src/game.asm</code> and minimises Mesen's window first. Without Mesen2 it runs without a bridge and waits out the 15 s connection timeout.</td></tr>
+        <tr><td><code>shoot-game.ps1</code> (+ <code>game.lua</code>)</td><td><code>game-title.png</code>, <code>game-play.png</code>, <code>game-over.png</code>, <code>game-tiles.png</code></td><td>Needs <code>-Mesen</code>. Builds Star Catcher from a clean copy with the Release assembler, then runs it in Mesen2's test runner (<code>--testRunner game.lua star_catcher.nes</code>). <code>game.lua</code> reads the game's zero-page variables (<code>state</code>, <code>ship_x</code>, <code>obj_type</code>…, at the addresses of <code>game.symb</code>), presses START and steers under the lowest star without dodging meteors, and saves three frames: the title at frame 40, the first moment of play with two stars and a meteor falling, and the game-over screen 30 frames after it appears. Each 256×240 frame is enlarged three times without smoothing. The tile sheet is <code>make_chr.py --png</code>.</td></tr>
         <tr><td><code>capture-window.ps1</code></td><td>one PNG</td><td>Finds a window by process id, process name or title and captures it with <code>PrintWindow</code>, or from the screen (<code>-FromScreen</code>).</td></tr>
         <tr><td><code>check-site.mjs</code></td><td>—</td><td>Opens every page of this site and fails on a broken link, a missing image or a script error (<code>npm run check</code>).</td></tr>
       </tbody>

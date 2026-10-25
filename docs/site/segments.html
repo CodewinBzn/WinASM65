@@ -40,7 +40,7 @@
     <p>A project build has two stages that know nothing about each other. The <strong>Input</strong> stage assembles each unit into its own object file, already placed at its real address by its own <code>.org</code>; names cross from one unit to another through small JSON side files. The <strong>Output</strong> stage then concatenates files, object files and plain binaries alike, padding each one to a declared size, and hands the result to the target's format.</p>
 
     <div class="figure">
-      <svg viewBox="0 0 900 330" role="img" aria-label="Project build of example_nes_game: headers.asm, background.asm and vectors.asm are assembled in declaration order into .o files, background also into a .symb that vectors reads; headers.o, background.o, vectors.o and mario.chr are concatenated with padding into one payload, which the target's format writes as the image">
+      <svg viewBox="0 0 900 330" role="img" aria-label="Project build of example_star_catcher: header.asm, game.asm and vectors.asm are assembled in declaration order into .o files, game also into a .symb that vectors reads; header.o, game.o, vectors.o and tiles.chr are concatenated with padding into one payload, which the target's format writes as the image">
         <defs>
           <marker id="sg-arrow1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
@@ -48,11 +48,11 @@
         </defs>
         <text x="20" y="22" class="muted" font-size="12.5">Input (MultiSegmentOrchestrator)</text>
         <rect class="box-a" x="20" y="34" width="170" height="44" rx="8"/>
-        <text x="105" y="61" text-anchor="middle" font-weight="600">headers.asm</text>
+        <text x="105" y="61" text-anchor="middle" font-weight="600">src/header.asm</text>
         <rect class="box-a" x="20" y="90" width="170" height="44" rx="8"/>
-        <text x="105" y="117" text-anchor="middle" font-weight="600">background.asm</text>
+        <text x="105" y="117" text-anchor="middle" font-weight="600">src/game.asm</text>
         <rect class="box-a" x="20" y="146" width="170" height="44" rx="8"/>
-        <text x="105" y="173" text-anchor="middle" font-weight="600">vectors.asm</text>
+        <text x="105" y="173" text-anchor="middle" font-weight="600">src/vectors.asm</text>
 
         <rect class="box-b" x="250" y="34" width="150" height="44" rx="8"/>
         <text x="325" y="61" text-anchor="middle">.o</text>
@@ -69,13 +69,13 @@
         <text x="480" y="22" class="muted" font-size="12.5">Output (BinaryCombiner)</text>
         <rect class="frame" x="480" y="34" width="400" height="160" rx="8"/>
         <rect class="box-b" x="495" y="48" width="40" height="130" rx="4"/>
-        <text x="515" y="118" text-anchor="middle" font-size="11" transform="rotate(-90 515 118)">headers.o</text>
+        <text x="515" y="118" text-anchor="middle" font-size="11" transform="rotate(-90 515 118)">header.o</text>
         <rect class="box-b" x="540" y="48" width="190" height="130" rx="4"/>
-        <text x="635" y="108" text-anchor="middle" font-size="13">background.o</text>
+        <text x="635" y="108" text-anchor="middle" font-size="13">game.o</text>
         <text x="635" y="126" text-anchor="middle" class="muted" font-size="12">pad → $3FFA</text>
         <rect class="box-b" x="735" y="48" width="20" height="130" rx="3"/>
         <rect class="box-d" x="760" y="48" width="105" height="130" rx="4"/>
-        <text x="812" y="108" text-anchor="middle" font-size="13">mario.chr</text>
+        <text x="812" y="108" text-anchor="middle" font-size="13">tiles.chr</text>
         <text x="812" y="126" text-anchor="middle" class="muted" font-size="12">8 KB</text>
         <path class="line" d="M400,168 L480,168" marker-end="url(#sg-arrow1)"/>
         <path class="line" d="M400,112 L480,112" marker-end="url(#sg-arrow1)"/>
@@ -86,8 +86,8 @@
         <text x="680" y="283" text-anchor="middle" class="muted" font-size="12">or a plain write when the format is bin</text>
         <path class="line" d="M680,194 L680,240" marker-end="url(#sg-arrow1)"/>
         <text x="20" y="250" class="muted" font-size="12.5">Blue: sources. Green: assembled files. Purple: binary files</text>
-        <text x="20" y="268" class="muted" font-size="12.5">taken as they are. headers.o is padded to $10; the thin box is vectors.o (6 bytes).</text>
-        <text x="20" y="300" class="muted" font-size="12.5">Dashed arrow: vectors.asm reads names from background.symb.</text>
+        <text x="20" y="268" class="muted" font-size="12.5">taken as they are. header.o takes $10 bytes; the thin box is vectors.o (6 bytes).</text>
+        <text x="20" y="300" class="muted" font-size="12.5">Dashed arrow: vectors.asm reads NMI, RESET and IRQ from game.symb.</text>
       </svg>
     </div>
 
@@ -104,7 +104,7 @@
     </div>
 
     <h3 id="config-example">A complete example</h3>
-    <p>Every key of a NES project, for <code>example_nes_game</code>. This configuration builds the same 24,592-byte <code>game.nes</code> as the committed one (byte for byte; checked with the Release build), the difference being that the iNES header comes from the <code>Ines</code> section instead of from <code>engine/headers.asm</code>, which is no longer an input. The regions are declarations only: the two that hold code (<code>PRG</code>, <code>VECTORS</code>) match the <code>.org</code>s of the sources, and the RAM ones show the other region types. JSON has no comments, so the explanations are in the tables below.</p>
+    <p>Every key of a NES project, for <a href="example.html">Star Catcher</a> (<code>example_star_catcher</code>). This configuration builds the same 24,592-byte <code>star_catcher.nes</code> as the committed one (byte for byte; checked with the Release build), the difference being that the iNES header comes from the <code>Ines</code> section instead of from <code>src/header.asm</code>, which is no longer an input. The regions are declarations only: the two that hold code (<code>PRG</code>, <code>VECTORS</code>) match the <code>.org</code>s of the sources, <code>ZEROPAGE</code> holds the game's variables (<code>.memarea $0000</code> and <code>.res</code>), <code>OAM</code> is the page the game copies to the PPU every frame, and <code>RAMCODE</code>, which the game does not use, shows the <code>rw</code> type and the <code>Load</code> key. JSON has no comments, so the explanations are in the tables below.</p>
 <pre><code>{
   "Target": {
     "System": "nes",
@@ -133,21 +133,21 @@
   },
   "Input": [
     {
-      "FileName": "engine/background.asm",
-      "OutputFile": "engine/background.o",
+      "FileName": "src/game.asm",
+      "OutputFile": "src/game.o",
       "Dependencies": []
     },
     {
-      "FileName": "engine/vectors.asm",
-      "Dependencies": ["engine/background.asm"]
+      "FileName": "src/vectors.asm",
+      "Dependencies": ["src/game.asm"]
     }
   ],
   "Output": {
-    "ObjectFile": "generated_Nes_Rom/game.nes",
+    "ObjectFile": "star_catcher.nes",
     "Files": [
-      { "FileName": "engine/background.o", "Size": "$3FFA" },
-      { "FileName": "engine/vectors.o" },
-      { "FileName": "chr/mario.chr" }
+      { "FileName": "src/game.o", "Size": "$3FFA" },
+      { "FileName": "src/vectors.o" },
+      { "FileName": "chr/tiles.chr" }
     ]
   },
   "Emulator": {
@@ -155,7 +155,7 @@
     "Arguments": "\"{RomPath}\""
   }
 }</code></pre>
-    <p>Most of the <code>Target</code> section repeats what <code>"System": "nes"</code> already implies (CPU, format, hardware symbols, one PRG and one CHR bank, mapper 0, vertical mirroring, NTSC); it is spelled out here to show the keys. <code>"Arguments"</code> is shown because it appears in real configurations, but nothing reads it (see <a href="#config-emulator">Emulator</a>).</p>
+    <p>Most of the <code>Target</code> section repeats what <code>"System": "nes"</code> already implies (CPU, format, hardware symbols, one PRG and one CHR bank, mapper 0, vertical mirroring, NTSC); it is spelled out here to show the keys. The <code>nes</code> system predefines hardware symbols (<code>PPUCTRL</code>, <code>OAMDMA</code>, <code>JOY1</code>…) with the same values as the constants of <code>src/nes.inc</code>; the source's own definitions are accepted over them. <code>"Arguments"</code> is shown because it appears in real configurations, but nothing reads it (see <a href="#config-emulator">Emulator</a>).</p>
 
     <h3 id="config-other">Keys for other systems</h3>
     <p>A few <code>Target</code> keys only matter to other formats or machines. Three small configurations, each complete and built successfully with a one-unit <code>main.asm</code> that has no <code>.org</code>. A BBC Micro file with its code header:</p>
@@ -234,7 +234,7 @@
     </div>
 
     <h3 id="config-ines">Target.Ines</h3>
-    <p>Class <code>InesConf</code>, applied by <code>TargetResolver.ApplyInes</code> and written by <code>InesFormat</code>. The defaults below are those of the <code>nes</code> family; a target that is not a NES but uses <code>"Format": "ines"</code> starts from the <code>ResolvedTarget</code> defaults instead, which differ only by 0 CHR banks. <strong>When the payload already starts with <code>NES\x1A</code>, as in the committed <code>example_nes_game</code> whose header is assembled by <code>engine/headers.asm</code>, it is written unchanged and this whole section is ignored.</strong></p>
+    <p>Class <code>InesConf</code>, applied by <code>TargetResolver.ApplyInes</code> and written by <code>InesFormat</code>. The defaults below are those of the <code>nes</code> family; a target that is not a NES but uses <code>"Format": "ines"</code> starts from the <code>ResolvedTarget</code> defaults instead, which differ only by 0 CHR banks. <strong>When the payload already starts with <code>NES\x1A</code>, as in the committed <code>example_star_catcher</code> whose header is assembled by <code>src/header.asm</code>, it is written unchanged and this whole section is ignored.</strong></p>
     <div class="table-wrap">
     <table>
       <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
@@ -289,7 +289,7 @@
       <tbody>
         <tr><td><code>FileName</code></td><td>string</td><td>required</td><td>The source of the unit. Missing: <code>Segment source file is required.</code>; not found: <code>File doesn't exist</code>. Its path without extension is also the base name of the unit's side files (<code>.symb</code>, <code>.Unsolved</code>, <code>.UnsolvedExpr</code>, <code>.lst</code>), which stay beside the source whatever <code>OutputFile</code> says.</td></tr>
         <tr><td><code>OutputFile</code></td><td>string</td><td>the source path with <code>.o</code> instead of its extension</td><td>Where the unit's object file goes. <code>Output.Files</code> must then name this path.</td></tr>
-        <tr><td><code>Dependencies</code></td><td>array of strings</td><td><code>[]</code></td><td>The sources (as written in their <code>FileName</code>) whose global names this unit uses. For each, the unit reads the <code>.symb</code> beside that source, and only when it has names left to resolve after the first phase. Order of <code>Input</code> does not matter and cycles are allowed, but dependencies are <strong>not transitive</strong>. A missing file fails the build: <code>Dependency symbol file doesn't exist: engine/background.symb</code>.</td></tr>
+        <tr><td><code>Dependencies</code></td><td>array of strings</td><td><code>[]</code></td><td>The sources (as written in their <code>FileName</code>) whose global names this unit uses. For each, the unit reads the <code>.symb</code> beside that source, and only when it has names left to resolve after the first phase. Order of <code>Input</code> does not matter and cycles are allowed, but dependencies are <strong>not transitive</strong>. A missing file fails the build: <code>Dependency symbol file doesn't exist: src/game.symb</code>.</td></tr>
       </tbody>
     </table>
     </div>
@@ -312,7 +312,7 @@
     <table>
       <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
       <tbody>
-        <tr><td><code>FileName</code></td><td>string</td><td>required</td><td>Any file: a unit's object file or a binary taken as it is (<code>chr/mario.chr</code>). Missing or not found: <code>Input file doesn't exist: …</code></td></tr>
+        <tr><td><code>FileName</code></td><td>string</td><td>required</td><td>Any file: a unit's object file or a binary taken as it is (<code>chr/tiles.chr</code>). Missing or not found: <code>Input file doesn't exist: …</code></td></tr>
         <tr><td><code>Size</code></td><td>string</td><td>the file's own length</td><td>The room the file takes in the image; it is padded with <code>$00</code> up to it. Always read as <strong>hexadecimal</strong>, with or without a leading <code>$</code>: <code>"10"</code> is 16 bytes, and <code>"0x10"</code> does not parse. A file larger than its <code>Size</code>, or an unreadable <code>Size</code>, fails: <code>Invalid target size for: …</code>. Never truncates.</td></tr>
       </tbody>
     </table>
@@ -331,45 +331,43 @@
     </div>
 
     <h3 id="config-committed">The committed example</h3>
-    <p><code>example_nes_game/config.json</code> as committed in the repository has no <code>Target</code> section, so the target is <code>raw</code> and the format <code>bin</code>: the image is written exactly as concatenated, and the iNES header is assembled from source:</p>
+    <p><code>example_star_catcher/config.json</code> as committed in the repository has no <code>Target</code> section, so the target is <code>raw</code> and the format <code>bin</code>: the image is written exactly as concatenated, and the iNES header is assembled from source:</p>
 <pre><code>{
 	"Input": [
-				{
-					"FileName": "engine/headers.asm",
-					"Dependencies": []
-				},
-				{
-					"FileName": "engine/background.asm",
-					"Dependencies": []
-				},
-				{
-					"FileName": "engine/vectors.asm",
-					"Dependencies": ["engine/background.asm"]
-				}
-			],
+		{
+			"FileName": "src/header.asm",
+			"Dependencies": []
+		},
+		{
+			"FileName": "src/game.asm",
+			"Dependencies": []
+		},
+		{
+			"FileName": "src/vectors.asm",
+			"Dependencies": ["src/game.asm"]
+		}
+	],
 	"Output": {
-
-				"ObjectFile": "generated_Nes_Rom/game.nes",
-				"Files":
-				[
-					{
-						"FileName": "engine/headers.o",
-						"Size": "$10"
-					},
-					{
-						"FileName": "engine/background.o",
-						"Size": "$3FFA"
-					},
-					{
-						"FileName": "engine/vectors.o"
-					},
-					{
-						"FileName": "chr/mario.chr"
-					}
-				]
+		"ObjectFile": "star_catcher.nes",
+		"Files": [
+			{
+				"FileName": "src/header.o",
+				"Size": "$10"
+			},
+			{
+				"FileName": "src/game.o",
+				"Size": "$3FFA"
+			},
+			{
+				"FileName": "src/vectors.o"
+			},
+			{
+				"FileName": "chr/tiles.chr"
 			}
+		]
+	}
 }</code></pre>
-    <p><code>headers.asm</code> emits eight bytes from <code>.org $0000</code> (<code>"NES", $1A</code>, one PRG bank, one CHR bank, flags <code>$01</code> and <code>$00</code>), padded to the 16-byte header by <code>"Size": "$10"</code>. <code>background.asm</code> starts at <code>.org $C000</code> and is padded to <code>$3FFA</code> bytes, so that <code>vectors.asm</code>, at <code>.org $FFFA</code>, lands on the last six bytes of the 16 KB PRG bank. <code>vectors.asm</code> writes the addresses of <code>NMI</code> and <code>RESET</code>, which <code>background.asm</code> defines, hence its dependency. <code>chr/mario.chr</code> is 8 KB of CHR data taken as it is. The image is 16 + 16,384 + 8,192 = 24,592 bytes.</p>
+    <p><code>header.asm</code> emits the whole 16-byte header from <code>.org $0000</code> (<code>"NES", $1A</code>, one PRG bank, one CHR bank, flags <code>$01</code> and <code>$00</code>, then <code>.dsb 8</code> zeros), so <code>"Size": "$10"</code> adds no padding: it only makes the build fail if the header ever grows. <code>game.asm</code> starts at <code>.org $C000</code>; its 1,243 bytes are padded to <code>$3FFA</code>, so that <code>vectors.asm</code>, at <code>.org $FFFA</code>, lands on the last six bytes of the 16 KB PRG bank. <code>vectors.asm</code> writes the addresses of <code>NMI</code>, <code>RESET</code> and <code>IRQ</code>, which <code>game.asm</code> defines, hence its dependency. <code>chr/tiles.chr</code>, written by <code>chr/make_chr.py</code>, is 8 KB of tiles taken as they are. The image is 16 + 16,384 + 8,192 = 24,592 bytes. The <a href="example.html#project">Example game</a> page explains the same file from the game's side.</p>
 
     <h2 id="order">How units are resolved</h2>
     <p>The name of the section, “dependencies”, suggests a dependency graph sorted before the build. There is none. <code>MultiSegmentOrchestrator.AssembleSegments</code> works in two phases, both in the order the <code>Input</code> array lists the units, and <code>Dependencies</code> only says <em>which</em> symbol files a unit is allowed to read in the second phase.</p>
@@ -443,7 +441,7 @@
       </tbody>
     </table>
     </div>
-    <p>Every unit also starts with the same predefined names: the target's hardware symbols (when <code>DefineHardwareSymbols</code> is on) and the region symbols of the <a href="#memory-map">memory map</a>. They are not in any <code>.symb</code> but they are known everywhere.</p>
+    <p>Every unit also starts with the same predefined names: the target's hardware symbols (when <code>DefineHardwareSymbols</code> is on) and the region symbols of the <a href="#memory-map">memory map</a>. They are known everywhere without a dependency. Since they sit in the unit's global table, they are also written to its <code>.symb</code>: with the complete example above, even <code>src/vectors.asm</code>, which defines nothing, leaves a <code>vectors.symb</code> holding <code>PPUCTRL</code>, <code>ZEROPAGE_START</code> and the rest.</p>
 
     <h2 id="orchestrator">MultiSegmentOrchestrator</h2>
     <p>The class that runs the <code>Input</code> stage. It does not assemble by itself: it is given a factory, <code>Func&lt;IAssembler&gt;</code>, and calls it once per unit in phase 1 and once more per unit resolved in phase 2.</p>
@@ -484,18 +482,18 @@
     <p>Other failures: a missing file (<code>Input file doesn't exist: …</code>), and a missing <code>ObjectFile</code> (<code>An output object file is required.</code>).</p>
 
     <h3>Why the sizes matter</h3>
-    <p>Each object file holds only the bytes its unit emitted, from its first <code>.org</code> onwards; the gaps between units do not exist on disk. <code>Size</code> recreates them. In the <code>example_nes_game</code> image, <code>headers.o</code> holds 8 bytes and is padded to the 16-byte header; <code>background.o</code> holds 158 bytes of code from <code>$C000</code> and is padded to <code>$3FFA</code>, so <code>vectors.o</code> starts at the file offset that maps to <code>$FFFA</code>:</p>
+    <p>Each object file holds only the bytes its unit emitted, from its first <code>.org</code> onwards; the gaps between units do not exist on disk. <code>Size</code> recreates them. In the <code>star_catcher.nes</code> image, <code>header.o</code> is the 16-byte header; <code>game.o</code> holds 1,243 bytes of code and data from <code>$C000</code> to <code>$C4DA</code> and is padded to <code>$3FFA</code>, so <code>vectors.o</code> starts at the file offset that maps to <code>$FFFA</code>:</p>
 
     <div class="figure">
-      <svg viewBox="0 0 900 170" role="img" aria-label="The game.nes image: 16-byte header at offset 0, background.o at offset $10 mapping to $C000 to $FFF9, vectors.o at $400A mapping to $FFFA to $FFFF, and 8 KB of CHR data from mario.chr at $4010">
+      <svg viewBox="0 0 900 170" role="img" aria-label="The star_catcher.nes image: 16-byte header at offset 0, game.o at offset $10 mapping to $C000 to $FFF9, vectors.o at $400A mapping to $FFFA to $FFFF, and 8 KB of tiles from tiles.chr at $4010">
         <rect class="box-b" x="20" y="40" width="30" height="60" rx="3"/>
         <rect class="box-b" x="50" y="40" width="560" height="60"/>
         <rect class="box-c" x="610" y="40" width="14" height="60"/>
         <rect class="box-d" x="624" y="40" width="256" height="60" rx="3"/>
         <text x="35" y="75" text-anchor="middle" font-size="11">H</text>
-        <text x="330" y="66" text-anchor="middle" font-weight="600">background.o</text>
+        <text x="330" y="66" text-anchor="middle" font-weight="600">game.o</text>
         <text x="330" y="86" text-anchor="middle" class="muted" font-size="12">$C000–$FFF9, padded to $3FFA</text>
-        <text x="752" y="66" text-anchor="middle" font-weight="600">mario.chr</text>
+        <text x="752" y="66" text-anchor="middle" font-weight="600">tiles.chr</text>
         <text x="752" y="86" text-anchor="middle" class="muted" font-size="12">CHR, 8 KB</text>
         <text x="20" y="122" class="muted" font-size="12">0</text>
         <text x="50" y="122" class="muted" font-size="12">$10</text>
@@ -506,11 +504,11 @@
     </div>
 
     <h3>After combining: the format</h3>
-    <p>The command line decides by format name. If it is <code>bin</code> (or empty), <code>Combine</code> writes the concatenation as it is. Otherwise <code>Concatenate</code> builds it in memory and <code>ExecutablePublisher.Publish</code> writes it in the target's format, so a project with <code>"Target": { "System": "c64" }</code> becomes a PRG. The iNES format, for one, recognises a payload that already starts with <code>NES\x1A</code> and writes it unchanged, so the committed <code>example_nes_game</code>, whose header is assembled from source, gives the same <code>game.nes</code> with <code>-t nes</code>. In a project build the format does not see the units' <code>.org</code>: formats that write an address take it from <code>RunAddress</code> or <code>LoadAddress</code> (see <a href="#config-target">Target</a>). See <a href="targets.html#formats">Formats</a>.</p>
+    <p>The command line decides by format name. If it is <code>bin</code> (or empty), <code>Combine</code> writes the concatenation as it is. Otherwise <code>Concatenate</code> builds it in memory and <code>ExecutablePublisher.Publish</code> writes it in the target's format, so a project with <code>"Target": { "System": "c64" }</code> becomes a PRG. The iNES format, for one, recognises a payload that already starts with <code>NES\x1A</code> and writes it unchanged, so the committed <code>example_star_catcher</code>, whose header is assembled from source, gives the same <code>star_catcher.nes</code> with <code>-t nes</code>. In a project build the format does not see the units' <code>.org</code>: formats that write an address take it from <code>RunAddress</code> or <code>LoadAddress</code> (see <a href="#config-target">Target</a>). See <a href="targets.html#formats">Formats</a>.</p>
 
     <h2 id="memory-map">MemoryMap: declared regions</h2>
     <p>A <code>Target</code> section may declare named regions of the address space. They are <strong>declarative</strong>: a region places no byte and replaces no <code>.org</code>, and the output is byte-for-byte the same with or without them. What they add is checking, and symbols.</p>
-    <p>The regions of the <a href="#config-example">complete example</a>, for <code>example_nes_game</code>:</p>
+    <p>The regions of the <a href="#config-example">complete example</a>, for <code>example_star_catcher</code>:</p>
 <pre><code>"Regions": [
   { "Name": "ZEROPAGE", "Address": "$0000", "Size": "$100",  "Type": "bss" },
   { "Name": "OAM",      "Address": "$0200", "Size": "$100",  "Type": "bss" },
@@ -526,8 +524,8 @@
       <li><strong>Each <code>.org</code></strong> (<code>ValidateOrigin</code>): an origin outside every region is an error that names the region it probably belongs to (the last one starting at or below the address) and lists all of them; an origin inside a <code>bss</code> region is an error, since that space produces no file bytes.</li>
       <li><strong>Each <code>.res</code></strong> (<code>ValidateReservation</code>): a reservation that starts in a sized <code>bss</code> region and runs past its end is an error that says how many bytes fall outside. Reservations in <code>ro</code> and <code>rw</code> regions are not checked; a reservation past <code>$FFFF</code> always is.</li>
     </ul>
-<pre><code>Line 1  - File engine/background.asm - Type $C000 lands outside every declared region. Expected region: RAMCODE $0300-$037F (rw). Declared regions: ZEROPAGE $0000-$00FF (bss), OAM $0200-$02FF (bss), RAMCODE $0300-$037F (rw), VECTORS $FFFA-$FFFF (ro).</code></pre>
-    <p>That is the example above with the <code>PRG</code> region removed: the <code>.org $C000</code> of <code>background.asm</code> falls in no region, and the expected one is the last region that starts below it.</p>
+<pre><code>Line 79  - File src/game.asm - Type $C000 lands outside every declared region. Expected region: RAMCODE $0300-$037F (rw). Declared regions: ZEROPAGE $0000-$00FF (bss), OAM $0200-$02FF (bss), RAMCODE $0300-$037F (rw), VECTORS $FFFA-$FFFF (ro).</code></pre>
+    <p>That is the example above with the <code>PRG</code> region removed: the <code>.org $C000</code> on line 79 of <code>game.asm</code> falls in no region, and the expected one is the last region that starts below it. Shrink <code>ZEROPAGE</code> to <code>"Size": "$20"</code> instead and the game's variables no longer fit: <code>Line 72  - File src/game.asm - Type Reservation of 6 byte(s) at $001B overflows region 'ZEROPAGE', which ends at $001F. 1 byte(s) fall outside every declared region.</code> (line 72 is <code>obj_x .res MAX_OBJECTS</code>).</p>
     <p>A write that runs past the end of a region (as opposed to a <code>.res</code>) is not checked.</p>
 
     <h3>Region symbols</h3>

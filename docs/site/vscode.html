@@ -34,8 +34,8 @@
     </aside>
 
     <figure class="shot">
-      <a href="img/vscode-editor.png"><img src="img/vscode-editor.png" alt="VS Code with the NES example open: the Explorer lists the engine sources and config.json, the editor shows background.asm with mnemonics, labels, numbers and comments coloured"></a>
-      <figcaption>The NES example (<code>example_nes_game</code>) in VS Code. <code>.nas</code> and <code>.asm</code> files open as “6502 Assembly (WinASM65)”, shown at the right of the status bar.</figcaption>
+      <a href="img/vscode-editor.png"><img src="img/vscode-editor.png" alt="VS Code with example_star_catcher open: the Explorer lists chr, src (game.asm, header.asm, nes.inc, vectors.asm), compile.bat, config.json and README.md; the editor shows lines 314 to 353 of game.asm, the end of spawn_objects and move_objects, with mnemonics, labels, anonymous + labels, numbers and comments coloured"></a>
+      <figcaption>The example game, <a href="example.html">Star Catcher</a> (<code>example_star_catcher</code>), in VS Code. <code>.nas</code> and <code>.asm</code> files open as “6502 Assembly (WinASM65)”, shown at the right of the status bar.</figcaption>
     </figure>
 
     <h2 id="install">Install</h2>
@@ -80,19 +80,19 @@ code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
     <p>The language server answers hovers with a card laid out like a JSDoc hover. It is computed from the unsaved text, so it is right while you type.</p>
     <div class="grid-2">
       <figure class="shot">
-        <a href="img/vscode-hover-instruction.png"><img src="img/vscode-hover-instruction.png" alt="Hover card on LDA palette, x: LDA — Load A, @mode absolute,X, @cycles 4 (+1 if a page is crossed), @bytes 3 — BD 7E C0 at $C04B, @flags N Z, and a table of the eight LDA forms with the absolute,X form marked"></a>
+        <a href="img/vscode-hover-instruction.png"><img src="img/vscode-hover-instruction.png" alt="Hover card on adc obj_speed,x, line 340 of game.asm: ADC — Add with Carry, Adds a byte and the carry to A, @mode zero page,X, @cycles 4 cycles, @bytes 2 — 75 27 at $C1C6, @flags N V Z C, and a table of the eight ADC forms with the zero page,X form marked"></a>
         <figcaption>On a mnemonic (or anywhere on an instruction line that is not a name): what it does, the form this line assembled to with its cycles, bytes and address, the flags it changes, and every form of the instruction. ◀ marks the one used.</figcaption>
       </figure>
       <figure class="shot">
-        <a href="img/vscode-hover-symbol.png"><img src="img/vscode-hover-symbol.png" alt="Hover card on the name palette: palette = $C07E, @value $C07E (49278), then the line LDA palette, x with @cycles 4 cycles and @bytes 3 — BD 7E C0 at $C04B"></a>
-        <figcaption>On a name: its value in hex and decimal, then the line it is read on, with what that line assembled to.</figcaption>
+        <a href="img/vscode-hover-symbol.png"><img src="img/vscode-hover-symbol.png" alt="Hover card on the name obj_speed: obj_speed = $27, @value $0027 (39), then the line adc obj_speed,x with @cycles 4 cycles and @bytes 2 — 75 27 at $C1C6"></a>
+        <figcaption>On a name: its value in hex and decimal, then the line it is read on, with what that line assembled to. <code>obj_speed</code> is a zero-page variable (<code>.res</code> from <code>.memarea $0000</code>), so the instruction took the two-byte zero page,X form.</figcaption>
       </figure>
     </div>
     <p>The cycle column uses short marks explained under the table: <code>+p</code> one more cycle if a page is crossed, <code>+b</code> for a branch taken, <code>+d</code> in decimal mode. The instruction set is the CPU of the project's target. How the card is built: <a href="tooling.html#hover">Tooling › Hover cards</a>. While a debug session is paused, VS Code can also show a name's current value on hover, through the adapter's <code>evaluate</code>.</p>
 
     <h2 id="diagnostics">Diagnostics</h2>
     <figure class="shot">
-      <a href="img/vscode-diagnostics.png"><img src="img/vscode-diagnostics.png" alt="Three errors underlined in background.asm, unsaved, and listed in the Problems panel: LDX does not support indirect indexed (zp),Y addressing; Malformed expression '(1+'; Undefined symbol: NOWHERE"></a>
+      <a href="img/vscode-diagnostics.png"><img src="img/vscode-diagnostics.png" alt="Three lines inserted at line 336 of game.asm, unsaved and underlined: LDX ($10),Y, LDA #(1+ and BNE NOWHERE; the Problems panel lists LDX does not support indirect indexed (zp),Y addressing (Ln 336), Malformed expression '(1+' (Ln 337) and Undefined symbol: NOWHERE (Ln 338)"></a>
       <figcaption>Errors appear as you type, before the file is saved. Each names the rule that was broken.</figcaption>
     </figure>
     <ul>
@@ -110,7 +110,7 @@ code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
         <figcaption>Right-click → <strong>WinASM65</strong> → <strong>Show Listing</strong>. The same submenu is in the Explorer and the line-number margin; a button in the editor title bar does the same.</figcaption>
       </figure>
       <figure class="shot">
-        <a href="img/vscode-listing.png"><img src="img/vscode-listing.png" alt="background.asm with a grey column left of the source: C04B BD 7E C0, C04E 8D 07 20, C051 E8 and so on, blank on labels and empty lines"></a>
+        <a href="img/vscode-listing.png"><img src="img/vscode-listing.png" alt="game.asm, lines 334 to 373, with a grey column left of the source: C1BD A2 05, C1BF B5 15, C1C1 F0 33 and so on, C1C6 75 27 on line 340, blank on the labels move_objects and collide, on comments and on empty lines"></a>
         <figcaption>Each line shows the address and the bytes it assembled to, as in a <code>.lst</code> file. Lines without code get a blank column, so the source stays aligned.</figcaption>
       </figure>
     </div>
@@ -124,7 +124,7 @@ code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
 
     <h2 id="build">Build task</h2>
     <figure class="shot">
-      <a href="img/vscode-build.png"><img src="img/vscode-build.png" alt="The terminal panel running the task build config.json: WinASM65.Tooling.exe --build …\config.json, then built …\generated_Nes_Rom/game.nes (24592 bytes)"></a>
+      <a href="img/vscode-build.png"><img src="img/vscode-build.png" alt="The terminal panel running the task build config.json: WinASM65.Tooling.exe --build …\example_star_catcher\config.json, then built …\example_star_catcher\star_catcher.nes (24592 bytes); the Explorer now also shows game.o, game.symb, header.o, vectors.o and star_catcher.nes"></a>
       <figcaption><strong>Terminal › Run Build Task</strong> offers “build config.json” for each project in the workspace. It runs <code>WinASM65.Tooling --build</code>; errors go to the Problems panel.</figcaption>
     </figure>
     <p><code>BuildTaskProvider</code> finds up to 20 <code>config.json</code> files (outside <code>node_modules</code>) and offers one task per file, named <code>build &lt;relative path&gt;</code>, in the Build group, run in the project's directory. The output is <code>file:line: error: message</code>, which the <code>$winasm65</code> problem matcher turns into problems. A task can also be written in <code>tasks.json</code>:</p>
@@ -137,12 +137,12 @@ code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
 
     <h2 id="debug">Debugging</h2>
     <figure class="shot">
-      <a href="img/vscode-debug.png"><img src="img/vscode-debug.png" alt="VS Code paused on line 77 of background.asm (LDA #$00 after NMI:). Variables shows Registers (PC = $C073) and Flags; Call Stack shows NMI background.asm 77:1, paused on breakpoint; the RAM panel is on the right; the debug console shows building, built 3 unit(s), 68 mapped line(s), starting Mesen.exe, connected to Mesen2 2.1.1"></a>
-      <figcaption>Paused on a breakpoint in the NMI handler. Left: Registers, Flags and Zero page, and a one-frame call stack named after the nearest label. Right: the RAM panel. Bottom: the debug console's account of the launch.</figcaption>
+      <a href="img/vscode-debug.png"><img src="img/vscode-debug.png" alt="VS Code paused on line 134 of game.asm (pha, the first instruction after NMI:). Variables shows Registers (PC = $C06E, A = $00, X = $00, Y = $59, SP = $FA) and Flags; Call Stack shows NMI game.asm 134:1, paused on breakpoint; the RAM panel is on the right; the debug console shows building, built 3 unit(s), 564 mapped line(s), starting Mesen.exe with star_catcher.nes, connected to Mesen2 2.1.1"></a>
+      <figcaption>Star Catcher paused on a breakpoint on line 134 of <code>game.asm</code>, the first instruction of the NMI handler (<code>$C06E</code>). Left: the Registers and Flags (Zero page follows below them), and a one-frame call stack named after the nearest label. Right: the RAM panel, on the title screen: <code>ship_x</code> at <code>$07</code> holds <code>$78</code> (120) and <code>ptr</code> at <code>$13</code> still points at <code>TitleText</code> (<code>$C427</code>). Bottom: the debug console's account of the launch.</figcaption>
     </figure>
     <div class="grid-2">
       <figure class="shot">
-        <a href="img/mesen2.png"><img src="img/mesen2.png" alt="The Mesen2 window running the NES example: one sprite on a black screen"></a>
+        <a href="img/mesen2.png"><img src="img/mesen2.png" alt="The Mesen2 window, titled Mesen - star_catcher, showing the title screen of Star Catcher: STAR CATCHER, PRESS START, CATCH THE STARS, AVOID THE METEORS, the ship and MADE WITH WINASM65 on a starfield"></a>
         <figcaption>The game runs in Mesen2's own window, with the WinASM65 bridge script loaded.</figcaption>
       </figure>
       <div>
@@ -182,7 +182,7 @@ code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
     <h2 id="ram">RAM panel</h2>
     <div class="grid-2">
       <figure class="shot">
-        <a href="img/vscode-ram.png"><img src="img/vscode-ram.png" alt="The RAM panel: Refresh button, Live checkbox, status stopped · SP=$F8 · 0 byte(s) changed, a legend, then the zero page and the stack in hex rows"></a>
+        <a href="img/vscode-ram.png"><img src="img/vscode-ram.png" alt="The RAM panel: Refresh button, Live checkbox, status stopped · SP=$FA · 0 byte(s) changed, a legend, then the zero page (5A 78 at $0006, 27 C4 at $0013) and the stack in hex rows"></a>
         <figcaption>The RAM panel: <code>$0000-$07FF</code> in hex and ASCII, the zero page and stack shaded.</figcaption>
       </figure>
       <div>
@@ -208,7 +208,7 @@ code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
       </tbody>
     </table>
     </div>
-    <p>A <code>DebugAdapterTracker</code> watches the adapter's events: <code>stopped</code> refreshes the panel, <code>continued</code> marks it as running. The <strong>Live</strong> box re-reads RAM every 500 ms while the panel considers the machine running; changes are then measured from the last frame shown. Since a name like <code>FRAMEDONE = $0B</code> is a plain constant, a small constant can share a value with a variable's address, so the tooltip lists every name rather than guessing one. The range is fixed: it is the NES work RAM, whatever the target.</p>
+    <p>A <code>DebugAdapterTracker</code> watches the adapter's events: <code>stopped</code> refreshes the panel, <code>continued</code> marks it as running. The <strong>Live</strong> box re-reads RAM every 500 ms while the panel considers the machine running; changes are then measured from the last frame shown. Since a name like <code>SHIP_SPEED = 2</code> is a plain constant, a small constant can share a value with a variable's address (in Star Catcher, <code>buttons</code> is at <code>$02</code>), so the tooltip lists every name rather than guessing one. The range is fixed: it is the NES work RAM, whatever the target.</p>
 
     <h2 id="contributions">What package.json contributes</h2>
     <div class="table-wrap">
@@ -353,7 +353,7 @@ code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
 
     <h2 id="develop">Developing the extension</h2>
     <ul>
-      <li><strong>Run from source.</strong> Open <code>vscode-extension/</code> in VS Code and press F5. The <em>Run the extension</em> configuration runs the <code>compile</code> task (<code>npm run compile &amp;&amp; dotnet build ../WinASM65.Tooling</code>) and opens <code>example_bomberman-nes</code> in an Extension Development Host. No package is needed: <code>resolveTooling</code> finds the debug build of the Tooling.</li>
+      <li><strong>Run from source.</strong> Open <code>vscode-extension/</code> in VS Code and press F5. The <em>Run the extension</em> configuration runs the <code>compile</code> task (<code>npm run compile &amp;&amp; dotnet build ../WinASM65.Tooling</code>) and opens <code>example_bomberman-nes</code> in an Extension Development Host (replace that folder in <code>.vscode/launch.json</code> with <code>example_star_catcher</code> to work on the <a href="example.html">example game</a>). No package is needed: <code>resolveTooling</code> finds the debug build of the Tooling.</li>
       <li><strong>Tests.</strong> <code>npm test</code> compiles, then <code>@vscode/test-electron</code> starts VS Code with the extension on <code>example_nes_game</code> and runs <code>src/test/suite.ts</code> inside it. Set <code>VSCODE_EXECUTABLE</code> to an installed VS Code to avoid a download.</li>
       <li><strong>Screenshots.</strong> The images on this page come from <code>tools/screenshots/shoot-all.ps1</code>.</li>
     </ul>

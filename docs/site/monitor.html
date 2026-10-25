@@ -39,8 +39,8 @@
     </aside>
 
     <figure class="shot">
-      <a href="img/monitor-tui.png"><img src="img/monitor-tui.png" alt="The terminal monitor connected to Mesen2 2.1.1: status line, file tree, source and listing, RAM and ROM panes"></a>
-      <figcaption>The monitor on the NES example (<code>example_nes_game</code>), started with <code>--emulator mesen2</code>. The status line reads: host <code>Mesen2 2.1.1</code>, <code>connected</code>, <code>RAM: Live</code> (the bridge is pushing RAM changes), <code>RUNNING</code>, <code>caps: full control</code>, then the program counter, the registers, the cycle count and the breakpoint count. Below: the file tree, the source with its listing gutter (address, bytes, cycles), and the RAM ($0000–$3FFF) and ROM ($8000–$FFFF) panes.</figcaption>
+      <a href="img/monitor-tui.png"><img src="img/monitor-tui.png" alt="The terminal monitor on Star Catcher, connected to Mesen2 2.1.1: the status line (connected, RAM: Live, RUNNING, caps: full control, $C0A4, A=00 X=00 Y=59 SP=FD), the file tree with src\game.asm, src\header.asm, src\nes.inc, src\vectors.asm, chr\make_chr.py, config.json and star_catcher.nes, game.asm open at its constants, and the RAM and ROM panes"></a>
+      <figcaption>The monitor on the example game, <a href="example.html">Star Catcher</a>, started with <code>--emulator mesen2</code> and <code>--source src/game.asm</code>. The status line reads: host <code>Mesen2 2.1.1</code>, <code>connected</code>, <code>RAM: Live</code> (the bridge is pushing RAM changes), <code>RUNNING</code>, <code>caps: full control</code>, then the program counter, the registers, the cycle count and the breakpoint count. Below: the file tree, the source with its listing gutter (address, bytes, cycles), and the RAM ($0000–$3FFF) and ROM ($8000–$FFFF) panes. The game's 16 KB of program are mirrored at <code>$8000</code> and <code>$C000</code>, so the ROM pane starts with the first bytes of <code>RESET</code> (<code>78 D8 A2 40</code>: <code>sei</code>, <code>cld</code>, <code>ldx #$40</code>).</figcaption>
     </figure>
 
     <h2 id="projects">Three projects</h2>
@@ -197,7 +197,7 @@
     <p>When no bridge answers, the monitor still starts, on <code>DummyBridgeBackend</code>: name <code>Dummy 0.0</code>, reads return zeros, writes and execution commands are ignored, <code>IsConnected</code> is false. It does not implement <code>IExecutionAdapter</code>, so its capability set is <code>None</code> and the status line says <code>caps: nothing measured</code>.</p>
 
     <h2 id="startup">Starting the monitor</h2>
-    <pre><code>WinASM65.Monitor --emulator mesen2 --mesen C:\Mesen2\Mesen.exe --rom generated_Nes_Rom/game.nes --source engine/background.asm
+    <pre><code>WinASM65.Monitor --emulator mesen2 --mesen C:\Mesen2\Mesen.exe --rom star_catcher.nes --source src/game.asm
 WinASM65.Monitor --port 45678          # attach to a bridge that is already listening
 WinASM65.Monitor --repl &lt; commands.txt # line mode</code></pre>
     <div class="table-wrap">
@@ -257,10 +257,10 @@ WinASM65.Monitor --repl &lt; commands.txt # line mode</code></pre>
         <tr><td><code>STATUS</code></td><td><code>OK running</code> or <code>OK stopped &lt;stop&gt;</code></td><td>yes</td><td><code>ERR unknown command</code></td></tr>
         <tr><td><code>READ $addr len</code></td><td><code>OK &lt;hex&gt;</code>; len ≤ 4096</td><td>yes</td><td>yes</td></tr>
         <tr><td><code>WRITE $addr hex</code></td><td><code>OK</code>, after reading the bytes back; <code>ERR write not observable at $…</code> otherwise (PRG ROM drops writes)</td><td>yes</td><td>yes</td></tr>
-        <tr><td><code>CPU</code></td><td><code>OK pc=$C073 a=… x=… y=… sp=… ps=… cycles=…</code></td><td>yes</td><td>refused by the host (<code>emu.getCpuState</code> does not exist)</td></tr>
+        <tr><td><code>CPU</code></td><td><code>OK pc=$C06E a=… x=… y=… sp=… ps=… cycles=…</code></td><td>yes</td><td>refused by the host (<code>emu.getCpuState</code> does not exist)</td></tr>
         <tr><td><code>ROM</code> · <code>ROM LOAD path</code></td><td>cartridge fields as <code>key=value</code>; load a new image</td><td><code>ROM</code> yes; <code>ROM LOAD</code> only if the host has <code>emu.loadRom</code></td><td><code>ROM</code> yes</td></tr>
         <tr><td><code>PAUSE</code> · <code>RESUME</code> · <code>STEP</code> · <code>RESET</code></td><td><code>OK</code></td><td>yes</td><td><code>ERR … unavailable: &lt;measured reason&gt;</code></td></tr>
-        <tr><td><code>BREAK SET|REMOVE kind $addr</code>, <code>BREAK LIST</code>, <code>BREAK CLEAR</code></td><td><code>OK</code>; <code>LIST</code> gives <code>exec $C073, …</code> or <code>none</code></td><td>yes</td><td><code>ERR BREAK unavailable: …</code></td></tr>
+        <tr><td><code>BREAK SET|REMOVE kind $addr</code>, <code>BREAK LIST</code>, <code>BREAK CLEAR</code></td><td><code>OK</code>; <code>LIST</code> gives <code>exec $C06E, …</code> or <code>none</code></td><td>yes</td><td><code>ERR BREAK unavailable: …</code></td></tr>
         <tr><td><code>STATE SAVE</code> · <code>STATE LOAD hex</code></td><td><code>OK &lt;hex&gt;</code> · <code>OK</code>; ≤ 128 KiB</td><td>yes</td><td>yes</td></tr>
       </tbody>
     </table>
@@ -344,16 +344,16 @@ WinASM65.Monitor --repl &lt; commands.txt # line mode</code></pre>
         <rect class="box-c" x="614" y="335" width="12" height="315" rx="2"/>
 
         <path class="line" d="M100,110 L318,110" marker-end="url(#arrow-s)"/>
-        <text x="210" y="103" text-anchor="middle" font-size="12">AddBreakpoint($C073, exec)</text>
+        <text x="210" y="103" text-anchor="middle" font-size="12">AddBreakpoint($C06E, exec)</text>
         <path class="line" d="M320,145 L618,145" marker-end="url(#arrow-s)"/>
-        <text x="470" y="138" text-anchor="middle" font-size="12">BREAK SET exec $C073</text>
+        <text x="470" y="138" text-anchor="middle" font-size="12">BREAK SET exec $C06E</text>
         <path class="line" d="M620,180 L868,180" marker-end="url(#arrow-s)"/>
         <text x="745" y="173" text-anchor="middle" font-size="12">emu.addMemoryCallback(exec)</text>
         <path class="line" d="M620,215 L322,215" marker-end="url(#arrow-s)"/>
         <text x="470" y="208" text-anchor="middle" font-size="12">OK</text>
 
         <rect class="box-a" x="790" y="236" width="160" height="24" rx="5"/>
-        <text x="870" y="252" text-anchor="middle" font-size="12">opcode fetch at $C073</text>
+        <text x="870" y="252" text-anchor="middle" font-size="12">opcode fetch at $C06E</text>
 
         <path class="line" d="M870,295 L622,295" marker-end="url(#arrow-s)"/>
         <text x="745" y="274" text-anchor="middle" font-size="12">exec callback fires:</text>
@@ -365,7 +365,7 @@ WinASM65.Monitor --repl &lt; commands.txt # line mode</code></pre>
         <path class="line" d="M614,370 L322,370" marker-end="url(#arrow-s)"/>
         <text x="470" y="363" text-anchor="middle" font-size="12">PUSH RAM $addr:byte … (pending writes)</text>
         <path class="line" d="M614,405 L322,405" marker-end="url(#arrow-s)"/>
-        <text x="470" y="398" text-anchor="middle" font-size="12">PUSH STOPPED reason=breakpoint pc=$C073 prg=…</text>
+        <text x="470" y="398" text-anchor="middle" font-size="12">PUSH STOPPED reason=breakpoint pc=$C06E prg=…</text>
         <path class="line" d="M320,440 L102,440" marker-end="url(#arrow-s)"/>
         <text x="210" y="433" text-anchor="middle" font-size="12">Stopped(StopInfo)</text>
         <text x="210" y="456" text-anchor="middle" class="muted" font-size="11">on the receiver thread</text>
@@ -375,7 +375,7 @@ WinASM65.Monitor --repl &lt; commands.txt # line mode</code></pre>
         <path class="line" d="M320,515 L612,515" marker-end="url(#arrow-s)"/>
         <text x="470" y="508" text-anchor="middle" font-size="12">CPU, READ $addr len</text>
         <path class="line" d="M614,545 L322,545" marker-end="url(#arrow-s)"/>
-        <text x="470" y="538" text-anchor="middle" font-size="12">OK pc=$C073 a=… cycles=… · OK &lt;hex&gt;</text>
+        <text x="470" y="538" text-anchor="middle" font-size="12">OK pc=$C06E a=… cycles=… · OK &lt;hex&gt;</text>
 
         <path class="line" d="M100,580 L318,580" marker-end="url(#arrow-s)"/>
         <text x="210" y="573" text-anchor="middle" font-size="12">Resume()</text>
@@ -444,7 +444,7 @@ WinASM65.Monitor --repl &lt; commands.txt # line mode</code></pre>
         <tr><td>Files</td><td><code>FileTreePane</code>, <code>FileTreeModel</code></td><td>Sections <em>sources</em>, <em>project files</em>, <em>ROM images</em>, <em>units</em>; activating a source opens it; right-click opens a menu.</td></tr>
         <tr><td>Editor</td><td><code>SourceEditorTabs</code>, <code>SourceEditorPane</code>, <code>SourceDocument</code>, <code>ListingFormatter</code>, <code>AssemblerSyntaxHighlighter</code>, <code>JsonSyntaxHighlighter</code></td><td>One tab per file; an editable source with a read-only gutter of address, bytes and cycles. Saving keeps the file's encoding and line endings.</td></tr>
         <tr><td>Memory</td><td><code>RamPane</code>, <code>RamDump</code>, <code>RamEditing</code>, <code>RomPane</code></td><td>RAM $0000–$3FFF with the zero page and stack marked, refreshed from <code>RamChanged</code>; ROM $8000–$FFFF. <code>RamEditing</code> holds write-and-verify logic for in-place edits of $0000–$3FFF; only the tests call it so far.</td></tr>
-        <tr><td>Commands</td><td><code>EditorCommands</code>, <code>StateCommands</code></td><td>Build the exact lines the keys send, e.g. <code>BREAK SET exec $C073</code>, so tests can assert them.</td></tr>
+        <tr><td>Commands</td><td><code>EditorCommands</code>, <code>StateCommands</code></td><td>Build the exact lines the keys send, e.g. <code>BREAK SET exec $C06E</code>, so tests can assert them.</td></tr>
         <tr><td>Capabilities</td><td><code>ShellKey</code>, <code>ShellCapabilities</code>, <code>Shortcut</code></td><td>Which key needs which capability, and the refusal wording.</td></tr>
         <tr><td>Theme</td><td><code>ShellTheme</code>, <code>ShellColorScheme</code>, <code>theme.json</code>, <code>ThemeRole</code> (Core)</td><td>A colour per role plus a 16-colour fallback. A broken file never replaces a working palette, and an unknown role is reported.</td></tr>
       </tbody>
@@ -505,7 +505,7 @@ WinASM65.Monitor --repl &lt; commands.txt # line mode</code></pre>
     </ul>
 
     <figure class="shot">
-      <a href="img/mesen2.png"><img src="img/mesen2.png" alt="The Mesen2 window running the NES example"></a>
+      <a href="img/mesen2.png"><img src="img/mesen2.png" alt="The Mesen2 window, titled Mesen - star_catcher, showing the title screen of Star Catcher"></a>
       <figcaption>Mesen2 2.1.1 as <code>BridgeLauncher</code> starts it: its normal window, with the ROM loaded and <code>bridge_mesen2.lua</code> running.</figcaption>
     </figure>
 
