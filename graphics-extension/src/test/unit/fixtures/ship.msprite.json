@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "system": "nes",
+  "chr": "tiles.chr",
+  "palettes": "game.pal.json",
+  "prefix": "",
+  "metasprites": [
+    {
+      "name": "ship",
+      "originX": 8,
+      "originY": 8,
+      "tiles": [
+        { "x": 0, "y": 0, "tile": 1, "palette": 0, "flipH": false, "flipV": true, "behind": false }
+      ]
+    }
+  ],
+  "animations": [
+    {
+      "name": "fly",
+      "loop": true,
+      "frames": [
+        { "metasprite": "ship", "duration": 8 }
+      ]
+    }
+  ]
+}

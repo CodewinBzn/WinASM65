@@ -1,0 +1,1 @@
+{"version":1,"system":"nes","chr":"tiles.chr","prefix":"","name":"level","metatiles":[{"name":"blank","tiles":[0,0,0,0],"palette":0},{"name":"brick","tiles":[1,2,3,4],"palette":1}],"width":3,"height":2,"cells":[0,0,0,0,1,0]}

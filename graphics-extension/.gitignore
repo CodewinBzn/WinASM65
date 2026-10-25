@@ -1,0 +1,6 @@
+node_modules/
+out/
+bin/
+*.vsix
+LICENSE.txt
+.vscode-test/

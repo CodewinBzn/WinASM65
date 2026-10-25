@@ -192,5 +192,54 @@ namespace WinASM65.Graphics.Tests
                 Assert.AreEqual(DesignerServer.InvalidParams, (int)bad["error"]["code"]);
             }
         }
+
+        [TestMethod]
+        public void TheServerFormatsAnAssetAsTheLibrarySavesIt()
+        {
+            using (TempFolder folder = new TempFolder())
+            {
+                WriteScreenProject(folder);
+                DesignerServer server = new DesignerServer(new MessageStream(new MemoryStream(), new MemoryStream()));
+                string screenPath = folder.File(Path.Combine("screens", "title.screen.json"));
+                string saved = File.ReadAllText(screenPath);
+
+                // An editor's copy of the asset, compact and with a change, comes back as the file the library writes.
+                JsonNode asset = JsonNode.Parse(saved);
+                asset["tiles"][1] = 1;
+                JsonObject format = server.Handle(Request(1, "format", new JsonObject
+                {
+                    ["kind"] = "screen", ["asset"] = JsonNode.Parse(asset.ToJsonString()), ["path"] = screenPath,
+                }));
+                ScreenAsset expected = ScreenAsset.Load(screenPath).Asset;
+                expected.Tiles[1] = 1;
+                expected.Save(folder.File("expected.screen.json"));
+                Assert.AreEqual(File.ReadAllText(folder.File("expected.screen.json")), (string)format["result"]["text"]);
+                Assert.AreEqual(0, format["result"]["diagnostics"].AsArray().Count);
+
+                JsonObject unchanged = server.Handle(Request(2, "format", new JsonObject { ["kind"] = "screen", ["asset"] = JsonNode.Parse(saved) }));
+                Assert.AreEqual(saved, (string)unchanged["result"]["text"]);
+
+                string palette = File.ReadAllText(folder.File("game.pal.json"));
+                JsonObject pal = server.Handle(Request(3, "format", new JsonObject { ["kind"] = "palette", ["asset"] = JsonNode.Parse(palette) }));
+                Assert.AreEqual(palette, (string)pal["result"]["text"]);
+
+                MapAsset map = new MapAsset { Name = "level", Width = 3, Height = 2, Chr = "tiles.chr" };
+                map.Metatiles.Add(new Metatile { Name = "sky", Tiles = { 0, 0, 0, 0 } });
+                for (int i = 0; i < 6; i++)
+                    map.Cells.Add(0);
+                map.Save(folder.File("level.map.json"));
+                string mapText = File.ReadAllText(folder.File("level.map.json"));
+                JsonObject mapFormat = server.Handle(Request(4, "format", new JsonObject { ["kind"] = "map", ["asset"] = JsonNode.Parse(mapText) }));
+                Assert.AreEqual(mapText, (string)mapFormat["result"]["text"]);
+
+                JsonObject wrongKind = server.Handle(Request(5, "format", new JsonObject { ["kind"] = "chr", ["asset"] = new JsonObject() }));
+                Assert.AreEqual(DesignerServer.InvalidParams, (int)wrongKind["error"]["code"]);
+                JsonObject wrongShape = server.Handle(Request(6, "format", new JsonObject
+                {
+                    ["kind"] = "palette", ["asset"] = new JsonObject { ["palettes"] = "nope" },
+                }));
+                Assert.AreEqual(DesignerServer.InvalidParams, (int)wrongShape["error"]["code"]);
+            }
+        }
     }
 }

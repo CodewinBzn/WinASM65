@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "system": "nes",
+  "name": "game",
+  "prefix": "",
+  "palettes": [
+    { "name": "bg0", "colors": [15, 48, 22, 40] },
+    { "name": "a much longer palette name for wrapping", "colors": [15, 15, 15, 15] },
+    { "name": "bg2", "colors": [15, 15, 15, 15] },
+    { "name": "bg3", "colors": [15, 15, 15, 15] },
+    { "name": "sprite0", "colors": [15, 15, 15, 15] },
+    { "name": "sprite1", "colors": [15, 15, 15, 15] },
+    { "name": "sprite2", "colors": [15, 15, 15, 15] },
+    { "name": "sprite3", "colors": [15, 15, 15, 15] }
+  ]
+}

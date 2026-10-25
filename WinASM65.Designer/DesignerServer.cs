@@ -27,6 +27,10 @@ namespace WinASM65.Designer
     /// <item><c>export { path }</c> (file or folder) → <c>{ written, diagnostics }</c>.</item>
     /// <item><c>render { path, item?, scale? }</c> → <c>{ png (base64), width, height, originX, originY, diagnostics }</c>.</item>
     /// <item><c>import { png, mode, out, name, chr? }</c> → <c>{ written, statistics, diagnostics }</c>.</item>
+    /// <item><c>format { kind, asset, path? }</c> → <c>{ text, diagnostics }</c>: the text the library would
+    /// write for a JSON asset (kind <c>palette</c>, <c>metasprite</c>, <c>screen</c> or <c>map</c>), so an
+    /// editor that changes an asset in memory saves exactly what the library saves; with a path, the
+    /// diagnostics are those of the asset at that place (its references resolved from there).</item>
     /// <item><c>shutdown</c> → null, and the server stops.</item>
     /// </list>
     /// <para>
@@ -121,6 +125,8 @@ namespace WinASM65.Designer
                     return Render(RequiredString(parameters, "path"), OptionalString(parameters, "item"), OptionalInt(parameters, "scale", 1));
                 case "import":
                     return Import(parameters);
+                case "format":
+                    return Format(RequiredString(parameters, "kind"), parameters["asset"], OptionalString(parameters, "path"));
                 case "shutdown":
                     ShutdownRequested = true;
                     return null;
@@ -212,6 +218,75 @@ namespace WinASM65.Designer
                 ["statistics"] = GraphicsJson.Statistics(result.Statistics),
                 ["diagnostics"] = GraphicsJson.Diagnostics(result.Diagnostics),
             };
+        }
+
+        private static JsonNode Format(string kindName, JsonNode asset, string path)
+        {
+            if (!(asset is JsonObject))
+                throw new RpcException(InvalidParams, "parameter 'asset' must be a JSON object", null);
+            AssetKind kind;
+            if (!Enum.TryParse(kindName, true, out kind) || kind == AssetKind.Unknown || kind == AssetKind.Chr)
+                throw new RpcException(InvalidParams, "kind must be palette, metasprite, screen or map", null);
+
+            string json = asset.ToJsonString();
+            System.Collections.Generic.List<AssetDiagnostic> diagnostics = new System.Collections.Generic.List<AssetDiagnostic>();
+            string text;
+            switch (kind)
+            {
+                case AssetKind.Palette:
+                {
+                    PaletteAsset palette = Parse<PaletteAsset>(json, path);
+                    text = AssetJson.Serialize(palette, null);
+                    if (path != null)
+                        diagnostics.AddRange(palette.Validate(path));
+                    break;
+                }
+                case AssetKind.Metasprite:
+                {
+                    MetaspriteAsset metasprite = Parse<MetaspriteAsset>(json, path);
+                    text = AssetJson.Serialize(metasprite, null);
+                    if (path != null)
+                        diagnostics.AddRange(metasprite.Validate(path));
+                    break;
+                }
+                case AssetKind.Screen:
+                {
+                    // The rows ScreenAsset.Save lays out: a screen row of tiles, a block row of attributes.
+                    ScreenAsset screen = Parse<ScreenAsset>(json, path);
+                    IGraphicsSystem system = GraphicsSystems.For(screen.System);
+                    int tileRow = system == null ? 32 : system.ScreenWidthTiles;
+                    int attributeRow = system == null ? 16 : ScreenAsset.AttributeColumns(system);
+                    text = AssetJson.Serialize(screen, property => property == "tiles" ? tileRow : property == "attributes" ? attributeRow : 0);
+                    if (path != null)
+                        diagnostics.AddRange(screen.Validate(path));
+                    break;
+                }
+                default:
+                {
+                    // MapAsset.Save: one map row per line of cells.
+                    MapAsset map = Parse<MapAsset>(json, path);
+                    int width = map.Width;
+                    text = AssetJson.Serialize(map, property => property == "cells" ? width : 0);
+                    if (path != null)
+                        diagnostics.AddRange(map.Validate(path));
+                    break;
+                }
+            }
+            return new JsonObject
+            {
+                ["text"] = text,
+                ["diagnostics"] = GraphicsJson.Diagnostics(diagnostics),
+            };
+        }
+
+        private static T Parse<T>(string json, string path) where T : class
+        {
+            System.Collections.Generic.List<AssetDiagnostic> diagnostics = new System.Collections.Generic.List<AssetDiagnostic>();
+            T asset = AssetJson.Parse<T>(json, path, diagnostics);
+            if (asset == null)
+                throw new RpcException(InvalidParams, diagnostics.Count > 0 ? diagnostics[0].Path + ": " + diagnostics[0].Message : "not an asset",
+                    new JsonObject { ["diagnostics"] = GraphicsJson.Diagnostics(diagnostics) });
+            return asset;
         }
 
         private static string RequiredString(JsonObject parameters, string name)

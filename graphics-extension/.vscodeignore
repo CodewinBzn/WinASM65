@@ -1,0 +1,10 @@
+src/**
+scripts/**
+tsconfig*.json
+**/*.map
+node_modules/**
+.gitignore
+.vscode/**
+.vscode-test/**
+out/test/**
+bin/*.pdb
