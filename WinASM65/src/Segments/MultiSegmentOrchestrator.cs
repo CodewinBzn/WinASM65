@@ -134,7 +134,7 @@ namespace WinASM65.Segments
 
             if (scope.UnsolvedSymbols.Count > 0 || assembler.ScopeManager.UnsolvedExprList.Count > 0)
             {
-                AddError(diagnostics, segment.FileName, ErrorCodes.UNDEFINED_SYMBOL);
+                ReportUndefined(diagnostics, segment, scope, assembler.ScopeManager.UnsolvedExprList);
                 return false;
             }
 
@@ -170,6 +170,35 @@ namespace WinASM65.Segments
         private static void AddError(List<Diagnostic> diagnostics, string filePath, string message)
         {
             diagnostics.Add(new Diagnostic(new SourceLocation(filePath, 0), message));
+        }
+
+        /// <summary>
+        /// One error per name still unknown once the unit's dependencies were read,
+        /// on the first line that uses it: "Undefined symbol" alone, at line 0 of
+        /// the unit, told nobody which name or where.
+        /// </summary>
+        private static void ReportUndefined(List<Diagnostic> diagnostics, Segment segment, LexicalScopeData scope,
+            Dictionary<ushort, UnresolvedExpr> expressions)
+        {
+            List<string> names = new List<string>(scope.UnsolvedSymbols.Keys);
+            names.Sort(StringComparer.OrdinalIgnoreCase);
+            foreach (string name in names)
+            {
+                SourceLocation where = new SourceLocation(segment.FileName, 0);
+                foreach (ushort position in scope.UnsolvedSymbols[name].ExprList)
+                {
+                    UnresolvedExpr expression;
+                    if (expressions.TryGetValue(position, out expression) && expression.HasLocation)
+                    {
+                        where = expression.Location;
+                        break;
+                    }
+                }
+                diagnostics.Add(new Diagnostic(where, ErrorCodes.UNDEFINED_SYMBOL + ": " + name
+                    + ". Define it, or list the unit that defines it in this unit's Dependencies."));
+            }
+            if (names.Count == 0)
+                AddError(diagnostics, segment.FileName, ErrorCodes.UNDEFINED_SYMBOL);
         }
     }
 }

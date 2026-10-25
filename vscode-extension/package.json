@@ -191,6 +191,12 @@
         "path": "./syntaxes/winasm65.tmLanguage.json"
       }
     ],
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "winasm65.mcp",
+        "label": "WinASM65"
+      }
+    ],
     "taskDefinitions": [
       {
         "type": "winasm65",

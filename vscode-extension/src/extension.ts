@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions } from 'vscode-languageclient/node';
 import { ListingColumn } from './listing';
 import { MemoryPanel } from './memoryPanel';
+import { registerMcpServer } from './mcp';
 
 const DEBUG_TYPE = 'winasm65';
 
@@ -165,6 +166,7 @@ export function activate(context: vscode.ExtensionContext): { listing: ListingCo
   startLanguageServer(context);
   const listing = new ListingColumn(context, () => clientReady, log);
   context.subscriptions.push(listing, new MemoryPanel(context));
+  registerMcpServer(context, () => resolveTooling(context), log);
   return { listing };
 }
 
