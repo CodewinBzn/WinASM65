@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The graphics designer's executable: a command line for scripts and builds
+    (export, render, import, validate, systems) and, with -server, a JSON-RPC 2.0
+    server on stdin/stdout for the VS Code designer and the MCP tools.
+
+    Everything it does is WinASM65.Graphics; this project only parses arguments
+    and frames messages. In server mode stdout is the protocol channel, so
+    Program points Console.Out at stderr before anything else runs.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>WinASM65.Designer</RootNamespace>
+    <AssemblyName>WinASM65.Designer</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WinASM65.Graphics\WinASM65.Graphics.csproj" />
+  </ItemGroup>
+
+</Project>

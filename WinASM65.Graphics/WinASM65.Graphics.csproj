@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The graphics of a game as files a person edits: tile sets, palettes,
+    metasprites, screens and maps, and what turns them into what a program
+    includes (.asm tables, binary nametables) or what an editor shows (PNG).
+
+    It knows the machines through WinASM65.Systems (the master palette) and the
+    graphics systems of its own (tile formats, palette counts, attribute layout),
+    and nothing about the assembler: what it writes is source text, which any
+    program can include. The designer CLI, the VS Code designer and the MCP tools
+    are all built on this library.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>WinASM65.Graphics</RootNamespace>
+    <AssemblyName>WinASM65.Graphics</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WinASM65.Systems\WinASM65.Systems.csproj" />
+  </ItemGroup>
+
+</Project>
