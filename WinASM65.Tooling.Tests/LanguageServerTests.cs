@@ -181,11 +181,39 @@ namespace WinASM65.Tooling.Tests
                     ["position"] = new JsonObject { ["line"] = 1, ["character"] = 3 }
                 });
                 string text = (string)hover["result"]["contents"]["value"];
-                StringAssert.Contains(text, "**LDA**");
-                StringAssert.Contains(text, "$A9");
-                StringAssert.Contains(text, "`$8000`  A9 5A");
-                StringAssert.Contains(text, "**LDA** — 2 cycles", "the form on this line, with its cycles");
-                StringAssert.Contains(text, "4 cycles (+1 if a page is crossed)", "every form lists its cycles");
+                // Laid out like a JSDoc card: the line, a title and a sentence, the tags,
+                // then every form.
+                StringAssert.StartsWith(text, "```winasm65\nlda #$5A\n```");
+                StringAssert.Contains(text, "**LDA** — Load A\n\nLoads A with a byte.");
+                StringAssert.Contains(text, "*@mode* — immediate (#) — `LDA #$nn`");
+                StringAssert.Contains(text, "*@cycles* — 2 cycles");
+                StringAssert.Contains(text, "*@bytes* — 2 — `A9 5A` at `$8000`");
+                StringAssert.Contains(text, "*@flags* — `N Z`");
+                StringAssert.Contains(text, "| `LDA #$nn` | immediate (#) | `$A9` | 2 | 2 ◀ |");
+                StringAssert.Contains(text, "| `LDA $nnnn,x` | absolute,X | `$BD` | 3 | 4+p |");
+                StringAssert.Contains(text, "+p +1 if a page is crossed");
+            }
+        }
+
+        [TestMethod]
+        public void HoverOnANameShowsItsValueAndTheLine()
+        {
+            using (Harness h = new Harness())
+            {
+                string source = h.Write("alone.asm", "speed = $10\n.org $8000\n  lda speed ; read it\n");
+                h.Open(source);
+                h.Diagnostics(source);
+
+                JsonObject hover = h.Request("textDocument/hover", new JsonObject
+                {
+                    ["textDocument"] = new JsonObject { ["uri"] = Harness.Uri(source) },
+                    ["position"] = new JsonObject { ["line"] = 2, ["character"] = 8 }
+                });
+                string text = (string)hover["result"]["contents"]["value"];
+                StringAssert.StartsWith(text, "```winasm65\nspeed = $10\n```");
+                StringAssert.Contains(text, "*@value* — `$0010` (16)");
+                StringAssert.Contains(text, "```winasm65\nlda speed\n```", "the line, without its comment");
+                StringAssert.Contains(text, "*@bytes* — 2 — `A5 10` at `$8000`");
             }
         }
 
