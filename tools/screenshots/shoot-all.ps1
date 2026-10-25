@@ -15,6 +15,10 @@ try {
     if ($Mesen) { node shoot-vscode.mjs --mesen $Mesen } else { node shoot-vscode.mjs }
     $vscode = $LASTEXITCODE
 
+    Write-Output 'Graphics Designer'
+    if ($Mesen) { node shoot-designer.mjs --mesen $Mesen } else { node shoot-designer.mjs }
+    $designer = $LASTEXITCODE
+
     Write-Output 'Browser pages'
     node shoot-pages.mjs
     $pages = $LASTEXITCODE
@@ -37,7 +41,7 @@ try {
         Write-Output '  Mesen2 not found: the pictures of the example game are skipped.'
     }
 
-    if ($vscode -ne 0 -or $pages -ne 0) { exit 1 }
+    if ($vscode -ne 0 -or $designer -ne 0 -or $pages -ne 0) { exit 1 }
 } finally {
     Pop-Location
 }
