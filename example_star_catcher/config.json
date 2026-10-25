@@ -31,5 +31,9 @@
 				"FileName": "chr/tiles.chr"
 			}
 		]
+	},
+	"Emulator": {
+		"Name": "mesen2",
+		"Path": "C:\\Emulators\\Mesen2\\Mesen.exe"
 	}
 }

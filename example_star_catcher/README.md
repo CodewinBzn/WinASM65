@@ -17,6 +17,10 @@ or `WinASM65 -l -c config.json` from this folder. The ROM is `star_catcher.nes`
 (mapper 0, 16 KB of program, 8 KB of tiles); open it in Mesen2, or press F5 in
 VS Code with the WinASM65 extension.
 
+To debug it, point the `Emulator` section of `config.json` at your Mesen2
+(`C:\Emulators\Mesen2\Mesen.exe` there is an example path), or set
+`winasm65.emulatorPath` in VS Code, which takes precedence.
+
 ## Files
 
 | File | What it is |
