@@ -111,7 +111,7 @@ dotnet run --project WinASM65 -- -h   # run the assembler without installing it<
         <tr><td><code>-t</code>, <code>-target</code></td><td>system id</td><td>Selects a system of the catalog: CPU, default load address, output format, hardware symbols. <code>-t list</code> prints the catalog and exits.</td></tr>
         <tr><td><code>-cpu</code></td><td>CPU name</td><td>Overrides the CPU of the system.</td></tr>
         <tr><td><code>-format</code></td><td>format name</td><td>Overrides the output format of the system.</td></tr>
-        <tr><td><code>-c</code></td><td><code>config.json</code></td><td>Reads a project: its <code>Target</code>, <code>Input</code> and <code>Output</code> sections. See <a href="segments.html">Projects and segments</a>.</td></tr>
+        <tr><td><code>-c</code></td><td><code>config.json</code></td><td>Reads a project: its <code>Target</code>, <code>Input</code> and <code>Output</code> sections. Every key is listed in the <a href="segments.html#config">config.json reference</a>.</td></tr>
         <tr><td><code>-h</code>, <code>-help</code></td><td>none</td><td>Prints the help and exits with 0.</td></tr>
       </tbody>
     </table>
@@ -216,7 +216,7 @@ C005 60                  rts</code></pre>
     </figure>
 
     <h2 id="first-project">A first project</h2>
-    <p>A program of several files is a <em>project</em>: a <code>config.json</code> that lists the units to assemble and the files to put together into the final image. A minimal one, with a main unit that calls a routine of a library unit:</p>
+    <p>A program of several files is a <em>project</em>: a <code>config.json</code> that lists the units to assemble and the files to put together into the final image. A minimal one, with a main unit that calls a routine of a library unit (every other key, such as the <code>Target</code> section, is in the <a href="segments.html#config">config.json reference</a>):</p>
 <pre><code>; main.asm                       ; lib.asm
         .org $8000                       .org $8100
 reset:                           init_screen:
@@ -239,15 +239,15 @@ reset:                           init_screen:
     <p>Both units are assembled; <code>main.asm</code> uses <code>init_screen</code>, which it finds in <code>lib.symb</code> because it declared <code>lib.asm</code> as a dependency. Then <code>out/rom.bin</code> is written: <code>main.o</code> padded with zeros to <code>$100</code> bytes, followed by <code>lib.o</code>, 259 bytes in all. The directory <code>out</code> is created if needed.</p>
     <p>Leave <code>lib.asm</code> out of the <code>Dependencies</code> of <code>main.asm</code> and the build stops:</p>
 <pre><code>Line 0  - File main.asm - Type Undefined symbol</code></pre>
-    <p>The repository has two complete NES projects, <code>example_nes_game</code> and <code>example_bomberman-nes</code>. Each has a <code>compile.bat</code> that deletes the previous outputs and runs <code>WinASM65 -l -c config.json</code>.</p>
+    <p>The repository has a complete NES project, <code>example_nes_game</code>: three units (<code>engine/headers.asm</code>, <code>engine/background.asm</code>, <code>engine/vectors.asm</code>) and the CHR data <code>chr/mario.chr</code>, combined into the 24,592-byte <code>generated_Nes_Rom/game.nes</code>. Its <code>compile.bat</code> deletes the previous outputs and runs <code>WinASM65 -l -c config.json</code>. Its configuration is explained in <a href="segments.html#config-committed">The committed example</a>.</p>
     <figure class="shot">
-      <a href="img/cli-build.png"><img src="img/cli-build.png" alt="WinASM65 -c config.json in the Bomberman example, then a directory listing showing BMAN_BANK1.o, BMAN_BANK2.o, vectors.o, BMAN_BANK1.symb, BMAN_BANK2.symb and bomber.nes"></a>
-      <figcaption>Building the Bomberman example: three object files, two symbol files, and the 24,592-byte <code>bomber.nes</code>. <code>vectors.NAS</code> only uses names, so it has no <code>.symb</code>.</figcaption>
+      <a href="img/cli-build.png"><img src="img/cli-build.png" alt="Building a project with WinASM65 -c config.json, then listing the files the build produced"></a>
+      <figcaption>Building a project with <code>WinASM65 -c config.json</code>: one object file per unit, a symbol file for each unit that defines global names, and the image named by <code>Output.ObjectFile</code>.</figcaption>
     </figure>
     <div class="callout">
       <p>On the command line, every path in <code>config.json</code> is relative to the <strong>current directory</strong>, not to the directory of the configuration: run the build from the project directory. The VS Code extension and the monitor build through <code>ProjectSession</code>, which resolves paths against the configuration's own directory.</p>
     </div>
-    <p>The <a href="segments.html">Projects and segments</a> page explains the configuration, the two-phase resolution of names across units, and the combiner.</p>
+    <p>The <a href="segments.html">Projects and segments</a> page explains the configuration (with a <a href="segments.html#config">reference of every key</a>), the two-phase resolution of names across units, and the combiner.</p>
 
     <h2 id="outputs">Output files</h2>
     <p>A build leaves several files beside its sources. Their names come from <code>SideFiles.BaseNameOf</code>: the source path with its extension removed, so <code>engine/background.asm</code> gives <code>engine/background.o</code>, <code>engine/background.symb</code> and so on.</p>
@@ -276,7 +276,7 @@ reset:                           init_screen:
       <a class="card" href="vscode.html"><h4>VS Code</h4><p>Build with a task, see errors as you type, and press F5 to debug the project in Mesen2.</p></a>
       <a class="card" href="monitor.html"><h4>Monitor</h4><p>The terminal monitor: live RAM and ROM, breakpoints and stepping on a running emulator.</p></a>
     </div>
-    <p>Also: <a href="segments.html">Projects and segments</a> for <code>config.json</code>, <a href="targets.html">Targets and formats</a> for every system and container.</p>
+    <p>Also: <a href="segments.html#config">the config.json reference</a>, <a href="targets.html">Targets and formats</a> for every system and container.</p>
 
     <footer>
       <p>Every command and output on this page was run against the Debug build of the assembler; the screenshots are taken by <code>tools/screenshots/shoot-all.ps1</code>.</p>
