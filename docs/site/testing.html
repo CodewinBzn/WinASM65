@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tests and tools · WinASM65</title>
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<div class="layout">
+  <nav class="site-nav" aria-label="Pages"></nav>
+
+  <main>
+    <p class="breadcrumb"><a href="index.html">WinASM65</a> › Project</p>
+    <header class="page">
+      <h1>Tests and tools</h1>
+      <p class="lede">Four MSTest projects with 1,136 test methods: the assembler and its formats, the monitor, the plugin contract, and the VS Code tooling. Add to that an integration test of the VS Code extension and a few scripts that check the debugger against a real Mesen2 and retake the documentation's screenshots.</p>
+    </header>
+
+    <aside class="sources">
+      <h4>Source files</h4>
+      <ul>
+        <li><a href="../../WinASM65.Tests/WinASM65.Tests.csproj"><code>WinASM65.Tests/</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Tests/WinASM65.Monitor.Tests.csproj"><code>WinASM65.Monitor.Tests/</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Abstractions.Tests/WinASM65.Monitor.Abstractions.Tests.csproj"><code>WinASM65.Monitor.Abstractions.Tests/</code></a></li>
+        <li><a href="../../WinASM65.Tooling.Tests/WinASM65.Tooling.Tests.csproj"><code>WinASM65.Tooling.Tests/</code></a></li>
+        <li><a href="../../vscode-extension/src/test/runTest.ts"><code>vscode-extension/src/test/runTest.ts</code></a></li>
+        <li><a href="../../vscode-extension/src/test/suite.ts"><code>vscode-extension/src/test/suite.ts</code></a></li>
+        <li><a href="../../tools/dap-smoke.py"><code>tools/dap-smoke.py</code></a></li>
+        <li><a href="../../tools/mesen2-bridge-check.py"><code>tools/mesen2-bridge-check.py</code></a></li>
+        <li><a href="../../tools/screenshots/README.md"><code>tools/screenshots/README.md</code></a></li>
+        <li><a href="../../tools/screenshots/shoot-all.ps1"><code>tools/screenshots/shoot-all.ps1</code></a></li>
+      </ul>
+    </aside>
+
+    <h2 id="projects">The test projects</h2>
+    <p>All four target <code>net8.0</code> and use MSTest 3.6.1 (<code>MSTest.TestFramework</code>, <code>MSTest.TestAdapter</code>) with <code>Microsoft.NET.Test.Sdk</code> 17.11.1. Each references the one project it tests. The counts are <code>[TestMethod]</code> attributes; there are no data-driven <code>[DataTestMethod]</code>s.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Project</th><th>Tests</th><th>Files</th><th>References</th><th>Covers</th></tr></thead>
+      <tbody>
+        <tr><td><code>WinASM65.Tests</code></td><td>661</td><td>46</td><td><code>WinASM65</code></td><td>Syntax, CPUs and the execution core, listings and projects, modules and the linker, targets and file formats, BASIC tokenizers, golden images.</td></tr>
+        <tr><td><code>WinASM65.Monitor.Tests</code></td><td>422</td><td>32</td><td><code>WinASM65.Monitor</code> (and through it Core and Abstractions)</td><td>Protocol, bridge backend, session, units, listings, source map, the terminal shell.</td></tr>
+        <tr><td><code>WinASM65.Monitor.Abstractions.Tests</code></td><td>20</td><td>4</td><td><code>WinASM65.Monitor.Abstractions</code></td><td>The plugin contract: no references, capability flags, plugin loading.</td></tr>
+        <tr><td><code>WinASM65.Tooling.Tests</code></td><td>33</td><td>5</td><td><code>WinASM65.Tooling</code></td><td>Debug adapter, language server, <code>--build</code> output, message framing, the TextMate grammar.</td></tr>
+        <tr><td><strong>Total</strong></td><td><strong>1,136</strong></td><td>87</td><td></td><td></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="figure">
+      <svg viewBox="0 0 900 120" role="img" aria-label="Share of test methods: WinASM65.Tests 661, Monitor.Tests 422, Tooling.Tests 33, Abstractions.Tests 20">
+        <rect class="box-a" x="0" y="20" width="527" height="40"/>
+        <rect class="box-b" x="527" y="20" width="336" height="40"/>
+        <rect class="box-d" x="863" y="20" width="26" height="40"/>
+        <rect class="box-c" x="889" y="20" width="11" height="40"/>
+        <text x="263" y="45" text-anchor="middle" font-weight="600">WinASM65.Tests · 661</text>
+        <text x="695" y="45" text-anchor="middle" font-weight="600">Monitor.Tests · 422</text>
+        <path class="line" d="M876,60 L876,82"/>
+        <text x="870" y="98" text-anchor="end" class="muted" font-size="12.5">Tooling.Tests · 33</text>
+        <path class="line" d="M894,60 L894,108"/>
+        <text x="886" y="116" text-anchor="end" class="muted" font-size="12.5">Abstractions.Tests · 20</text>
+      </svg>
+    </div>
+
+    <h2 id="running">Running them</h2>
+    <pre><code>dotnet test WinASM65.sln
+dotnet test WinASM65.Monitor.Tests                     # one project
+dotnet test WinASM65.sln --filter "FullyQualifiedName~ProjectSession"</code></pre>
+    <p>The suite needs no emulator. A few tests use external programs or build outputs when they are present and end as <strong>Inconclusive</strong> when they are not, never as a pass:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Test</th><th>Needs</th><th>How it finds it</th></tr></thead>
+      <tbody>
+        <tr><td><code>NesEmulatorTests</code> (2 of its 3)</td><td>Mesen, run with <code>--testrunner</code></td><td><code>WINASM65_MESEN</code>, then a few fixed paths</td></tr>
+        <tr><td><code>MameCapabilityTests</code></td><td>MAME and <code>probe_mame.lua</code></td><td><code>WINASM65_MAME</code>, then <code>C:\Mame289\mame.exe</code>, <code>C:\Mame\mame.exe</code>, <code>C:\Program Files\MAME\mame.exe</code>; the ROM from <code>WINASM65_NES_ROM</code> or <code>example_bomberman-nes/bomber.nes</code></td></tr>
+        <tr><td><code>ProjectSessionTests</code>, <code>NesEmulatorTests</code> (golden comparisons)</td><td><code>example_bomberman-nes/bomber.nes</code>, a build output that is not in version control</td><td>the repository tree</td></tr>
+        <tr><td><code>HexRecordFormatTests</code> (one test)</td><td><code>objcopy</code></td><td><code>PATH</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2 id="assembler">WinASM65.Tests by area</h2>
+    <p>Several of the older files have French comments and test names (<code>NesEmulatorTests</code>, <code>RegionTests</code>, <code>HardwareVariantTests</code> …).</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Area</th><th>Tests</th><th>Files (tests)</th></tr></thead>
+      <tbody>
+        <tr><td>Syntax, diagnostics, front end</td><td>158</td><td><code>AssemblyLexerTests</code> 16, <code>LexicalSyntaxTests</code> 20, <code>DialectSyntaxTests</code> 17, <code>LabelSyntaxTests</code> 13, <code>LabelDirectiveLineTests</code> 12, <code>DataDirectiveTests</code> 15, <code>OperandRangeTests</code> 11, <code>UndefinedSymbolAndRangeTests</code> 30, <code>InstructionDiagnosticsTests</code> 11, <code>AssemblyIntegrationTests</code> 8, <code>CoreTests</code> 3, <code>SyntaxDocumentationTests</code> 2</td></tr>
+        <tr><td>CPUs, instruction docs, execution core</td><td>100</td><td><code>ExecutionCoreTests</code> 45, <code>CpuVariantTests</code> 14, <code>TestCpu6502Tests</code> 13, <code>InstructionDocsTests</code> 11, <code>DisassemblerTests</code> 10, <code>CycleTimingsTests</code> 5, <code>InstructionDescriptionsTests</code> 2</td></tr>
+        <tr><td>Listings, projects, memory regions</td><td>63</td><td><code>RegionTests</code> 26, <code>ProjectSessionTests</code> 18, <code>SourceListingTests</code> 12, <code>MultiSegmentUnitTests</code> 7</td></tr>
+        <tr><td>Modules, archives, linker, relocation</td><td>116</td><td><code>RelocationTests</code> 48, <code>LinkerTests</code> 21, <code>ArchiveTests</code> 15, <code>ModuleFormatTests</code> 13, <code>ModuleViewerTests</code> 10, <code>NesSharedRoutineTests</code> 6, <code>NesEmulatorTests</code> 3</td></tr>
+        <tr><td>Targets and file formats</td><td>153</td><td><code>TargetTests</code> 30, <code>HardwareVariantTests</code> 19, <code>GeosD64Tests</code> 18, <code>BbcTargetTests</code> 15, <code>AppleDosImageTests</code> 14, <code>ProDosContainerTests</code> 14, <code>GeosRelocationTests</code> 12, <code>RuntimeStubTests</code> 12, <code>DirectBurnGoldenTests</code> 10, <code>HexRecordFormatTests</code> 5, <code>GeosStubTests</code> 4</td></tr>
+        <tr><td>BASIC tokenizers</td><td>68</td><td><code>ApplesoftTokenTests</code> 21, <code>BasicSourceTests</code> 19, <code>BbcBasicTokenTests</code> 15, <code>WaterlooBasicTokenTests</code> 13</td></tr>
+        <tr><td>Golden outputs</td><td>3</td><td><code>GoldenOutputTests</code> 3</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2 id="monitor">The monitor's tests</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Area</th><th>Tests</th><th>Files (tests)</th></tr></thead>
+      <tbody>
+        <tr><td>Protocol, bridge backend, capabilities</td><td>84</td><td><code>ProtocolTests</code> 20, <code>AdapterCapabilityTests</code> 14, <code>BreakpointSetTests</code> 12, <code>BridgeMemoryBackendTests</code> 11, <code>MemoryBackendTests</code> 11, <code>ExecutionEventsTests</code> 10, <code>MameCapabilityTests</code> 6</td></tr>
+        <tr><td>Session, executable, units, builds</td><td>76</td><td><code>MonitorSessionTests</code> 29, <code>RelocatableUnitTests</code> 16, <code>ProjectBuildVerbTests</code> 12, <code>StateCommandsTests</code> 12, <code>MonitorProgramTests</code> 7</td></tr>
+        <tr><td>Listings and source map</td><td>48</td><td><code>AssemblerListingSourceTests</code> 25, <code>ListingSeamTests</code> 13, <code>NesSourceReachabilityTests</code> 6, <code>SourceMapTests</code> 4</td></tr>
+        <tr><td>Terminal shell</td><td>150</td><td><code>ShellCapabilityGatingTests</code> 20, <code>ShellChromeRenderTests</code> 19, <code>ShellThemeTests</code> 19, <code>ShellEditorKeyTests</code> 17, <code>ShellLifecycleTests</code> 17, <code>ShellProjectBuildTests</code> 15, <code>ShellStatusTests</code> 14, <code>ShellLayoutTests</code> 13, <code>ShellStateSlotTests</code> 9, <code>ShellInitialSourceTests</code> 7</td></tr>
+        <tr><td>Panes and editor</td><td>64</td><td><code>RamEditingTests</code> 19, <code>RamDumpTests</code> 16, <code>FileTreeModelTests</code> 10, <code>SourceDocumentTests</code> 9, <code>SourceEditorPaneTests</code> 9, <code>SourceEditorTabsTests</code> 1</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>WinASM65.Monitor.Abstractions.Tests</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>File</th><th>Tests</th><th>What it holds the contract to</th></tr></thead>
+      <tbody>
+        <tr><td><code>ExecutionCapabilityTests</code></td><td>8</td><td>The flag set against the three measured profiles (Mesen2 2.1.1, MesenCE 2.2.1, MAME 0.289).</td></tr>
+        <tr><td><code>ContractDataTests</code></td><td>5</td><td>The data shapes, through a fake memory-only plugin with a writable RAM region and a read-only PRG region.</td></tr>
+        <tr><td><code>PluginContractLoadingTests</code></td><td>5</td><td>A plugin compiled separately against the contract can be cast to <code>IExecutionAdapter</code> only when its <code>AssemblyLoadContext</code> redirects the contract to the host's copy. Without the redirect, the cast throws <code>InvalidCastException</code>.</td></tr>
+        <tr><td><code>ContractReferenceTests</code></td><td>2</td><td>The assembly references only framework assemblies, and the project file has no reference at all.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>WinASM65.Tooling.Tests</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>File</th><th>Tests</th><th>What it checks</th></tr></thead>
+      <tbody>
+        <tr><td><code>DebugSessionTests</code></td><td>15</td><td>The debug adapter end to end, minus the emulator: launch, breakpoints on labels, stops with registers, <code>next</code> over a <code>JSR</code>, bank disambiguation, memory reads and writes, the RAM panel, the debug console, build errors, disconnect.</td></tr>
+        <tr><td><code>LanguageServerTests</code></td><td>9</td><td>Diagnostics appear and clear, names from other units are not errors, errors in included files, hovers, the listing column on unsaved text, URI ↔ path.</td></tr>
+        <tr><td><code>MessageStreamTests</code></td><td>4</td><td>The <code>Content-Length</code> framing shared by DAP and LSP.</td></tr>
+        <tr><td><code>GrammarTests</code></td><td>3</td><td>The VS Code grammar against the assembler's own tables.</td></tr>
+        <tr><td><code>BuildModeTests</code></td><td>2</td><td><code>--build</code> output matches the problem matcher regex read from <code>vscode-extension/package.json</code>.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2 id="techniques">Notable techniques</h2>
+
+    <h3>Golden SHA-256 hashes</h3>
+    <p>Whole outputs are pinned by their SHA-256, so a parser change that alters a single byte fails a test:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>What</th><th>Where</th><th>How</th></tr></thead>
+      <tbody>
+        <tr><td>The Bomberman NES image (<code>4E57F087…C810A244</code>)</td><td><code>ProjectSessionTests</code>, <code>ProjectBuildVerbTests</code>, <code>NesEmulatorTests</code></td><td><code>ProjectSessionTests</code> builds <code>example_bomberman-nes</code> through the library, compares it byte for byte with the image the original toolchain produced, then checks the hash. The comparison is Inconclusive when <code>bomber.nes</code> is absent.</td></tr>
+        <tr><td>The <code>example_nes_game</code> image</td><td><code>GoldenOutputTests</code></td><td>Copies the example to a temporary directory, builds it with <code>ProjectSession</code>, hashes the image.</td></tr>
+        <tr><td>The GEOS relocation stub, the runtime stub</td><td><code>GoldenOutputTests</code></td><td><code>GeosStub.Assemble(0x4000, 32, …)</code> and <code>RuntimeBlock.Build</code> on a one-byte module.</td></tr>
+        <tr><td>The eight direct-burn output formats</td><td><code>DirectBurnGoldenTests</code></td><td>Byte-for-byte expectations derived from the format specifications (headers, endianness, bank sizes), not from observed output.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Code that really runs</h3>
+    <ul>
+      <li><strong>On the built-in 6502 core.</strong> <code>TestCpu6502Tests</code> checks the interpreter against known answers; <code>ExecutionCoreTests</code> and <code>RuntimeStubTests</code> run assembled code on it.</li>
+      <li><strong>On Mesen.</strong> <code>NesEmulatorTests</code> links a shared routine at two addresses, wraps each image in an iNES ROM, runs it in Mesen's test-runner mode, and reads back marker bytes the routine writes to RAM. Byte $11 must be $80 for the unshifted image and $90 for the shifted one, which proves the relocations were rewritten.</li>
+    </ul>
+
+    <h3>The monitor without an emulator</h3>
+    <ul>
+      <li><strong>A real socket.</strong> <code>ProtocolServer</code> serves the bridge protocol on top of any <code>IMemoryBackend</code>. <code>BridgeMemoryBackendTests</code>, <code>ProtocolTests</code>, <code>BreakpointSetTests</code>, <code>RelocatableUnitTests</code>, <code>AdapterCapabilityTests</code> and <code>MonitorProgramTests</code> put the real <code>BridgeMemoryBackend</code> and <code>ProtocolClient</code> against it over TCP, including the 256-byte chunking and the rule that an <code>ERR</code> reaches the user with its reason intact.</li>
+      <li><strong>The real executable.</strong> <code>MonitorProgramTests</code> starts <code>WinASM65.Monitor</code>, writes commands to its standard input and checks what it prints: argument parsing, the handshake, the prompt, and that a typo does not end the process.</li>
+      <li><strong>A headless terminal.</strong> The shell tests build the real <code>ShellWindow</code> on SharpConsoleUI's <code>HeadlessConsoleDriver</code>; the lifecycle tests go through <code>ShellRunner.Run</code>'s overload that stops after a given number of frames. <code>ShellChromeRenderTests</code> reads the screen buffer the driver was left holding. <code>ShellLifecycleTests</code> also starts a real child process to check that no emulator is left orphaned.</li>
+      <li><strong>Pure functions where a UI would be.</strong> <code>ShellLayout</code>, <code>ShellStatus</code>, <code>ShellCapabilities</code>, <code>EditorCommands</code> and <code>StateCommands</code> contain no UI types, so the tests assert exact widths, status lines, refusal wording and the command line each key sends.</li>
+      <li><strong>The real workload.</strong> <code>NesSourceReachabilityTests</code> opens the Bomberman sources in the editor's listing. It found two real defects: <code>.nas</code> was not a recognised source extension, and a source that failed to assemble showed an empty pane with a misleading reason.</li>
+    </ul>
+
+    <h3>A fake debug machine for the DAP</h3>
+    <p><code>DebugSessionTests</code> runs the real <code>DebugSession</code> on its own thread with a <code>FakeEnvironment</code>: the real assembler, a <code>FakeEmulator</code>, and a <code>FakeDebugMachine</code>. The fake machine implements <code>IMemoryBackend</code>, <code>ICpuStateSource</code>, <code>IExecutionEvents</code> and <code>IBreakpointRemoval</code> over a 64 KiB array, records every call, and stops when the test says so. Its stops and resumes are raised on a separate thread, in order, as the bridge's receiver thread would raise them. The builds and the source map are real.</p>
+
+    <h3>LSP tests</h3>
+    <p><code>LanguageServerTests</code> runs <code>LanguageServer</code> in-process on a thread, sends JSON-RPC messages through <code>Dispatch</code>, and collects what the server publishes into a queue. Each test writes its sources to a temporary directory, sends <code>initialize</code> with that directory as the root, and waits up to 10 s for the expected message, such as <code>textDocument/publishDiagnostics</code> for a given URI.</p>
+
+    <h3>The grammar against the assembler</h3>
+    <p><code>GrammarTests</code> reads <code>vscode-extension/syntaxes/winasm65.tmLanguage.json</code>, takes the longest alternation in the relevant patterns, and compares it with what the assembler accepts: every mnemonic of every CPU in <code>CpuFactory.All</code> and every directive the engine dispatches, and nothing else. A new opcode or directive that the grammar does not colour fails the build.</p>
+
+    <h2 id="vscode">The VS Code extension test</h2>
+    <p><code>vscode-extension/src/test/</code> holds one integration test that runs inside a real VS Code. <code>runTest.ts</code> uses <code>@vscode/test-electron</code> to start VS Code with the extension under development, <code>--disable-extensions</code> and a temporary user-data directory, on <code>example_nes_game</code>. <code>suite.ts</code> then checks:</p>
+    <ul>
+      <li><code>engine/background.asm</code> opens with the language id <code>winasm65</code>;</li>
+      <li>the extension <code>codewinbzn.winasm65</code> activates, and the commands <code>winasm65.showListing</code>, <code>winasm65.hideListing</code> and <code>winasm65.showRam</code> are registered;</li>
+      <li>after <code>winasm65.showListing</code>, the listing column draws more than 40 rows for the file within 30 s.</li>
+    </ul>
+    <pre><code># PowerShell: clear the variables a VS Code terminal sets, keep VSCODE_EXECUTABLE
+Get-ChildItem env: | Where-Object { $_.Name -match '^(VSCODE_|ELECTRON_)' -and $_.Name -ne 'VSCODE_EXECUTABLE' } |
+  ForEach-Object { Remove-Item "env:$($_.Name)" }
+cd vscode-extension
+npm test        # tsc -p ./ &amp;&amp; node out/test/runTest.js</code></pre>
+    <div class="callout">
+      <p><strong>Run it with <code>VSCODE_*</code> and <code>ELECTRON_*</code> unset.</strong> The VS Code instance the test starts inherits the environment of <code>npm test</code>. Started from a terminal inside VS Code (or from a tool running in one), the variables VS Code exports there interfere with the instance under test. <code>tools/screenshots/vscode.mjs</code> strips the same two prefixes before it launches VS Code. <code>VSCODE_EXECUTABLE</code> is the test's own option: it points at an installed VS Code instead of downloading one.</p>
+    </div>
+
+    <h2 id="tools">The tools folder</h2>
+    <p>Scripts for what the unit tests cannot cover: a real Mesen2, and pictures of the real programs. Close any running Mesen2 first: it is a single-instance program and would take over the launch.</p>
+
+    <h3>tools/dap-smoke.py</h3>
+    <pre><code>python tools/dap-smoke.py &lt;adapter.exe|adapter.dll&gt; &lt;config.json&gt; &lt;source&gt; &lt;line&gt;</code></pre>
+    <p>Drives the debug adapter (<code>&lt;adapter&gt; --dap</code>, or <code>dotnet &lt;adapter.dll&gt; --dap</code>) over stdin/stdout exactly as VS Code would, against a real Mesen2. It prints <code>PASS</code>/<code>FAIL</code> for each step: <code>initialize</code> and <code>launch</code>; a verified breakpoint at <code>&lt;source&gt;:&lt;line&gt;</code>; a stop there with matching stack frame and <code>PC</code>; <code>next</code> moves to a later line; <code>readMemory</code> returns all 2 KiB of RAM; the custom <code>winasm65.symbols</code> request names RAM symbols; the debug console answers <code>CPU</code>; <code>continue</code> hits the breakpoint again; without breakpoints the machine keeps running; <code>pause</code> stops; disconnecting ends the emulator.</p>
+
+    <h3>tools/mesen2-bridge-check.py</h3>
+    <pre><code>python tools/mesen2-bridge-check.py &lt;Mesen.exe&gt; &lt;rom.nes&gt; &lt;exec-address-hex&gt;</code></pre>
+    <p>Starts Mesen2 with <code>bridge_mesen2.lua</code> on port 45699 and speaks the <a href="monitor.html#bridge">bridge protocol</a> directly, without any .NET code. The address must be an instruction the ROM executes repeatedly (an NMI handler is ideal). It checks: <code>PING</code> and <code>STATUS</code>; a breakpoint stops <em>before</em> its instruction (<code>PUSH STOPPED reason=breakpoint pc=&lt;address&gt;</code>); <code>STEP</code> stops one instruction later; <code>BREAK REMOVE</code> and <code>BREAK CLEAR</code> really remove; <code>PAUSE</code> stops with <code>reason=pause</code>; every <code>RESUME</code> is followed by <code>PUSH RESUMED</code>.</p>
+
+    <h3 id="screenshots">tools/screenshots</h3>
+    <p>Every picture in <code>docs/site/img</code> is taken from the real programs, so a UI change only needs one command to update the documentation:</p>
+    <pre><code>cd tools\screenshots
+npm ci
+npx playwright install chromium
+powershell -ExecutionPolicy Bypass -File shoot-all.ps1 [-Mesen C:\path\to\Mesen.exe]</code></pre>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Script</th><th>Takes</th><th>How</th></tr></thead>
+      <tbody>
+        <tr><td><code>shoot-all.ps1</code></td><td>everything</td><td>Runs the three below; installs the npm packages and Chromium on first use. Without <code>-Mesen</code>, it looks for a Mesen path in <code>example_nes_game/config.json</code> for the console shots.</td></tr>
+        <tr><td><code>shoot-vscode.mjs</code> (+ <code>vscode.mjs</code>)</td><td><code>vscode-*.png</code>, <code>mesen2.png</code></td><td>Starts the VS Code build that <code>@vscode/test-electron</code> caches in <code>vscode-extension/.vscode-test</code> (or <code>VSCODE_EXECUTABLE</code>), with the extension under development, a fresh user-data directory with fixed settings (Dark Modern, no minimap, 1400×860 window), and the <code>VSCODE_*</code>/<code>ELECTRON_*</code> variables removed. Playwright drives it through Electron on a clean copy of the example taken with <code>git archive HEAD</code>, so uncommitted edits never show. With Mesen2 it also takes a debug session, the RAM panel and the emulator window.</td></tr>
+        <tr><td><code>shoot-pages.mjs</code></td><td><code>module-viewer*.png</code></td><td>Builds the assembler, links <code>samples/lib.asm</code> and <code>samples/app.asm</code>, and opens the module viewer's report in Chromium.</td></tr>
+        <tr><td><code>shoot-windows.ps1</code></td><td><code>cli-*.png</code>, <code>monitor-tui.png</code></td><td>Builds the assembler and the monitor in Release, then runs each command in a classic <code>conhost</code> console of fixed size (for example <code>mode con cols=170 lines=50</code> for the monitor), waits, captures the window, and kills it. The monitor shot runs <code>WinASM65.Monitor --tui --emulator mesen2 --mesen … --rom bomber.nes --source BMAN_BANK1.NAS</code> and minimises Mesen's window first. Without Mesen2 it runs without a bridge and waits out the 15 s connection timeout.</td></tr>
+        <tr><td><code>capture-window.ps1</code></td><td>one PNG</td><td>Finds a window by process id, process name or title and captures it with <code>PrintWindow</code>, or from the screen (<code>-FromScreen</code>).</td></tr>
+        <tr><td><code>check-site.mjs</code></td><td>—</td><td>Opens every page of this site and fails on a broken link, a missing image or a script error (<code>npm run check</code>).</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+
+    <footer>
+      <p>Counts are <code>[TestMethod]</code> attributes in the source, as of this page. Recount with <code>grep -r -c "\[TestMethod\]" --include=*.cs WinASM65.Tests</code>.</p>
+    </footer>
+  </main>
+
+  <aside class="toc" aria-label="On this page"></aside>
+</div>
+</body>
+</html>
