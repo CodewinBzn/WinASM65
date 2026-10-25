@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Getting started</title>
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<div class="layout">
+  <nav class="site-nav" aria-label="Pages"></nav>
+
+  <main>
+    <p class="breadcrumb"><a href="index.html">WinASM65</a> › Overview</p>
+    <header class="page">
+      <h1>Getting started</h1>
+      <p class="lede">Build the solution, learn the command line, assemble a first program and a first multi-file project, and know what every file that appears beside your sources is for.</p>
+    </header>
+
+    <aside class="sources">
+      <h4>Source files</h4>
+      <ul>
+        <li><a href="../../README.md"><code>README.md</code></a></li>
+        <li><a href="../../WinASM65/src/Program.cs"><code>Program.cs</code></a></li>
+        <li><a href="../../WinASM65/src/CommandLineApplication.cs"><code>CommandLineApplication.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Core/SideFiles.cs"><code>Core/SideFiles.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Output/ListingService.cs"><code>Output/ListingService.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Cpu/CpuFactory.cs"><code>Cpu/CpuFactory.cs</code></a></li>
+        <li><a href="../../WinASM65/WinASM65.csproj"><code>WinASM65.csproj</code></a></li>
+      </ul>
+    </aside>
+
+    <h2 id="build">Build the solution</h2>
+    <p>WinASM65 is a .NET 8 solution. You need the <a href="https://dotnet.microsoft.com/download/dotnet/8.0">.NET 8 SDK</a>; nothing else is required to build the assembler. From the repository root:</p>
+<pre><code>dotnet build WinASM65.sln          # compile every project
+dotnet test  WinASM65.sln          # run the test suites
+dotnet run --project WinASM65 -- -h   # run the assembler without installing it</code></pre>
+    <p>The assembler lands in <code>WinASM65/bin/Debug/net8.0/WinASM65.exe</code>. For a single executable that runs on a machine without .NET installed:</p>
+<pre><code>dotnet publish WinASM65 -c Release -r win-x64 --self-contained true -o build/</code></pre>
+    <p>The project file sets the version (<code>1.2.0</code> at the time of writing), which the program prints on the first line of its help. Its only package dependency is Newtonsoft.Json, used to read <code>config.json</code> and to write the symbol side files.</p>
+
+    <div class="callout">
+      <p>The examples below call the program <code>WinASM65</code>. Put the build output on your <code>PATH</code>, or replace the name with the full path to <code>WinASM65.exe</code>, or with <code>dotnet run --project WinASM65 --</code>.</p>
+    </div>
+
+    <h2 id="cli">The command line</h2>
+    <p>Run with no argument, or with <code>-h</code> / <code>-help</code>, the program prints its usage:</p>
+    <figure class="shot">
+      <a href="img/cli-help.png"><img src="img/cli-help.png" alt="WinASM65 -h output: the version, the usage line, the -t, -cpu and -format options and the four verbs link, archive, geos and view"></a>
+      <figcaption><code>WinASM65 -h</code>: the version, the usage line, the target options and the module verbs.</figcaption>
+    </figure>
+
+    <h3>How a command line is read</h3>
+    <p><code>Program.Main</code> builds one <code>CommandLineApplication</code> out of its collaborators (an assembler factory, the JSON configuration reader, the <code>BinaryCombiner</code>, the console and the <code>ExecutablePublisher</code>) and calls <code>Run(args)</code>. <code>Run</code> first looks at the first argument: if it is a verb, the rest of the line goes to that verb and nothing else is parsed. Otherwise the options are read in one pass and the assembly path runs.</p>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 360" role="img" aria-label="CommandLineApplication.Run: a verb as first argument goes to RunLink, RunArchive, RunView, RunGeos or RunBasic; otherwise options are parsed, the target is resolved, then a single file and/or a project is assembled and the result published">
+        <defs>
+          <marker id="gs-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <rect class="box-a" x="20" y="150" width="150" height="60" rx="8"/>
+        <text x="95" y="176" text-anchor="middle" font-weight="600">Run(args)</text>
+        <text x="95" y="196" text-anchor="middle" class="muted" font-size="12">first argument?</text>
+
+        <rect class="box-d" x="240" y="20" width="200" height="110" rx="8"/>
+        <text x="340" y="44" text-anchor="middle" font-weight="600">Verbs</text>
+        <text x="340" y="66" text-anchor="middle" font-size="13">link → RunLink</text>
+        <text x="340" y="84" text-anchor="middle" font-size="13">archive → RunArchive</text>
+        <text x="340" y="102" text-anchor="middle" font-size="13">view → RunView · geos → RunGeos</text>
+        <text x="340" y="120" text-anchor="middle" font-size="13">basic → RunBasic</text>
+
+        <rect class="box-a" x="240" y="200" width="200" height="60" rx="8"/>
+        <text x="340" y="226" text-anchor="middle" font-weight="600">Parse options</text>
+        <text x="340" y="246" text-anchor="middle" class="muted" font-size="12">-f -o -l -t -cpu -format -c</text>
+
+        <rect class="box-b" x="480" y="200" width="190" height="60" rx="8"/>
+        <text x="575" y="226" text-anchor="middle" font-weight="600">TargetResolver</text>
+        <text x="575" y="246" text-anchor="middle" class="muted" font-size="12">+ CpuFactory, MemoryMap</text>
+
+        <rect class="box-c" x="710" y="150" width="170" height="60" rx="8"/>
+        <text x="795" y="176" text-anchor="middle" font-weight="600">-f: one source</text>
+        <text x="795" y="196" text-anchor="middle" class="muted" font-size="12">assemble, publish</text>
+
+        <rect class="box-c" x="710" y="250" width="170" height="80" rx="8"/>
+        <text x="795" y="274" text-anchor="middle" font-weight="600">-c: a project</text>
+        <text x="795" y="294" text-anchor="middle" class="muted" font-size="12">Input → orchestrator</text>
+        <text x="795" y="312" text-anchor="middle" class="muted" font-size="12">Output → combiner</text>
+
+        <path class="line" d="M170,170 L240,90" marker-end="url(#gs-arrow)"/>
+        <text x="190" y="118" class="muted" font-size="12">verb</text>
+        <path class="line" d="M170,190 L240,225" marker-end="url(#gs-arrow)"/>
+        <text x="176" y="228" class="muted" font-size="12">option</text>
+        <path class="line" d="M440,230 L480,230" marker-end="url(#gs-arrow)"/>
+        <path class="line" d="M670,220 L710,185" marker-end="url(#gs-arrow)"/>
+        <path class="line" d="M670,240 L710,285" marker-end="url(#gs-arrow)"/>
+        <text x="20" y="350" class="muted" font-size="12.5">-t list is answered right after parsing, before any target is resolved. -f and -c may be given together: the single file is assembled first.</text>
+      </svg>
+    </div>
+
+    <h3>Options of the assembly path</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Option</th><th>Value</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>-f</code></td><td>source file</td><td>Assembles one source. When <code>-o</code> is absent the output is the source path with its extension replaced by <code>.o</code>.</td></tr>
+        <tr><td><code>-o</code></td><td>output file</td><td>Where the single source's output goes. With a target format other than <code>bin</code>, this file holds the executable (for example a PRG), not raw bytes.</td></tr>
+        <tr><td><code>-l</code></td><td>none</td><td>Writes a <code>.lst</code> listing beside each source assembled, in single-file and project mode.</td></tr>
+        <tr><td><code>-t</code>, <code>-target</code></td><td>system id</td><td>Selects a system of the catalog: CPU, default load address, output format, hardware symbols. <code>-t list</code> prints the catalog and exits.</td></tr>
+        <tr><td><code>-cpu</code></td><td>CPU name</td><td>Overrides the CPU of the system.</td></tr>
+        <tr><td><code>-format</code></td><td>format name</td><td>Overrides the output format of the system.</td></tr>
+        <tr><td><code>-c</code></td><td><code>config.json</code></td><td>Reads a project: its <code>Target</code>, <code>Input</code> and <code>Output</code> sections. See <a href="segments.html">Projects and segments</a>.</td></tr>
+        <tr><td><code>-h</code>, <code>-help</code></td><td>none</td><td>Prints the help and exits with 0.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>An unknown option is ignored silently: the parser is a <code>switch</code> with no default branch. The program returns <code>0</code> on success and <code>1</code> on any error.</p>
+
+    <h3><code>-t</code>: the target system</h3>
+    <p>A target chooses three things at once: the CPU, the address code is assembled at when the source has no <code>.org</code>, and the container written around the bytes. Without <code>-t</code> (and without a <code>Target</code> section) the target is <code>raw</code>: 6502, no load address, plain binary. Identifiers ignore case, <code>-</code> and <code>_</code>, so <code>apple-2e</code> is <code>apple2e</code>.</p>
+<pre><code>&gt; WinASM65 -t list
+Known 6502 systems (CPU + executable format):
+  apple2       cpu=6502   format=a2bin load=$0800
+  apple2e      cpu=65c02  format=a2bin load=$0800
+  atari2600    cpu=6502   format=rom rom=4096
+  atari8       cpu=6502   format=xex load=$0600
+  bbc          cpu=6502   format=bbc load=$0E00
+  c64          cpu=6502   format=prg load=$0801 hw=c64/6581
+  nes          cpu=6502   format=ines hw=nes/ntsc
+  raw          cpu=6502   format=bin
+  tube         cpu=6502   format=tube
+  …            (37 entries in all)</code></pre>
+    <p>The complete catalog, and how a target is resolved, is on the <a href="targets.html#catalog">Targets</a> page. Each system also predefines its hardware registers as symbols, so a NES source can write <code>lda PPUSTATUS</code> without declaring it.</p>
+
+    <h3><code>-cpu</code>: the instruction set</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>Also accepted</th><th>Instruction set</th></tr></thead>
+      <tbody>
+        <tr><td><code>6502</code></td><td><code>nmos</code>, <code>nmos6502</code></td><td>The documented NMOS 6502.</td></tr>
+        <tr><td><code>6502x</code></td><td><code>nmos6502x</code>, <code>6502illegal</code></td><td>6502 plus the stable illegal opcodes.</td></tr>
+        <tr><td><code>65c02</code></td><td><code>cmos</code></td><td>The CMOS 65C02.</td></tr>
+        <tr><td><code>r65c02</code></td><td><code>rockwell</code></td><td>65C02 plus the Rockwell bit instructions (BBR, BBS, RMB, SMB).</td></tr>
+        <tr><td><code>w65c02</code></td><td><code>w65c02s</code>, <code>wdc65c02</code></td><td>Rockwell set plus STP and WAI.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>An unknown name stops the run: <code>Unknown CPU 'z80'. Use 6502, 6502x, 65c02, r65c02, w65c02.</code> The <a href="cpus.html">CPUs</a> page describes the tables.</p>
+
+    <h3><code>-format</code>: the container</h3>
+    <p>The names registered in <code>ExecutablePublisher</code> are <code>bin</code>, <code>ines</code>, <code>prg</code>, <code>xex</code>, <code>a2bin</code>, <code>rom</code>, <code>o65</code>, <code>ihex</code>, <code>srec</code>, <code>bbc</code>, <code>tube</code>, <code>prodos</code>, <code>dos32</code> and <code>dos33</code>. One more name, <code>w65</code>, is handled by the command line itself: it writes a relocatable module instead of an executable (see <a href="modules.html">Modules</a>). Every format is described in the <a href="targets.html#formats">format table</a>.</p>
+    <div class="callout">
+      <p>The help text also lists <code>nes</code> among the formats, but no format of that name is registered: <code>-format nes</code> fails with <code>Unknown output format 'nes'</code>. The iNES format is <code>ines</code>; the system is <code>-t nes</code>.</p>
+    </div>
+
+    <h3>Verbs</h3>
+    <p>A verb is the first argument. Each has its own options, and its own <code>-h</code>.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Verb</th><th>Usage (from its help)</th><th>Defaults</th></tr></thead>
+      <tbody>
+        <tr><td><code>link</code></td><td><code>WinASM65 link &lt;module.w65&gt;... -o &lt;image&gt; [-format &lt;fmt&gt;] [-shift &lt;n&gt;]</code>; also accepts <code>-cpu</code>. Inputs may be <code>.w65a</code> archives.</td><td><code>-o out.bin</code>, <code>-format bin</code></td></tr>
+        <tr><td><code>archive</code></td><td><code>WinASM65 archive &lt;module.w65&gt;... -o &lt;lib.w65a&gt; [-ref &lt;other.w65a&gt;...]</code></td><td><code>-o lib.w65a</code></td></tr>
+        <tr><td><code>view</code></td><td><code>WinASM65 view -f &lt;module.w65|archive.w65a&gt; [-o &lt;report.html&gt;]</code>; the input may also be given without <code>-f</code>.</td><td>output: the input with <code>.html</code></td></tr>
+        <tr><td><code>geos</code></td><td><code>WinASM65 geos &lt;module.w65&gt;... -o &lt;disk.d64&gt; [-name &lt;n&gt;] [-disk &lt;n&gt;] [-id &lt;nn&gt;] [-start &lt;addr&gt;]</code>; also <code>-author</code>, <code>-description</code>, <code>-shift</code>.</td><td><code>-o out.d64</code>, name <code>APPLICATION</code>, disk <code>GEOS DISK</code>, id <code>01</code></td></tr>
+        <tr><td><code>basic</code></td><td><code>WinASM65 basic -f &lt;program.bas&gt; -o &lt;file&gt; -dialect &lt;name&gt; [-format &lt;container&gt;] [-list &lt;file&gt;]</code></td><td><code>-dialect applesoft</code>, <code>-format bin</code>, output: the input with <code>.bas.bin</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p><code>link</code>, <code>archive</code> and <code>view</code> are described on <a href="modules.html">Modules, linker, viewer</a>; <code>geos</code> and <code>basic</code> on <a href="targets.html#geos">Targets</a>. The general help does not mention <code>basic</code>; <code>WinASM65 basic -h</code> does.</p>
+
+    <h2 id="first-program">A first program</h2>
+    <p>A source that sets the C64 border colour. It defines its own constant, places itself with <code>.org</code>, and uses a label:</p>
+<pre><code>; hello.asm - change the border colour, then return to BASIC
+BORDER = $D020
+
+        .org $C000
+start:
+        lda #$06        ; blue
+        sta BORDER
+        rts</code></pre>
+
+    <h3>Raw bytes</h3>
+    <p>With no target the output is the bytes and nothing else:</p>
+<pre><code>&gt; WinASM65 -f hello.asm -l
+&gt; dir /b
+hello.asm
+hello.lst
+hello.o
+hello.symb</code></pre>
+    <p><code>hello.o</code> holds six bytes, <code>A9 06 8D 20 D0 60</code>. Because of <code>-l</code> there is also a listing, with the address, the bytes and the source line side by side; a constant shows its value instead of an address:</p>
+<pre><code>                  ; hello.asm - change the border colour, then return to BASIC
+         D020 =   BORDER = $D020
+
+C000                      .org $C000
+C000              start:
+C000 A9 06               lda #$06        ; blue
+C002 8D 20 D0            sta BORDER
+C005 60                  rts</code></pre>
+    <p>and a symbol file, the JSON table of every global name the source defined:</p>
+<pre><code>{"BORDER":53280,"start":49152}</code></pre>
+
+    <h3>A real executable</h3>
+    <p>The same source as a Commodore 64 program:</p>
+<pre><code>&gt; WinASM65 -t c64 -f hello.asm -o hello.prg</code></pre>
+    <p><code>hello.prg</code> is <code>00 C0 A9 06 8D 20 D0 60</code>: the PRG format puts the load address in front of the code, and that address is <code>$C000</code>, the one the code was assembled at. Every format that writes an address prefers the real origin of the assembly over the target's default. Without the <code>.org</code>, the assembler would have started at the target's load address, <code>$0801</code> for the C64.</p>
+    <p>Internally, the assembler first writes the raw bytes to the <code>-o</code> path, then <code>ExecutablePublisher.Publish</code> rewrites that file in the target's format, using the <code>OriginAddress</code> the assembly reported.</p>
+
+    <h3>When the source is wrong</h3>
+    <p>Errors are printed one per line as <code>Line N - File F - Type message</code>, and the exit code is <code>1</code>. A name nobody defines is an error in single-file mode, because no later file could provide it:</p>
+    <figure class="shot">
+      <a href="img/cli-errors.png"><img src="img/cli-errors.png" alt="A source with four mistakes and the four error lines WinASM65 prints for it"></a>
+      <figcaption>Four mistakes, four lines: an addressing mode the instruction does not have, a malformed expression, a division by zero, and an undefined symbol. The undefined symbol comes last because it is only known once the whole file has been read.</figcaption>
+    </figure>
+
+    <h2 id="first-project">A first project</h2>
+    <p>A program of several files is a <em>project</em>: a <code>config.json</code> that lists the units to assemble and the files to put together into the final image. A minimal one, with a main unit that calls a routine of a library unit:</p>
+<pre><code>; main.asm                       ; lib.asm
+        .org $8000                       .org $8100
+reset:                           init_screen:
+        jsr init_screen                  lda #$00
+        jmp reset                        rts</code></pre>
+<pre><code>{
+  "Input": [
+    { "FileName": "main.asm", "Dependencies": ["lib.asm"] },
+    { "FileName": "lib.asm",  "Dependencies": [] }
+  ],
+  "Output": {
+    "ObjectFile": "out/rom.bin",
+    "Files": [
+      { "FileName": "main.o", "Size": "$100" },
+      { "FileName": "lib.o" }
+    ]
+  }
+}</code></pre>
+<pre><code>&gt; WinASM65 -c config.json</code></pre>
+    <p>Both units are assembled; <code>main.asm</code> uses <code>init_screen</code>, which it finds in <code>lib.symb</code> because it declared <code>lib.asm</code> as a dependency. Then <code>out/rom.bin</code> is written: <code>main.o</code> padded with zeros to <code>$100</code> bytes, followed by <code>lib.o</code>, 259 bytes in all. The directory <code>out</code> is created if needed.</p>
+    <p>Leave <code>lib.asm</code> out of the <code>Dependencies</code> of <code>main.asm</code> and the build stops:</p>
+<pre><code>Line 0  - File main.asm - Type Undefined symbol</code></pre>
+    <p>The repository has two complete NES projects, <code>example_nes_game</code> and <code>example_bomberman-nes</code>. Each has a <code>compile.bat</code> that deletes the previous outputs and runs <code>WinASM65 -l -c config.json</code>.</p>
+    <figure class="shot">
+      <a href="img/cli-build.png"><img src="img/cli-build.png" alt="WinASM65 -c config.json in the Bomberman example, then a directory listing showing BMAN_BANK1.o, BMAN_BANK2.o, vectors.o, BMAN_BANK1.symb, BMAN_BANK2.symb and bomber.nes"></a>
+      <figcaption>Building the Bomberman example: three object files, two symbol files, and the 24,592-byte <code>bomber.nes</code>. <code>vectors.NAS</code> only uses names, so it has no <code>.symb</code>.</figcaption>
+    </figure>
+    <div class="callout">
+      <p>On the command line, every path in <code>config.json</code> is relative to the <strong>current directory</strong>, not to the directory of the configuration: run the build from the project directory. The VS Code extension and the monitor build through <code>ProjectSession</code>, which resolves paths against the configuration's own directory.</p>
+    </div>
+    <p>The <a href="segments.html">Projects and segments</a> page explains the configuration, the two-phase resolution of names across units, and the combiner.</p>
+
+    <h2 id="outputs">Output files</h2>
+    <p>A build leaves several files beside its sources. Their names come from <code>SideFiles.BaseNameOf</code>: the source path with its extension removed, so <code>engine/background.asm</code> gives <code>engine/background.o</code>, <code>engine/background.symb</code> and so on.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>File</th><th>Written when</th><th>Content</th></tr></thead>
+      <tbody>
+        <tr><td><code>.o</code></td><td>Every assembly (or the <code>-o</code> / <code>OutputFile</code> name).</td><td>The emitted bytes, back to back, with no header. In single-file mode with a target format, the same path is then rewritten as the executable.</td></tr>
+        <tr><td><code>.symb</code></td><td>The source defined at least one global name.</td><td>JSON object, name → value. Local (<code>@loop</code>) and anonymous (<code>-</code>/<code>+</code>) labels are left out, so a unit never resolves its own anonymous label to another unit's.</td></tr>
+        <tr><td><code>.Unsolved</code></td><td>Names were still unknown at the end of the file.</td><td>JSON: the constants whose value depends on an unknown name, with their dependency counts.</td></tr>
+        <tr><td><code>.UnsolvedExpr</code></td><td>Same.</td><td>JSON: the places in the object file that hold a placeholder, keyed by position, with the expression to evaluate there.</td></tr>
+        <tr><td><code>.lst</code></td><td><code>-l</code> was given.</td><td>Address, bytes and source, as shown above. In a project, one per unit.</td></tr>
+        <tr><td>the image</td><td><code>-c</code> with an <code>Output</code> section.</td><td><code>Output.ObjectFile</code>: the combined files, in the target's format.</td></tr>
+        <tr><td><code>.w65</code></td><td><code>-format w65</code>.</td><td>A relocatable module; the source must declare at least one <code>.export</code> or <code>.import</code>. See <a href="modules.html">Modules</a>.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The <code>.Unsolved</code> and <code>.UnsolvedExpr</code> files are the hand-off between the two phases of a project build. When the orchestrator has resolved a unit, it rewrites the unit's <code>.o</code> and deletes both files; if they are still there after a build, that build failed. See <a href="segments.html#order">How units are resolved</a>.</p>
+    <div class="callout">
+      <p>The listing is named differently from the other side files: <code>ListingService</code> cuts the source path at its <em>first</em> dot, not at its extension. For a path such as <code>..\src\main.asm</code> or <code>C:\dir.v2\main.asm</code> the <code>.lst</code> therefore lands somewhere unexpected. Run the build from the project directory with plain relative names, as the examples do.</p>
+    </div>
+
+    <h2 id="next">Where to go next</h2>
+    <div class="grid-3">
+      <a class="card" href="syntax.html"><h4>Syntax reference</h4><p>Directives, expressions, macros, local and anonymous labels, and the accepted forms from other assemblers.</p></a>
+      <a class="card" href="vscode.html"><h4>VS Code</h4><p>Build with a task, see errors as you type, and press F5 to debug the project in Mesen2.</p></a>
+      <a class="card" href="monitor.html"><h4>Monitor</h4><p>The terminal monitor: live RAM and ROM, breakpoints and stepping on a running emulator.</p></a>
+    </div>
+    <p>Also: <a href="segments.html">Projects and segments</a> for <code>config.json</code>, <a href="targets.html">Targets and formats</a> for every system and container.</p>
+
+    <footer>
+      <p>Every command and output on this page was run against the Debug build of the assembler; the screenshots are taken by <code>tools/screenshots/shoot-all.ps1</code>.</p>
+    </footer>
+  </main>
+
+  <aside class="toc" aria-label="On this page"></aside>
+</div>
+</body>
+</html>

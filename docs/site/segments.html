@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projects and segments</title>
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<div class="layout">
+  <nav class="site-nav" aria-label="Pages"></nav>
+
+  <main>
+    <p class="breadcrumb"><a href="index.html">WinASM65</a> › Assembler</p>
+    <header class="page">
+      <h1>Projects and segments</h1>
+      <p class="lede">A <code>config.json</code> describes a program made of several sources: the units to assemble and which names each may take from the others, the files to put end to end into the final image, and optionally the target and the emulator. This page explains the file, the two-phase build behind it, and the classes that run it.</p>
+    </header>
+
+    <aside class="sources">
+      <h4>Source files</h4>
+      <ul>
+        <li><a href="../../WinASM65/src/Segments/SegmentModels.cs"><code>Segments/SegmentModels.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Segments/MultiSegmentOrchestrator.cs"><code>Segments/MultiSegmentOrchestrator.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Segments/BinaryCombiner.cs"><code>Segments/BinaryCombiner.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Segments/MemoryMap.cs"><code>Segments/MemoryMap.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Projects/ProjectSession.cs"><code>Projects/ProjectSession.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Core/SideFiles.cs"><code>Core/SideFiles.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Core/ConfigurationReader.cs"><code>Core/ConfigurationReader.cs</code></a></li>
+        <li><a href="../../WinASM65/src/CommandLineApplication.cs"><code>CommandLineApplication.cs</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/EmulatorLauncher.cs"><code>Monitor.Core/EmulatorLauncher.cs</code></a></li>
+        <li><a href="../../WinASM65.Tooling/Dap/DebugEnvironment.cs"><code>Tooling/Dap/DebugEnvironment.cs</code></a></li>
+        <li><a href="../../README.md"><code>README.md</code></a> (Assemble segments, Combine)</li>
+        <li><a href="../pipeline.md"><code>docs/pipeline.md</code></a> (French)</li>
+      </ul>
+    </aside>
+
+    <h2 id="overview">The build at a glance</h2>
+    <p>A project build has two stages that know nothing about each other. The <strong>Input</strong> stage assembles each unit into its own object file, already placed at its real address by its own <code>.org</code>; names cross from one unit to another through small JSON side files. The <strong>Output</strong> stage then concatenates files, object files and plain binaries alike, padding each one to a declared size, and hands the result to the target's format.</p>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 330" role="img" aria-label="Project build: the Input units are assembled in declaration order into .o and .symb files; the Output files, object files and binaries, are concatenated with padding into one payload, which the target's format writes as the image">
+        <defs>
+          <marker id="sg-arrow1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <text x="20" y="22" class="muted" font-size="12.5">Input (MultiSegmentOrchestrator)</text>
+        <rect class="box-a" x="20" y="34" width="170" height="44" rx="8"/>
+        <text x="105" y="61" text-anchor="middle" font-weight="600">BMAN_BANK1.NAS</text>
+        <rect class="box-a" x="20" y="90" width="170" height="44" rx="8"/>
+        <text x="105" y="117" text-anchor="middle" font-weight="600">BMAN_BANK2.NAS</text>
+        <rect class="box-a" x="20" y="146" width="170" height="44" rx="8"/>
+        <text x="105" y="173" text-anchor="middle" font-weight="600">vectors.NAS</text>
+
+        <rect class="box-b" x="250" y="34" width="150" height="44" rx="8"/>
+        <text x="325" y="61" text-anchor="middle">.o + .symb</text>
+        <rect class="box-b" x="250" y="90" width="150" height="44" rx="8"/>
+        <text x="325" y="117" text-anchor="middle">.o + .symb</text>
+        <rect class="box-b" x="250" y="146" width="150" height="44" rx="8"/>
+        <text x="325" y="173" text-anchor="middle">.o</text>
+        <path class="line" d="M190,56 L250,56" marker-end="url(#sg-arrow1)"/>
+        <path class="line" d="M190,112 L250,112" marker-end="url(#sg-arrow1)"/>
+        <path class="line" d="M190,168 L250,168" marker-end="url(#sg-arrow1)"/>
+        <path class="line" d="M325,78 L325,90" stroke-dasharray="4 3" marker-end="url(#sg-arrow1)"/>
+        <path class="line" d="M400,56 Q 430 110 400 160" stroke-dasharray="4 3" marker-end="url(#sg-arrow1)"/>
+        <text x="436" y="114" class="muted" font-size="12">names</text>
+
+        <text x="480" y="22" class="muted" font-size="12.5">Output (BinaryCombiner)</text>
+        <rect class="frame" x="480" y="34" width="400" height="160" rx="8"/>
+        <rect class="box-d" x="495" y="48" width="40" height="130" rx="4"/>
+        <text x="515" y="118" text-anchor="middle" font-size="11" transform="rotate(-90 515 118)">header</text>
+        <rect class="box-b" x="540" y="48" width="130" height="130" rx="4"/>
+        <text x="605" y="108" text-anchor="middle" font-size="13">BANK1.o</text>
+        <text x="605" y="126" text-anchor="middle" class="muted" font-size="12">pad → $3000</text>
+        <rect class="box-b" x="675" y="48" width="80" height="130" rx="4"/>
+        <text x="715" y="108" text-anchor="middle" font-size="13">BANK2.o</text>
+        <text x="715" y="126" text-anchor="middle" class="muted" font-size="12">→ $0FFA</text>
+        <rect class="box-b" x="760" y="48" width="20" height="130" rx="3"/>
+        <rect class="box-d" x="785" y="48" width="80" height="130" rx="4"/>
+        <text x="825" y="108" text-anchor="middle" font-size="13">bomber.chr</text>
+        <text x="825" y="126" text-anchor="middle" class="muted" font-size="12">8 KB</text>
+        <path class="line" d="M400,168 L480,168" marker-end="url(#sg-arrow1)"/>
+        <path class="line" d="M400,112 L480,112" marker-end="url(#sg-arrow1)"/>
+        <path class="line" d="M400,56 L480,56" marker-end="url(#sg-arrow1)"/>
+
+        <rect class="box-c" x="560" y="240" width="240" height="56" rx="8"/>
+        <text x="680" y="264" text-anchor="middle" font-weight="600">ExecutablePublisher</text>
+        <text x="680" y="283" text-anchor="middle" class="muted" font-size="12">or a plain write when the format is bin</text>
+        <path class="line" d="M680,194 L680,240" marker-end="url(#sg-arrow1)"/>
+        <text x="20" y="250" class="muted" font-size="12.5">Blue: sources. Green: assembled files. Purple: binary files</text>
+        <text x="20" y="268" class="muted" font-size="12.5">taken as they are. The thin box after BANK2.o is vectors.o (6 bytes).</text>
+        <text x="20" y="300" class="muted" font-size="12.5">Dashed arrows: names read from another unit's .symb.</text>
+      </svg>
+    </div>
+
+    <p>The command line runs it as <code>WinASM65 -c config.json</code>, optionally with <code>-l</code> for listings and <code>-t</code>, <code>-cpu</code>, <code>-format</code> to override the target. The editor tools run the same build through <a href="#session"><code>ProjectSession</code></a>.</p>
+
+    <h2 id="config">The configuration file</h2>
+    <p><code>JsonConfigurationReader</code> deserializes the file with Newtonsoft.Json into a <code>ConfigFile</code>, which has three properties. Keys the classes do not declare are ignored, which is how the <code>Emulator</code> section can sit in the same file.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Section</th><th>Class</th><th>Read by</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>Target</code></td><td><code>TargetConf</code></td><td><code>TargetResolver</code>, <code>MemoryMap</code></td><td>System, CPU, format, addresses, iNES header, hardware options, memory regions. See <a href="targets.html#resolve">Targets</a> and <a href="#memory-map">the memory map</a>.</td></tr>
+        <tr><td><code>Input</code></td><td><code>List&lt;Segment&gt;</code></td><td><code>MultiSegmentOrchestrator</code></td><td>The units to assemble.</td></tr>
+        <tr><td><code>Output</code></td><td><code>CombineConf</code></td><td><code>BinaryCombiner</code></td><td>The image and the files it is made of.</td></tr>
+        <tr><td><code>Emulator</code></td><td>none</td><td><code>EmulatorLauncher</code>, <code>DebugEnvironment</code></td><td>The emulator the monitor and the debugger start. Not part of <code>ConfigFile</code>.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Input: one entry per unit</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Field</th><th>Required</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>FileName</code></td><td>yes</td><td>The source of the unit. <code>.include</code> files are not units: they are read as part of the source that includes them.</td></tr>
+        <tr><td><code>OutputFile</code></td><td>no</td><td>Where the object file goes. Default: the source path with <code>.o</code> instead of its extension.</td></tr>
+        <tr><td><code>Dependencies</code></td><td>no</td><td>The sources (by their <code>FileName</code>) whose global names this unit uses. Default: none.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Output: the image</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Field</th><th>Required</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>ObjectFile</code></td><td>yes</td><td>The image to write. Its directory is created if missing.</td></tr>
+        <tr><td><code>Files</code></td><td>yes</td><td>The files to concatenate, in order. Each is <code>{ "FileName": …, "Size": … }</code>.</td></tr>
+        <tr><td><code>Files[].Size</code></td><td>no</td><td>The size the file occupies in the image, in <strong>hexadecimal</strong>. The file is padded with <code>$00</code> up to it. See <a href="#combine">Combining</a>.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>The two examples</h3>
+    <p>As committed in the repository. <code>example_nes_game</code> assembles its iNES header from source:</p>
+<pre><code>{
+	"Input": [
+				{
+					"FileName": "engine/headers.asm",
+					"Dependencies": []
+				},
+				{
+					"FileName": "engine/background.asm",
+					"Dependencies": []
+				},
+				{
+					"FileName": "engine/vectors.asm",
+					"Dependencies": ["engine/background.asm"]
+				}
+			],
+	"Output": {
+
+				"ObjectFile": "generated_Nes_Rom/game.nes",
+				"Files":
+				[
+					{
+						"FileName": "engine/headers.o",
+						"Size": "$10"
+					},
+					{
+						"FileName": "engine/background.o",
+						"Size": "$3FFA"
+					},
+					{
+						"FileName": "engine/vectors.o"
+					},
+					{
+						"FileName": "chr/mario.chr"
+					}
+				]
+			}
+}</code></pre>
+    <p><code>headers.asm</code> emits the 16 header bytes (<code>"NES", $1A</code>, then the bank counts) from <code>.org $0000</code>; <code>background.asm</code> starts at <code>.org $C000</code> and is padded to <code>$3FFA</code> bytes, so that <code>vectors.asm</code>, at <code>.org $FFFA</code>, lands on the last six bytes of the 16 KB PRG bank. <code>vectors.asm</code> writes the addresses of <code>NMI</code> and <code>RESET</code>, which <code>background.asm</code> defines, hence its dependency.</p>
+    <p><code>example_bomberman-nes</code> takes its header from a binary file and splits the code into two banks:</p>
+<pre><code>{
+	"Input": [
+				{
+					"FileName": "BMAN_BANK1.NAS",
+					"Dependencies": []
+				},
+				{
+					"FileName": "BMAN_BANK2.NAS",
+					"Dependencies": ["BMAN_BANK1.NAS"]
+				},
+				{
+					"FileName": "vectors.NAS",
+					"Dependencies": ["BMAN_BANK1.NAS","BMAN_BANK2.NAS"]
+				}
+			],
+	"Output": {
+
+				"ObjectFile": "bomber.nes",
+				"Files":
+				[
+					{
+						"FileName": "NES_Header.bin",
+						"Size": "$10"
+					},
+					{
+						"FileName": "BMAN_BANK1.o",
+						"Size": "$3000"
+					},
+					{
+						"FileName": "BMAN_BANK2.o",
+						"Size": "$0FFA"
+					},
+					{
+						"FileName": "vectors.o"
+					},
+					{
+						"FileName": "bomber.chr"
+					}
+				]
+			}
+}</code></pre>
+    <p><code>BMAN_BANK1.NAS</code> starts at <code>$C000</code> and fills <code>$3000</code> bytes, <code>BMAN_BANK2.NAS</code> starts at <code>$F000</code> and fills <code>$0FFA</code>, and <code>vectors.NAS</code> writes <code>NMI</code>, <code>RESET</code> and <code>IRQ</code> at <code>$FFFA</code>. The image is 16 + 16,384 + 8,192 = 24,592 bytes. Neither example has a <code>Target</code> section, so the format is <code>bin</code> and the image is written exactly as concatenated: the header is already in it.</p>
+
+    <h3>The Emulator section</h3>
+    <p>Neither committed example has one; a project adds it to say which emulator the tools start:</p>
+<pre><code>"Emulator": {
+	"Path": "C:\\Tools\\Mesen2\\Mesen.exe"
+}</code></pre>
+    <p>Only <code>Path</code> is read, by <code>EmulatorLauncher.FromProjectConfiguration</code> in the monitor and by <code>DebugEnvironment.ConfiguredEmulator</code> in the debug adapter. A relative path is resolved against the directory of <code>config.json</code>. The monitor starts that program with the ROM (<code>Output.ObjectFile</code>, also resolved against the configuration directory) as its only, quoted argument. An <code>Arguments</code> key, as found in some local configurations, is not read by either: the launcher passes <code>null</code> as its argument template on purpose.</p>
+
+    <h2 id="order">How units are resolved</h2>
+    <p>The name of the section, “dependencies”, suggests a dependency graph sorted before the build. There is none. <code>MultiSegmentOrchestrator.AssembleSegments</code> works in two phases, both in the order the <code>Input</code> array lists the units, and <code>Dependencies</code> only says <em>which</em> symbol files a unit is allowed to read in the second phase.</p>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 360" role="img" aria-label="Two phases. Phase 1: every unit is assembled in declaration order, unknown names become zero placeholders, and each unit writes .o, .symb, .Unsolved and .UnsolvedExpr. Phase 2: for each unit with an .Unsolved file, the .o is reloaded, the pending items are reloaded, the .symb of each declared dependency is merged, pending symbols are resolved, and the .o is saved while the side files are deleted">
+        <defs>
+          <marker id="sg-arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <text x="20" y="24" font-weight="600">Phase 1: assemble every unit</text>
+        <rect class="box-a" x="20" y="40" width="180" height="56" rx="8"/>
+        <text x="110" y="64" text-anchor="middle" font-weight="600">unit (in list order)</text>
+        <text x="110" y="83" text-anchor="middle" class="muted" font-size="12">ReportUndefinedSymbols = false</text>
+        <rect class="box-b" x="250" y="40" width="200" height="56" rx="8"/>
+        <text x="350" y="64" text-anchor="middle" font-weight="600">AssemblerEngine</text>
+        <text x="350" y="83" text-anchor="middle" class="muted" font-size="12">unknown name → $00 placeholder</text>
+        <rect class="box-d" x="500" y="30" width="380" height="76" rx="8"/>
+        <text x="515" y="52" font-size="13"><tspan font-weight="600">.o</tspan>  bytes, placeholders included</text>
+        <text x="515" y="70" font-size="13"><tspan font-weight="600">.symb</tspan>  names it defined</text>
+        <text x="515" y="88" font-size="13"><tspan font-weight="600">.Unsolved / .UnsolvedExpr</tspan>  what it still needs</text>
+        <path class="line" d="M200,68 L250,68" marker-end="url(#sg-arrow2)"/>
+        <path class="line" d="M450,68 L500,68" marker-end="url(#sg-arrow2)"/>
+        <text x="20" y="128" class="muted" font-size="12.5">Any diagnostic in phase 1 stops the build before phase 2.</text>
+
+        <text x="20" y="168" font-weight="600">Phase 2: for each unit that left an .Unsolved file (ResolveSegment)</text>
+        <rect class="box-c" x="20" y="186" width="160" height="66" rx="8"/>
+        <text x="100" y="212" text-anchor="middle" font-size="13">fresh assembler</text>
+        <text x="100" y="232" text-anchor="middle" font-size="13">re-emits the .o</text>
+        <rect class="box-c" x="200" y="186" width="160" height="66" rx="8"/>
+        <text x="280" y="212" text-anchor="middle" font-size="13">reload .Unsolved</text>
+        <text x="280" y="232" text-anchor="middle" font-size="13">and .UnsolvedExpr</text>
+        <rect class="box-c" x="380" y="186" width="190" height="66" rx="8"/>
+        <text x="475" y="212" text-anchor="middle" font-size="13">merge each dependency's</text>
+        <text x="475" y="232" text-anchor="middle" font-size="13">.symb, ResolvePendingSymbols</text>
+        <rect class="box-c" x="590" y="186" width="130" height="66" rx="8"/>
+        <text x="655" y="212" text-anchor="middle" font-size="13">anything left?</text>
+        <text x="655" y="232" text-anchor="middle" class="muted" font-size="12">→ Undefined symbol</text>
+        <rect class="box-b" x="740" y="186" width="140" height="66" rx="8"/>
+        <text x="810" y="212" text-anchor="middle" font-size="13">save the .o,</text>
+        <text x="810" y="232" text-anchor="middle" font-size="13">delete side files</text>
+        <path class="line" d="M180,219 L200,219" marker-end="url(#sg-arrow2)"/>
+        <path class="line" d="M360,219 L380,219" marker-end="url(#sg-arrow2)"/>
+        <path class="line" d="M570,219 L590,219" marker-end="url(#sg-arrow2)"/>
+        <path class="line" d="M720,219 L740,219" marker-end="url(#sg-arrow2)"/>
+        <text x="20" y="290" class="muted" font-size="12.5">A unit with no .Unsolved file is already complete after phase 1 and is skipped.</text>
+        <text x="20" y="310" class="muted" font-size="12.5">A placeholder is patched when every name its expression uses is known: pass 2 of the assembler, run across files.</text>
+        <text x="20" y="330" class="muted" font-size="12.5">The first unit that fails stops phase 2; its .Unsolved and .UnsolvedExpr stay on disk.</text>
+      </svg>
+    </div>
+
+    <h3>Consequences</h3>
+    <ul>
+      <li><strong>The order of <code>Input</code> does not decide whether names resolve.</strong> Every unit is assembled before any is resolved, so a unit may come before the unit it depends on, and two units may depend on each other (the README's own example has a cycle).</li>
+      <li><strong>Every unit whose names you use must be listed.</strong> A name found in no declared dependency fails the build, reported at line 0 of the unit: <code>Line 0 - File main.asm - Type Undefined symbol</code>. A dependency whose <code>.symb</code> is missing (because it defined no global name) fails with <code>Dependency symbol file doesn't exist</code>.</li>
+      <li><strong>Dependencies are not transitive, and a <code>.symb</code> is written once.</strong> It holds the names its unit could define on its own in phase 1. A constant that one unit computes from another unit's label (<code>ALIAS = target + 1</code>) is pending in phase 1, so it never reaches that unit's <code>.symb</code>, and a third unit cannot use it.</li>
+      <li><strong>A placeholder keeps the width it was given.</strong> An operand that is unknown in phase 1 is emitted with a two-byte placeholder, before its value can be compared with <code>$FF</code>, so a reference to another unit's zero-page name keeps the absolute (three-byte) form of the instruction.</li>
+      <li><strong>The address comes from <code>.org</code>.</strong> Each unit is placed by its own <code>.org</code> (or, without one, at the target's load address). Nothing in the project moves a unit; the <code>Output</code> order only has to agree with the addresses.</li>
+    </ul>
+
+    <h3>The side files</h3>
+    <p>The only channel between units is the disk. The naming rule lives in <code>SideFiles</code> so that the writer (<code>AssemblerEngine.ExportSymbolFiles</code>) and the reader (the orchestrator) cannot disagree: the base name is the source path with its extension removed (<code>Path.ChangeExtension(path, null)</code>), and <code>SideFiles.Locate</code> puts the file beside the source unless a side-file directory was given, in which case it creates that directory and puts the file there under its own name.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>File</th><th>Type in JSON</th><th>Content</th></tr></thead>
+      <tbody>
+        <tr><td><code>.symb</code></td><td><code>Dictionary&lt;string, long&gt;</code></td><td>Global names and their values, without generated names (local and anonymous labels). Written only when non-empty.</td></tr>
+        <tr><td><code>.Unsolved</code></td><td><code>Dictionary&lt;string, UnresolvedSymbol&gt;</code></td><td>Names whose value depends on a name still unknown, with a count of what is missing.</td></tr>
+        <tr><td><code>.UnsolvedExpr</code></td><td><code>Dictionary&lt;ushort, UnresolvedExpr&gt;</code></td><td>Placeholders in the object file, keyed by their position relative to the unit's origin, with the expression to evaluate.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Every unit also starts with the same predefined names: the target's hardware symbols (when <code>DefineHardwareSymbols</code> is on) and the region symbols of the <a href="#memory-map">memory map</a>. They are not in any <code>.symb</code> but they are known everywhere.</p>
+
+    <h2 id="orchestrator">MultiSegmentOrchestrator</h2>
+    <p>The class that runs the <code>Input</code> stage. It does not assemble by itself: it is given a factory, <code>Func&lt;IAssembler&gt;</code>, and calls it once per unit in phase 1 and once more per unit resolved in phase 2.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Member</th><th>Role</th></tr></thead>
+      <tbody>
+        <tr><td><code>MultiSegmentOrchestrator(Func&lt;IAssembler&gt;)</code></td><td>Side files beside their sources (the command line).</td></tr>
+        <tr><td><code>MultiSegmentOrchestrator(Func&lt;IAssembler&gt;, string sideFileDirectory)</code></td><td>Side files in a directory of the caller's choosing. It must be the same directory the assemblers were told to write to (<code>AssemblerOptions.SideFileDirectory</code>).</td></tr>
+        <tr><td><code>AssembleSegments(IReadOnlyList&lt;Segment&gt;)</code></td><td>Runs both phases and returns a <code>MultiSegmentResult</code> (an <code>OperationResult</code>: success and diagnostics).</td></tr>
+        <tr><td><code>ResolveSegment</code> (private)</td><td>Phase 2 for one unit, as in the diagram above.</td></tr>
+        <tr><td><code>GetObjectFile</code> (private)</td><td><code>OutputFile</code>, or the source path with <code>.o</code>.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The factory the caller passes sets <code>ReportUndefinedSymbols = false</code>. In single-file mode an unknown name is an error at the end of the file, because no other file can define it; in a project it is the normal case, and the orchestrator asks the question itself once the dependencies are loaded. The factory also carries the CPU, the predefined symbols, the listing switch and the default origin from the resolved target, so every unit is assembled for the same machine.</p>
+
+    <h2 id="combine">Combining files into an image</h2>
+    <p><code>BinaryCombiner</code> implements <code>IBinaryCombiner</code>, which has two methods:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Method</th><th>Does</th><th>Used by</th></tr></thead>
+      <tbody>
+        <tr><td><code>Concatenate(CombineConf, out byte[] payload)</code></td><td>Builds the image in memory.</td><td>the command line when the format is not <code>bin</code>; <code>ProjectSession</code> always</td></tr>
+        <tr><td><code>Combine(CombineConf)</code></td><td>Calls <code>Concatenate</code>, creates the output directory if needed, and writes <code>ObjectFile</code>.</td><td>the command line when the format is <code>bin</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>For each entry of <code>Files</code>, in order, it reads the whole file and, if a <code>Size</code> is given, grows it to that size with zero bytes; then it appends it to the image. That is all: no alignment, no fill value, no overlap check.</p>
+
+    <h3>The Size field</h3>
+    <ul>
+      <li>It is read as <strong>hexadecimal whether or not it starts with <code>$</code></strong>: the code trims a leading <code>$</code> and parses with <code>NumberStyles.HexNumber</code>. <code>"100"</code> means 256 bytes, not 100. Write the <code>$</code> to make that visible.</li>
+      <li>A file larger than its <code>Size</code>, or a <code>Size</code> that does not parse, stops the build: <code>Invalid target size for: main.o</code>. The combiner never truncates.</li>
+      <li>The padding byte is always <code>$00</code>.</li>
+      <li>Without <code>Size</code>, the file takes exactly its own length.</li>
+    </ul>
+    <p>Other failures: a missing file (<code>Input file doesn't exist: …</code>), and a missing <code>ObjectFile</code> (<code>An output object file is required.</code>).</p>
+
+    <h3>Why the sizes matter</h3>
+    <p>Each object file holds only the bytes its unit emitted, from its first <code>.org</code> onwards; the gaps between units do not exist on disk. <code>Size</code> recreates them. In the Bomberman image, <code>BMAN_BANK1.o</code> covers <code>$C000</code>–<code>$EFFF</code> once padded to <code>$3000</code>, so <code>BMAN_BANK2.o</code> starts at the file offset that maps to <code>$F000</code>:</p>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 170" role="img" aria-label="The bomber.nes image: 16-byte header at offset 0, BMAN_BANK1 at offset $10 mapping to $C000 to $EFFF, BMAN_BANK2 at $3010 mapping to $F000 to $FFF9, vectors at $4000 mapping to $FFFA to $FFFF, and 8 KB of CHR data at $4010">
+        <rect class="box-d" x="20" y="40" width="30" height="60" rx="3"/>
+        <rect class="box-b" x="50" y="40" width="420" height="60"/>
+        <rect class="box-b" x="470" y="40" width="140" height="60"/>
+        <rect class="box-c" x="610" y="40" width="14" height="60"/>
+        <rect class="box-d" x="624" y="40" width="256" height="60" rx="3"/>
+        <text x="35" y="75" text-anchor="middle" font-size="11">H</text>
+        <text x="260" y="66" text-anchor="middle" font-weight="600">BMAN_BANK1.o</text>
+        <text x="260" y="86" text-anchor="middle" class="muted" font-size="12">$C000–$EFFF, padded to $3000</text>
+        <text x="540" y="66" text-anchor="middle" font-weight="600">BMAN_BANK2.o</text>
+        <text x="540" y="86" text-anchor="middle" class="muted" font-size="12">$F000–$FFF9</text>
+        <text x="752" y="66" text-anchor="middle" font-weight="600">bomber.chr</text>
+        <text x="752" y="86" text-anchor="middle" class="muted" font-size="12">CHR, 8 KB</text>
+        <text x="20" y="122" class="muted" font-size="12">0</text>
+        <text x="50" y="122" class="muted" font-size="12">$10</text>
+        <text x="470" y="122" class="muted" font-size="12">$3010</text>
+        <text x="596" y="140" class="muted" font-size="12">$4000: vectors.o ($FFFA–$FFFF)</text>
+        <text x="760" y="122" class="muted" font-size="12">$4010</text>
+        <text x="20" y="28" class="muted" font-size="12.5">File offsets below the bar, CPU addresses inside it. The header and 16 KB of PRG make 16,400 bytes; with CHR, 24,592.</text>
+      </svg>
+    </div>
+
+    <h3>After combining: the format</h3>
+    <p>The command line decides by format name. If it is <code>bin</code> (or empty), <code>Combine</code> writes the concatenation as it is. Otherwise <code>Concatenate</code> builds it in memory and <code>ExecutablePublisher.Publish</code> writes it in the target's format, so a project with <code>"Target": { "System": "c64" }</code> becomes a PRG. The iNES format, for one, recognises a payload that already starts with <code>NES\x1A</code> and writes it unchanged, so the Bomberman layout above also works with <code>-t nes</code>. See <a href="targets.html#formats">Formats</a>.</p>
+
+    <h2 id="memory-map">MemoryMap: declared regions</h2>
+    <p>A <code>Target</code> section may declare named regions of the address space. They are <strong>declarative</strong>: a region places no byte and replaces no <code>.org</code>, and the output is byte-for-byte the same with or without them. What they add is checking, and symbols.</p>
+<pre><code>{
+  "Target": {
+    "System": "nes",
+    "Regions": [
+      { "Name": "PRG0",    "Address": "$C000", "Size": "$3000", "Bank": 0, "Type": "ro" },
+      { "Name": "PRG1",    "Address": "$F000", "Size": "$0FFA", "Bank": 1, "Type": "ro" },
+      { "Name": "VECTORS", "Address": "$FFFA", "Size": "$6",    "Type": "ro" },
+      { "Name": "OAM",     "Address": "$0200", "Size": "$0100", "Type": "rw" },
+      { "Name": "VARS",    "Address": "$0300", "Size": "$0180", "Type": "bss" }
+    ]
+  }
+}</code></pre>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Field</th><th>Required</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>Name</code></td><td>no</td><td>Used in messages and to name the region's symbols. Default <code>#index</code>. Duplicates are refused.</td></tr>
+        <tr><td><code>Address</code></td><td>yes</td><td>The base, where code <em>runs</em>: what a <code>.org</code> is checked against.</td></tr>
+        <tr><td><code>Size</code></td><td>no</td><td>Bytes. Absent: the region runs to <code>$FFFF</code>. Must not pass the end of the address space.</td></tr>
+        <tr><td><code>Bank</code></td><td>no</td><td>Bank number, informative; must not be negative.</td></tr>
+        <tr><td><code>Type</code></td><td>no</td><td><code>ro</code> (default, also <code>r</code>), <code>rw</code> (also <code>r/w</code>) or <code>bss</code>.</td></tr>
+        <tr><td><code>Load</code></td><td>no</td><td>Where the bytes are stored, when that differs from where they run.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Unlike <code>Files[].Size</code>, these addresses and sizes go through <code>NumericLiteral</code>, the assembler's own number parser, so <code>"$C000"</code> and <code>"49152"</code> are the same value.</p>
+
+    <h3>What the map checks</h3>
+    <ul>
+      <li><strong>At load</strong> (<code>MemoryMap.TryBuild</code>): a missing or unreadable <code>Address</code>, an unknown <code>Type</code>, a duplicate name, a region past <code>$FFFF</code>, and two sized regions that overlap. Each is a diagnostic, reported before any source is read.</li>
+      <li><strong>Each <code>.org</code></strong> (<code>ValidateOrigin</code>): an origin outside every region is an error that names the region it probably belongs to (the last one starting at or below the address) and lists all of them; an origin inside a <code>bss</code> region is an error, since that space produces no file bytes.</li>
+      <li><strong>Each <code>.res</code></strong> (<code>ValidateReservation</code>): a reservation that starts in a sized <code>bss</code> region and runs past its end is an error that says how many bytes fall outside. Reservations in <code>ro</code> and <code>rw</code> regions are not checked; a reservation past <code>$FFFF</code> always is.</li>
+    </ul>
+<pre><code>Line 3 - File BMAN_BANK1.NAS - Type $C000 lands outside every declared region.
+Expected region: PRG1 $F000-$FFF9 (ro). Declared regions: PRG1 $F000-$FFF9 (ro).</code></pre>
+    <p>A write that runs past the end of a region (as opposed to a <code>.res</code>) is not checked.</p>
+
+    <h3>Region symbols</h3>
+    <p><code>BuildPredefinedSymbols</code> gives each region whose name is a valid identifier the symbols <code>NAME_START</code>, <code>NAME_LOAD</code> and <code>NAME_RUN</code>, plus <code>NAME_END</code> (last address) and <code>NAME_SIZE</code> when it has a size. They are merged over the hardware symbols, so a source can write:</p>
+<pre><code>        .memarea VARS_START
+vars    .res VARS_SIZE</code></pre>
+
+    <h3>How the map reaches the assembler</h3>
+    <p>The <code>.org</code> and <code>.res</code> directives are dispatched deep inside <code>AssemblerEngine</code>, so the map is not passed to them as a parameter. The build installs it with <code>using (MemoryMapScope.Activate(map))</code> for the duration of the assembly, and the directives read <code>MemoryMapScope.Current</code>, a <code>[ThreadStatic]</code> field. A configuration without <code>Regions</code> installs <code>null</code>, which checks nothing.</p>
+
+    <h2 id="session">ProjectSession: the build as a library call</h2>
+    <p>The command line resolves every path against the process's current directory and writes everything to disk. That is fine in a terminal and wrong for an editor, whose current directory has nothing to do with the project. <code>WinASM65.Projects.ProjectSession</code> wraps the same pieces (<code>TargetResolver</code>, <code>MemoryMap</code>, <code>MultiSegmentOrchestrator</code>, <code>BinaryCombiner</code>, <code>ExecutablePublisher</code>) behind an explicit base directory, and returns the image and per-unit results in memory.</p>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 230" role="img" aria-label="ProjectSession is opened on a config.json and used by WinASM65.Tooling for --build, the debug adapter and the language server, and by the monitor; it calls TargetResolver, MultiSegmentOrchestrator, BinaryCombiner and ExecutablePublisher">
+        <defs>
+          <marker id="sg-arrow3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <rect class="box-d" x="20" y="20" width="190" height="40" rx="8"/>
+        <text x="115" y="45" text-anchor="middle" font-size="13">Tooling --build</text>
+        <rect class="box-d" x="20" y="70" width="190" height="40" rx="8"/>
+        <text x="115" y="95" text-anchor="middle" font-size="13">Tooling --dap</text>
+        <rect class="box-d" x="20" y="120" width="190" height="40" rx="8"/>
+        <text x="115" y="145" text-anchor="middle" font-size="13">Tooling --lsp</text>
+        <rect class="box-d" x="20" y="170" width="190" height="40" rx="8"/>
+        <text x="115" y="195" text-anchor="middle" font-size="13">Monitor (ProjectBuilder)</text>
+
+        <rect class="box-c" x="320" y="80" width="220" height="70" rx="8"/>
+        <text x="430" y="108" text-anchor="middle" font-weight="600">ProjectSession</text>
+        <text x="430" y="128" text-anchor="middle" class="muted" font-size="12">BaseDirectory = config's dir</text>
+
+        <rect class="box-b" x="650" y="20" width="230" height="40" rx="8"/>
+        <text x="765" y="45" text-anchor="middle" font-size="13">TargetResolver + MemoryMap</text>
+        <rect class="box-b" x="650" y="70" width="230" height="40" rx="8"/>
+        <text x="765" y="95" text-anchor="middle" font-size="13">MultiSegmentOrchestrator</text>
+        <rect class="box-b" x="650" y="120" width="230" height="40" rx="8"/>
+        <text x="765" y="145" text-anchor="middle" font-size="13">BinaryCombiner.Concatenate</text>
+        <rect class="box-b" x="650" y="170" width="230" height="40" rx="8"/>
+        <text x="765" y="195" text-anchor="middle" font-size="13">ExecutablePublisher</text>
+
+        <path class="line" d="M210,40 L320,100" marker-end="url(#sg-arrow3)"/>
+        <path class="line" d="M210,90 L320,108" marker-end="url(#sg-arrow3)"/>
+        <path class="line" d="M210,140 L320,122" marker-end="url(#sg-arrow3)"/>
+        <path class="line" d="M210,190 L320,135" marker-end="url(#sg-arrow3)"/>
+        <path class="line" d="M540,100 L650,40" marker-end="url(#sg-arrow3)"/>
+        <path class="line" d="M540,108 L650,90" marker-end="url(#sg-arrow3)"/>
+        <path class="line" d="M540,122 L650,140" marker-end="url(#sg-arrow3)"/>
+        <path class="line" d="M540,135 L650,190" marker-end="url(#sg-arrow3)"/>
+      </svg>
+    </div>
+
+    <h3>Opening a session</h3>
+    <ul>
+      <li><code>ProjectSession.Open(string configurationPath)</code> reads the file; the base directory is the file's directory.</li>
+      <li><code>ProjectSession.Open(ConfigFile, string baseDirectory)</code> takes a configuration already in memory. The language server uses it with an empty <code>ConfigFile</code> for a source that belongs to no project.</li>
+      <li><code>ProjectSession.Create(…)</code> takes every collaborator (<code>IConfigurationReader</code>, <code>IAssemblerFactory</code>, <code>IBinaryCombiner</code>, <code>IExecutablePublisher</code>), for tests.</li>
+    </ul>
+    <p>Every name of the configuration (sources, dependencies, output files, the image) is made absolute against <code>BaseDirectory</code> before the orchestrator sees it. <code>SourceFiles</code> lists the units, absolute, in declaration order.</p>
+
+    <h3>Build options</h3>
+    <p><code>Build(ProjectBuildOptions)</code>. With every option at its default the bytes are those of <code>WinASM65 -c config.json</code>.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Option</th><th>Default</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>EnableListing</code></td><td>false</td><td>Writes a <code>.lst</code> per unit, as <code>-l</code>.</td></tr>
+        <tr><td><code>SideFileDirectory</code></td><td>null (beside the sources)</td><td>Where <code>.symb</code>, <code>.Unsolved</code> and <code>.UnsolvedExpr</code> go. Object files still follow <code>OutputFile</code> or their source.</td></tr>
+        <tr><td><code>System</code>, <code>Cpu</code>, <code>Format</code></td><td>null</td><td>The same overrides as <code>-t</code>, <code>-cpu</code>, <code>-format</code>.</td></tr>
+        <tr><td><code>WriteImage</code></td><td>false</td><td>Writes the image through <code>ExecutablePublisher</code>. Off, the image only exists in <code>ProjectBuildResult.Image</code>.</td></tr>
+        <tr><td><code>ImagePath</code></td><td>null</td><td>Where to write it; default <code>Output.ObjectFile</code>, or <code>out.bin</code> without one.</td></tr>
+        <tr><td><code>CaptureListing</code></td><td>false</td><td>Keeps each unit's listing rows and origins in memory (an <code>InMemoryListingService</code>) instead of writing <code>.lst</code> files, and computes <code>Placements</code>.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>What a build returns</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Member of <code>ProjectBuildResult</code></th><th>Content</th></tr></thead>
+      <tbody>
+        <tr><td><code>Success</code>, <code>Diagnostics</code></td><td>Whether an image was produced, and every message of the build.</td></tr>
+        <tr><td><code>Image</code></td><td>The concatenated payload. Empty on failure.</td></tr>
+        <tr><td><code>ImagePath</code></td><td>Where it was written, when <code>WriteImage</code> was set.</td></tr>
+        <tr><td><code>Units</code></td><td>One <code>ProjectUnitResult</code> per input: source and object paths, dependencies, the symbol table the unit's assembler ended with, and (when captured) its listing rows, its <code>EmitterOrigin</code>s and its emitted length.</td></tr>
+        <tr><td><code>Placements</code></td><td>When captured: one <code>ImagePlacement</code> per <code>Output</code> file, with its offset and length in the image, padding included, computed by the same rule as the combiner.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Units, origins and placements together are what lets a debugger turn a program counter into a file offset, a unit and a source line: see <a href="tooling.html#dap">the debug adapter</a>.</p>
+
+    <h3>Listing one file against the project</h3>
+    <p>After a successful build the session keeps <code>ProjectSymbols</code>, the union of every unit's names (the first unit to define a name wins). <code>ListSourceFile(path)</code> and <code>ListSourceText(text, name)</code> assemble one source in memory with those names, the target's CPU, load address and hardware symbols predefined. That is how an editor shows the listing of, and the errors in, one file of a multi-file project without reporting every name another file defines as undefined. A name defined by the file itself still wins over a predefined one, and a name no unit defines is still reported. Before the first build, <code>ProjectSymbols</code> is empty and the listing is that of the file alone.</p>
+
+    <h3>Who uses it</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Caller</th><th>How</th></tr></thead>
+      <tbody>
+        <tr><td><code>WinASM65.Tooling --build</code></td><td><code>Build(new ProjectBuildOptions { WriteImage = true })</code>: the VS Code build task.</td></tr>
+        <tr><td>Debug adapter (<code>DebugEnvironment.Build</code>)</td><td><code>CaptureListing = true</code>, and <code>WriteImage</code> as the launch asks.</td></tr>
+        <tr><td>Language server</td><td>One session per <code>config.json</code>, built with <code>CaptureListing = true</code> and a <code>SideFileDirectory</code> in a scratch directory per project, so its builds never touch the side files of a command-line build.</td></tr>
+        <tr><td>Monitor (<code>ProjectBuilder</code>, <code>ProjectConfigLocator</code>)</td><td><code>ProjectBuilder</code> builds the configuration named by the <code>BUILD</code> command, resolved against the session's directory; <code>ProjectConfigLocator</code> opens configurations to find the one that governs a source.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <footer>
+      <p>The behaviour described here was checked against the code and by running the Debug build on small projects; <code>docs/pipeline.md</code> (in French) records how the multi-file mode came to be.</p>
+    </footer>
+  </main>
+
+  <aside class="toc" aria-label="On this page"></aside>
+</div>
+</body>
+</html>
