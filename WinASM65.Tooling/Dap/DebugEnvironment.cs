@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
 using WinASM65.Monitor;
+using WinASM65.Monitor.Emulators;
 using WinASM65.Projects;
 
 namespace WinASM65.Tooling.Dap
@@ -26,18 +27,18 @@ namespace WinASM65.Tooling.Dap
     {
         ProjectBuildResult Build(string configurationPath, bool writeImage);
 
-        /// <summary>The emulator named by the project's <c>Emulator.Path</c>, or null.</summary>
-        string ConfiguredEmulator(string configurationPath);
+        /// <summary>The emulator the project's <c>Emulator</c> section declares, or null.</summary>
+        EmulatorConfiguration ConfiguredEmulator(string configurationPath);
 
         int FreePort();
 
-        /// <summary>Starts the emulator with the bridge; throws with a reason on failure.</summary>
-        IEmulatorProcess Launch(string emulatorPath, string romPath, string emulatorId, int port);
+        /// <summary>Starts the emulator with its bridge; throws with a reason on failure.</summary>
+        IEmulatorProcess Launch(EmulatorConfiguration emulator, string romPath, int port);
 
         IMemoryBackend Connect(int port, int timeoutMs);
     }
 
-    /// <summary>The real environment: the assembler, Mesen and a socket.</summary>
+    /// <summary>The real environment: the assembler, the configured emulator and a socket.</summary>
     public sealed class DebugEnvironment : IDebugEnvironment
     {
         public ProjectBuildResult Build(string configurationPath, bool writeImage)
@@ -46,32 +47,9 @@ namespace WinASM65.Tooling.Dap
                 .Build(new ProjectBuildOptions { CaptureListing = true, WriteImage = writeImage });
         }
 
-        public string ConfiguredEmulator(string configurationPath)
+        public EmulatorConfiguration ConfiguredEmulator(string configurationPath)
         {
-            if (string.IsNullOrEmpty(configurationPath) || !File.Exists(configurationPath))
-                return null;
-            try
-            {
-                using (JsonDocument document = JsonDocument.Parse(File.ReadAllText(configurationPath)))
-                {
-                    JsonElement emulator, path;
-                    if (document.RootElement.TryGetProperty("Emulator", out emulator)
-                        && emulator.ValueKind == JsonValueKind.Object
-                        && emulator.TryGetProperty("Path", out path)
-                        && path.ValueKind == JsonValueKind.String
-                        && !string.IsNullOrWhiteSpace(path.GetString()))
-                    {
-                        string executable = path.GetString();
-                        return Path.IsPathRooted(executable)
-                            ? executable
-                            : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(configurationPath)), executable));
-                    }
-                }
-            }
-            catch (JsonException)
-            {
-            }
-            return null;
+            return EmulatorConfiguration.Read(configurationPath);
         }
 
         public int FreePort()
@@ -83,9 +61,9 @@ namespace WinASM65.Tooling.Dap
             return port;
         }
 
-        public IEmulatorProcess Launch(string emulatorPath, string romPath, string emulatorId, int port)
+        public IEmulatorProcess Launch(EmulatorConfiguration emulator, string romPath, int port)
         {
-            Process process = BridgeLauncher.LaunchEmulator(emulatorPath, romPath, emulatorId, port);
+            Process process = BridgeLauncher.Launch(emulator, romPath, port, Console.Error);
             if (process == null)
                 throw new MonitorException("the emulator could not be started (see the debug console for the reason)");
             return new EmulatorProcess(process);

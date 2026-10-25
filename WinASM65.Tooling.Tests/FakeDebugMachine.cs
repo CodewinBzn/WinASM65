@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using WinASM65.Monitor;
+using WinASM65.Monitor.Emulators;
 using WinASM65.Projects;
 using WinASM65.Tooling.Dap;
 
@@ -12,9 +13,45 @@ namespace WinASM65.Tooling.Tests
     /// stops when the test says so. Stops and resumes are raised on another thread,
     /// as the bridge's receiver would.
     /// </summary>
-    public sealed class FakeDebugMachine : IMemoryBackend, ICpuStateSource, IExecutionEvents, IBreakpointRemoval
+    public sealed class FakeDebugMachine : IMemoryBackend, ICpuStateSource, IExecutionEvents, IBreakpointRemoval, IVideoMemory
     {
         private readonly byte[] _memory = new byte[0x10000];
+
+        // The NES memories besides the CPU's, as a version 2 bridge offers them.
+        private readonly Dictionary<string, byte[]> _spaces = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "PPU", new byte[0x4000] }, { "PAL", new byte[0x20] }, { "OAM", new byte[0x100] }, { "CHR", new byte[0x2000] }
+        };
+
+        public IReadOnlyList<string> MemorySpaces { get; set; } = new[] { "PPU", "PAL", "OAM", "CHR" };
+
+        public byte[] ReadSpace(string space, int address, int length)
+        {
+            Record("ReadSpace " + space);
+            byte[] memory = SpaceOf(space);
+            byte[] result = new byte[length];
+            Buffer.BlockCopy(memory, address, result, 0, length);
+            return result;
+        }
+
+        public void WriteSpace(string space, int address, byte[] bytes)
+        {
+            Record("WriteSpace " + space);
+            Buffer.BlockCopy(bytes, 0, SpaceOf(space), address, bytes.Length);
+        }
+
+        public byte PeekSpace(string space, int address)
+        {
+            return _spaces[space][address];
+        }
+
+        private byte[] SpaceOf(string space)
+        {
+            byte[] memory;
+            if (!_spaces.TryGetValue(space, out memory) || !System.Linq.Enumerable.Contains(MemorySpaces, space, StringComparer.OrdinalIgnoreCase))
+                throw new MonitorException("no memory space " + space);
+            return memory;
+        }
 
         // Events leave on one thread, in the order they happened, as the bridge's
         // receiver delivers them: a resume must never overtake the stop after it.
@@ -159,12 +196,15 @@ namespace WinASM65.Tooling.Tests
             return result;
         }
 
-        public string ConfiguredEmulator(string configurationPath) => "fake-mesen.exe";
+        public EmulatorConfiguration ConfiguredEmulator(string configurationPath) => EmulatorConfiguration.Of(@"C:\fake\Mesen.exe", null);
+
+        public EmulatorConfiguration LaunchedEmulator { get; private set; }
 
         public int FreePort() => 12345;
 
-        public IEmulatorProcess Launch(string emulatorPath, string romPath, string emulatorId, int port)
+        public IEmulatorProcess Launch(EmulatorConfiguration emulator, string romPath, int port)
         {
+            LaunchedEmulator = emulator;
             LaunchedRom = romPath;
             if (EmulatorExitsAtOnce)
                 Emulator.HasExited = true;

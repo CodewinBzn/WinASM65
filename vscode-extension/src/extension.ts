@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions } from 'vscode-languageclient/node';
 import { ListingColumn } from './listing';
-import { RamPanel } from './ramPanel';
+import { MemoryPanel } from './memoryPanel';
 
 const DEBUG_TYPE = 'winasm65';
 
@@ -64,7 +64,7 @@ class ConfigurationProvider implements vscode.DebugConfigurationProvider {
       }
       config.type = DEBUG_TYPE;
       config.request = 'launch';
-      config.name = 'Debug on Mesen2';
+      config.name = 'Debug';
       config.config = project;
     }
 
@@ -164,7 +164,7 @@ export function activate(context: vscode.ExtensionContext): { listing: ListingCo
   );
   startLanguageServer(context);
   const listing = new ListingColumn(context, () => clientReady, log);
-  context.subscriptions.push(listing, new RamPanel(context));
+  context.subscriptions.push(listing, new MemoryPanel(context));
   return { listing };
 }
 

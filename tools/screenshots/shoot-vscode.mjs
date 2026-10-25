@@ -178,9 +178,17 @@ try {
       }
       await shot(page, 'vscode-debug');
 
-      const ram = page.locator('.editor-group-container', { has: page.locator('.tab', { hasText: 'RAM' }) }).first();
+      const ram = page.locator('.editor-group-container', { has: page.locator('.tab', { hasText: 'Memory' }) }).first();
       if (await ram.count()) {
         await shot(page, 'vscode-ram', await ram.boundingBox());
+
+        // Another memory of the machine: the palettes, read through the bridge's PAL space.
+        const panel = page.frameLocator('iframe.webview').frameLocator('iframe#active-frame');
+        const views = panel.locator('#view');
+        const value = await views.locator('option', { hasText: 'Palettes' }).first().getAttribute('value');
+        await views.selectOption(value);
+        await page.waitForTimeout(1500);
+        await shot(page, 'vscode-memory-palettes', await ram.boundingBox());
       }
       execFileSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
         path.join(import.meta.dirname, 'capture-window.ps1'), '-ProcessName', 'Mesen',

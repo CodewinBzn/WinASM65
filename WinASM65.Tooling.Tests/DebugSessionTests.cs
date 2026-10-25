@@ -427,5 +427,117 @@ namespace WinASM65.Tooling.Tests
             // $A5 = 1010 0101: N, the unused bit, I and C set.
             Assert.AreEqual("Nv-bdIzC", DebugSession.FlagString(0xA5));
         }
+
+        // ------------------------------------------------------------ systems
+
+        private static string ConfigFor(string target)
+        {
+            return "{ \"Target\": " + target + ", \"Input\": [ { \"FileName\": \"prog.asm\" } ],"
+                + " \"Output\": { \"ObjectFile\": \"out.bin\", \"Files\": [ { \"FileName\": \"prog.o\" } ] } }";
+        }
+
+        [TestMethod]
+        public void TheMachineIsDescribedWithItsMemoriesViewsAndColours()
+        {
+            using (Harness h = new Harness())
+            {
+                h.Write("prog.asm", Program);
+                h.Start(h.Write("config.json", ConfigFor("{ \"System\": \"nes\", \"Format\": \"bin\" }")));
+
+                JsonObject system = (JsonObject)h.Request("winasm65.system")["body"];
+                Assert.AreEqual("nes", (string)system["id"]);
+                Assert.AreEqual("2A03", (string)system["cpu"]);
+                JsonArray spaces = (JsonArray)system["spaces"];
+                CollectionAssert.AreEqual(new[] { "CPU", "PPU", "PAL", "OAM", "CHR" },
+                    spaces.Select(s => (string)s["name"]).ToArray());
+                Assert.IsTrue(spaces.All(s => (bool)s["available"]), "the fake bridge offers every NES space");
+                Assert.AreEqual("RAM", (string)system["views"][0]["name"]);
+                Assert.AreEqual(0x800, (int)system["views"][0]["length"]);
+                Assert.AreEqual(64, ((JsonArray)system["palette"]).Count);
+                Assert.AreEqual("Mesen2", (string)system["emulator"]["name"]);
+            }
+        }
+
+        [TestMethod]
+        public void AMemorySpaceIsReadAndWrittenByName()
+        {
+            using (Harness h = new Harness())
+            {
+                h.Write("prog.asm", Program);
+                h.Start(h.Write("config.json", ConfigFor("{ \"System\": \"nes\", \"Format\": \"bin\" }")));
+
+                JsonObject written = h.Request("winasm65.memory.write", new JsonObject
+                {
+                    ["space"] = "PAL", ["address"] = 1, ["data"] = Convert.ToBase64String(new byte[] { 0x16, 0x27 })
+                });
+                Assert.IsTrue((bool)written["success"], (string)written["message"]);
+                Assert.AreEqual(0x16, h.Machine.PeekSpace("PAL", 1));
+
+                JsonObject read = h.Request("winasm65.memory.read", new JsonObject { ["space"] = "pal", ["address"] = 0, ["count"] = 3 });
+                CollectionAssert.AreEqual(new byte[] { 0x00, 0x16, 0x27 }, Convert.FromBase64String((string)read["body"]["data"]));
+
+                JsonObject cpu = h.Request("winasm65.memory.read", new JsonObject { ["address"] = 0xC000, ["count"] = 2 });
+                CollectionAssert.AreEqual(new byte[] { 0xA9, 0x01 }, Convert.FromBase64String((string)cpu["body"]["data"]),
+                    "without a space, the CPU's");
+            }
+        }
+
+        [TestMethod]
+        public void ASpaceTheBridgeDoesNotOfferIsRefusedWithItsName()
+        {
+            using (Harness h = new Harness())
+            {
+                h.Machine.MemorySpaces = new string[0];
+                h.Write("prog.asm", Program);
+                h.Start(h.Write("config.json", ConfigFor("{ \"System\": \"nes\", \"Format\": \"bin\" }")));
+
+                JsonObject read = h.Request("winasm65.memory.read", new JsonObject { ["space"] = "PAL", ["address"] = 0, ["count"] = 1 });
+                Assert.IsFalse((bool)read["success"]);
+                StringAssert.Contains((string)read["message"], "offers no memory besides the CPU's");
+                JsonObject system = (JsonObject)h.Request("winasm65.system")["body"];
+                Assert.IsFalse((bool)system["spaces"][2]["available"], "described, but not offered by this bridge");
+            }
+        }
+
+        [TestMethod]
+        public void ALoadedProgramRunsFromWhereItWasLoadedInsteadOfAReset()
+        {
+            using (Harness h = new Harness())
+            {
+                h.Write("prog.asm", Program);
+                string config = h.Write("config.json", ConfigFor("{ \"System\": \"c64\", \"Format\": \"bin\", \"LoadAddress\": \"$C000\" }"));
+                Assert.IsTrue((bool)h.Request("initialize")["success"]);
+                JsonObject launch = h.Request("launch", new JsonObject { ["config"] = config, ["stopOnEntry"] = true });
+                Assert.IsTrue((bool)launch["success"], (string)launch["message"]);
+                h.Event("initialized");
+                Assert.IsTrue((bool)h.Request("configurationDone")["success"]);
+
+                CollectionAssert.DoesNotContain(h.Machine.Calls, "RESET", "a C64 program is not a cartridge");
+                CollectionAssert.Contains(h.Machine.Calls, "RESUME");
+                CollectionAssert.Contains(h.Machine.Breakpoints.ToArray(), 0xC000, "stop on entry at the load address");
+            }
+        }
+
+        [TestMethod]
+        public void LaunchJsonChoosesTheEmulatorAndItsBridge()
+        {
+            using (Harness h = new Harness())
+            {
+                h.Write("prog.asm", Program);
+                Assert.IsTrue((bool)h.Request("initialize")["success"]);
+                JsonObject launch = h.Request("launch", new JsonObject
+                {
+                    ["config"] = h.Project("prog.asm"),
+                    ["emulator"] = "MyEmu",
+                    ["emulatorPath"] = @"C:\emu\run.exe",
+                    ["bridge"] = "bridges/my_bridge.lua"
+                });
+                Assert.IsTrue((bool)launch["success"], (string)launch["message"]);
+                Assert.AreEqual("myemu", h.Environment.LaunchedEmulator.Name);
+                Assert.AreEqual(@"C:\emu\run.exe", h.Environment.LaunchedEmulator.Path);
+                Assert.AreEqual(Path.Combine(h.Directory, "bridges", "my_bridge.lua"), h.Environment.LaunchedEmulator.Bridge,
+                    "a relative bridge is relative to the project");
+            }
+        }
     }
 }

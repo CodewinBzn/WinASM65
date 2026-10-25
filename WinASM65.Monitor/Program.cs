@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using WinASM65.Cpu;
 using WinASM65.Monitor;
+using WinASM65.Monitor.Emulators;
 using WinASM65.Monitor.Protocol;
 using WinASM65.Monitor.Shell;
 
@@ -17,8 +18,8 @@ namespace WinASM65.Monitor.Cli
     ///
     /// The monitor itself is a library on purpose: everything it does is reachable
     /// from tests without an emulator. This is only the shell around it — it starts
-    /// MesenCE if asked, waits for the bridge, prints what the session answers, and
-    /// holds no logic of its own.
+    /// an emulator with its bridge if asked, waits for the bridge, prints what the
+    /// session answers, and holds no logic of its own.
     ///
     /// All commands live in <see cref="MonitorSession"/>, so a line typed here and a
     /// line sent over a socket cannot mean different things.
@@ -26,9 +27,6 @@ namespace WinASM65.Monitor.Cli
     public static class Program
     {
         private const int DefaultPort = BridgeConnector.DefaultPort;
-
-        private const string MesenCe = EmulatorIds.MesenCe;
-        private const string Mesen2 = EmulatorIds.Mesen2;
 
         public static int Main(string[] args)
         {
@@ -40,9 +38,10 @@ namespace WinASM65.Monitor.Cli
             Console.OutputEncoding = new System.Text.UTF8Encoding(false);
 
             int port = DefaultPort;
-            string mesenPath = null;
+            string emulatorPath = null;
             string romPath = null;
-            string emulator = MesenCe;
+            string emulator = null;
+            string bridge = null;
             string themePath = null;
               string sourceFile = null;
             bool? wantShell = null;
@@ -56,8 +55,12 @@ namespace WinASM65.Monitor.Cli
                         case "--port":
                             port = int.Parse(args[++i]);
                             break;
+                        case "--emulator-path":
                         case "--mesen":
-                            mesenPath = args[++i];
+                            emulatorPath = args[++i];
+                            break;
+                        case "--bridge":
+                            bridge = Path.GetFullPath(args[++i]);
                             break;
                         case "--rom":
                             romPath = args[++i];
@@ -88,32 +91,29 @@ namespace WinASM65.Monitor.Cli
                     }
                 }
 
-                if (emulator != MesenCe && emulator != Mesen2)
+                if (emulatorPath != null && romPath == null)
                 {
-                    Console.Error.WriteLine("Unknown emulator: " + emulator + " (expected " + MesenCe + " or " + Mesen2 + ")");
-                    return 2;
-                }
-
-                if (mesenPath != null && romPath == null)
-                {
-                    Console.Error.WriteLine("--mesen requires --rom.");
+                    Console.Error.WriteLine("--emulator-path requires --rom.");
                     return 2;
                 }
 
                 Process mesen = null;
                 EmulatorLauncher launcher = null;
-                if (mesenPath != null)
+                if (emulatorPath != null)
                 {
-                    launcher = new EmulatorLauncher(mesenPath, romPath, emulator, port);
+                    // Any emulator: its adapter (mesen2, mesence, or a custom one) is
+                    // chosen by name, or by the executable when no name is given.
+                    EmulatorConfiguration configured = EmulatorConfiguration.Of(emulatorPath, emulator);
+                    configured.Bridge = bridge;
+                    launcher = new EmulatorLauncher(configured, romPath, port);
                     mesen = launcher.Start();
                     if (mesen == null)
                         return 3;
                 }
                 else
                 {
-                    // A project can name any emulator in config.json.  It is not
-                    // assumed to implement the Mesen bridge; this only supplies
-                    // the shell's generic launch action.
+                    // The emulator the project's config.json declares, if any, for
+                    // the shell's launch action.
                     launcher = EmulatorLauncher.FromProjectConfiguration(Directory.GetCurrentDirectory());
                 }
 
@@ -198,13 +198,15 @@ namespace WinASM65.Monitor.Cli
         {
             Console.WriteLine("WinASM65 monitor");
             Console.WriteLine("  --port <n>       bridge port (default " + DefaultPort + ")");
-            Console.WriteLine("  --mesen <exe>    launch this emulator with the bridge");
-            Console.WriteLine("  --rom <file>     ROM to load (required with --mesen)");
-            Console.WriteLine("  --emulator <id>  " + MesenCe + " (default, memory only) or " + Mesen2 + " (full control)");
+            Console.WriteLine("  --emulator-path <exe>  launch this emulator with its bridge (--mesen is the same)");
+            Console.WriteLine("  --rom <file>     ROM to load (required with --emulator-path)");
+            Console.WriteLine("  --emulator <name> adapter: " + string.Join(", ", EmulatorAdapters.Names)
+                + ", or a custom name (default: mesen2 for a Mesen.exe)");
+            Console.WriteLine("  --bridge <file>  bridge script to load instead of the adapter's own");
             Console.WriteLine("  --theme <file>   palette to load (default: theme.json beside the executable)");
             Console.WriteLine("  --source <file>  source to open in the editor at startup, relative to the working directory");
             Console.WriteLine("  --tui | --repl   force the terminal shell, or the line prompt");
-            Console.WriteLine("With no --mesen, the monitor attaches to an already running bridge.");
+            Console.WriteLine("With no --emulator-path, the monitor attaches to an already running bridge.");
             Console.WriteLine("The shell is chosen automatically: with a real terminal it draws the");
             Console.WriteLine("panes, and with a redirected stdin or stdout it reads lines instead.");
         }

@@ -26,6 +26,9 @@ namespace WinASM65.Monitor.Emulators
         /// <summary>The file name of the bridge script shipped for this emulator, or null.</summary>
         string BuiltInBridge { get; }
 
+        /// <summary>What to tell the user when the emulator exits before its bridge answers, or null.</summary>
+        string EarlyExitHint { get; }
+
         /// <summary>Prepares the emulator before a launch; false, with the reason logged, when it cannot be.</summary>
         bool Prepare(EmulatorConfiguration emulator, TextWriter log);
 
@@ -81,6 +84,11 @@ namespace WinASM65.Monitor.Emulators
         public string DisplayName { get { return "Mesen2"; } }
         public string BuiltInBridge { get { return "bridge_mesen2.lua"; } }
 
+        public string EarlyExitHint
+        {
+            get { return "If Mesen2 was already open, close it: it runs as a single instance and the new launch was handed to the old window."; }
+        }
+
         public bool Prepare(EmulatorConfiguration emulator, TextWriter log)
         {
             return MesenSettings.Ensure(emulator.Path, log);
@@ -99,6 +107,7 @@ namespace WinASM65.Monitor.Emulators
         public string Name { get { return EmulatorAdapters.MesenCe; } }
         public string DisplayName { get { return "MesenCE"; } }
         public string BuiltInBridge { get { return "bridge.lua"; } }
+        public string EarlyExitHint { get { return null; } }
 
         public bool Prepare(EmulatorConfiguration emulator, TextWriter log)
         {
@@ -131,6 +140,11 @@ namespace WinASM65.Monitor.Emulators
         public string Name { get { return _name; } }
         public string DisplayName { get { return _name; } }
         public string BuiltInBridge { get { return null; } }
+
+        public string EarlyExitHint
+        {
+            get { return "Check the \"Arguments\" of the Emulator section: they must load the program and the bridge script."; }
+        }
 
         public bool Prepare(EmulatorConfiguration emulator, TextWriter log)
         {
