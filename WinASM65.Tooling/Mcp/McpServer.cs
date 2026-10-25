@@ -107,7 +107,11 @@ namespace WinASM65.Tooling.Mcp
                     + "Build with build_project, read errors as file:line, look at listings and symbols; debug with debug_launch "
                     + "(starts the emulator named in config.json's Emulator section), set_breakpoints, continue, step, get_state, "
                     + "read_memory/write_memory. Graphics assets (.chr, .pal.json, .msprite.json, .screen.json, .map.json) are "
-                    + "listed, rendered to images, edited and exported by the graphics tools."
+                    + "listed, rendered to images, edited and exported by the graphics tools. "
+                    + "For NES games: start with new_nes_project (a template that builds); BEFORE writing NES code, look the "
+                    + "facts up with nes_reference (pages: index, ppu-registers, ppu-memory, oam-sprites, controllers, apu-sound, "
+                    + "timing-vblank, winasm65-syntax...) or nes_search, and copy tested routines from nes_snippet instead of "
+                    + "writing them from memory. Run build_project after every change and fix its errors before going on."
             };
         }
 

@@ -1,0 +1,9 @@
+{
+  "id": "07-beep",
+  "level": "medium",
+  "title": "Beep on A",
+  "prompt": "Play a short beep on the first pulse (square) channel each time the player presses the A button.",
+  "start": "template",
+  "check": "07-beep.lua",
+  "solution": "solutions/07-beep"
+}

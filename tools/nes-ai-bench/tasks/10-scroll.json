@@ -1,0 +1,9 @@
+{
+  "id": "10-scroll",
+  "level": "hard",
+  "title": "Scrolling background",
+  "prompt": "Make the background scroll horizontally to the left by one pixel every frame, forever (the text moves across the screen).",
+  "start": "template",
+  "check": "10-scroll.lua",
+  "solution": "solutions/10-scroll"
+}
