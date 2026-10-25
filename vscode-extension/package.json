@@ -2,7 +2,7 @@
   "name": "winasm65",
   "displayName": "WinASM65",
   "description": "6502 assembly for WinASM65 projects: build, debug on Mesen2 with source breakpoints, live diagnostics.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publisher": "codewinbzn",
   "license": "Zlib",
   "repository": {
