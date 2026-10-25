@@ -79,7 +79,7 @@ dotnet run --project WinASM65.Designer -- export example_star_catcher/gfx
 cd graphics-extension
 npm install
 npm run package        # publishes WinASM65.Designer into bin/ and builds the .vsix
-code --install-extension winasm65-graphics-win32-x64-0.1.0.vsix
+code --install-extension winasm65-graphics-win32-x64-0.2.0.vsix
 ```
 
 ------------------------------

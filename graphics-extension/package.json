@@ -2,7 +2,7 @@
   "name": "winasm65-graphics",
   "displayName": "WinASM65 Graphics Designer",
   "description": "Draw NES graphics for WinASM65 projects: tile sets (.chr), palettes, screens and metatile maps, exported as .asm and binary files the assembler includes.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "codewinbzn",
   "license": "Zlib",
   "repository": {
