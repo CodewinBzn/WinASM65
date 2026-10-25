@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CPUs and emulation core</title>
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<div class="layout">
+  <nav class="site-nav" aria-label="Pages"></nav>
+
+  <main>
+    <p class="breadcrumb"><a href="index.html">WinASM65</a> › CPUs</p>
+    <header class="page">
+      <h1>CPUs and the emulation core</h1>
+      <p class="lede">The five instruction sets WinASM65 assembles for, how they are built from one opcode table, how an addressing mode is chosen for a line, and everything that reads those tables: cycle counts, editor documentation, the disassembler. Then the small NMOS 6502 interpreter that runs generated code in the tests.</p>
+    </header>
+
+    <aside class="sources">
+      <h4>Source files</h4>
+      <ul>
+        <li><a href="../../WinASM65/src/Cpu/Cpu6502.cs"><code>Cpu/Cpu6502.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Cpu/Cpu6502X.cs"><code>Cpu/Cpu6502X.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Cpu/Cpu65C02.cs"><code>Cpu/Cpu65C02.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Cpu/CpuR65C02.cs"><code>Cpu/CpuR65C02.cs</code></a> (also <code>CpuW65C02</code>)</li>
+        <li><a href="../../WinASM65/src/Cpu/CpuFactory.cs"><code>Cpu/CpuFactory.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Cpu/AddressingMode.cs"><code>Cpu/AddressingMode.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Cpu/CycleTimings.cs"><code>Cpu/CycleTimings.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Cpu/InstructionDocs.cs"><code>Cpu/InstructionDocs.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Cpu/InstructionDescriptions.cs"><code>Cpu/InstructionDescriptions.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Cpu/Disassembler.cs"><code>Cpu/Disassembler.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Execution/Cpu6502Core.cs"><code>Execution/Cpu6502Core.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Execution/Cpu6502CycleTable.cs"><code>Execution/Cpu6502CycleTable.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Execution/ICpuBus.cs"><code>Execution/ICpuBus.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Execution/RamBus.cs"><code>Execution/RamBus.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Execution/ProcessorState.cs"><code>Execution/ProcessorState.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Execution/ExecutionOptions.cs"><code>Execution/ExecutionOptions.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Execution/ExecutionStop.cs"><code>Execution/ExecutionStop.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Execution/Watchpoint.cs"><code>Execution/Watchpoint.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Execution/WatchpointSet.cs"><code>Execution/WatchpointSet.cs</code></a></li>
+        <li><a href="../../WinASM65.Tooling/Lsp/HoverCard.cs"><code>Tooling/Lsp/HoverCard.cs</code></a></li>
+      </ul>
+    </aside>
+
+    <h2 id="cpus">Five instruction sets</h2>
+    <p>Each CPU is a class implementing <code>ICpuInstructionSet</code>. They form a single inheritance chain: every variant starts from a copy of its parent's opcode map and adds forms to it. The counts below were taken from the built library (<code>cpu.Mnemonics.Count</code> and <code>cpu.Opcodes.Count</code>; each form has its own opcode byte, so forms and opcodes are the same number).</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>Class</th><th>Parent</th><th>Mnemonics</th><th>Opcodes</th><th>Adds</th></tr></thead>
+      <tbody>
+        <tr><td><code>6502</code></td><td><code>Cpu6502</code></td><td>—</td><td>56</td><td>151</td><td>The documented NMOS 6502 set. The engine's default CPU.</td></tr>
+        <tr><td><code>6502x</code></td><td><code>Cpu6502X</code></td><td><code>Cpu6502</code></td><td>70</td><td>214</td><td>63 stable undocumented opcodes, named as in ca65's 6502X: <code>SLO RLA SRE RRA DCP ISC</code> (7 modes each), <code>SAX</code>, <code>LAX</code>, <code>ANC ALR ARR AXS LAS</code>, <code>NOP</code> with an operand, <code>JAM</code>.</td></tr>
+        <tr><td><code>65c02</code></td><td><code>Cpu65C02</code></td><td><code>Cpu6502</code></td><td>64</td><td>178</td><td>27 CMOS forms: <code>(zp)</code> for 8 ALU/load/store instructions, <code>JMP (abs,X)</code>, <code>BIT #</code>/<code>zp,X</code>/<code>abs,X</code>, <code>INC A</code>/<code>DEC A</code>, <code>BRA</code>, <code>PHX PHY PLX PLY</code>, <code>STZ</code>, <code>TRB</code>, <code>TSB</code>.</td></tr>
+        <tr><td><code>r65c02</code></td><td><code>CpuR65C02</code></td><td><code>Cpu65C02</code></td><td>96</td><td>210</td><td>Rockwell bit instructions: <code>RMB0–7</code>, <code>SMB0–7</code> (zero page), <code>BBR0–7</code>, <code>BBS0–7</code> (zero page + branch).</td></tr>
+        <tr><td><code>w65c02</code></td><td><code>CpuW65C02</code></td><td><code>CpuR65C02</code></td><td>98</td><td>212</td><td><code>WAI</code> ($CB) and <code>STP</code> ($DB). Declared in <code>CpuR65C02.cs</code>.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p><code>Cpu6502X</code> leaves out, on purpose, the unstable opcodes (<code>ANE</code>/<code>XAA</code> $8B, <code>LXA</code> $AB, <code>SHA</code>, <code>SHX</code>, <code>SHY</code>, <code>TAS</code>) and the duplicate encodings of an instruction that already has one (<code>SBC</code> $EB, the second <code>ANC</code> $2B, the other <code>NOP</code> and <code>JAM</code> codes). Each mnemonic and mode keeps one opcode, which is what lets the disassembler invert the table; a duplicate is shown as <code>.byte</code>.</p>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 250" role="img" aria-label="Class hierarchy: Cpu6502X and Cpu65C02 derive from Cpu6502; CpuR65C02 derives from Cpu65C02; CpuW65C02 derives from CpuR65C02; all implement ICpuInstructionSet, and CpuFactory creates them by name">
+        <defs>
+          <marker id="c1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <rect class="frame" x="10" y="14" width="200" height="52" rx="8"/>
+        <text x="110" y="36" text-anchor="middle" font-weight="600" font-size="14">ICpuInstructionSet</text>
+        <text x="110" y="54" text-anchor="middle" class="muted" font-size="12">interface</text>
+
+        <rect class="box-a" x="320" y="14" width="200" height="52" rx="8"/>
+        <text x="420" y="36" text-anchor="middle" font-weight="600" font-size="14">Cpu6502</text>
+        <text x="420" y="54" text-anchor="middle" class="muted" font-size="12">56 mnemonics · 151 opcodes</text>
+        <path class="line" d="M320,40 L210,40" marker-end="url(#c1)" stroke-dasharray="5 4"/>
+
+        <rect class="box-c" x="620" y="14" width="260" height="52" rx="8"/>
+        <text x="750" y="36" text-anchor="middle" font-weight="600" font-size="14">Cpu6502X</text>
+        <text x="750" y="54" text-anchor="middle" class="muted" font-size="12">+ undocumented · 214</text>
+        <path class="line" d="M620,40 L520,40" marker-end="url(#c1)"/>
+
+        <rect class="box-b" x="320" y="100" width="200" height="52" rx="8"/>
+        <text x="420" y="122" text-anchor="middle" font-weight="600" font-size="14">Cpu65C02</text>
+        <text x="420" y="140" text-anchor="middle" class="muted" font-size="12">+ CMOS · 178</text>
+        <path class="line" d="M420,100 L420,66" marker-end="url(#c1)"/>
+
+        <rect class="box-b" x="320" y="186" width="200" height="52" rx="8"/>
+        <text x="420" y="208" text-anchor="middle" font-weight="600" font-size="14">CpuR65C02</text>
+        <text x="420" y="226" text-anchor="middle" class="muted" font-size="12">+ RMB SMB BBR BBS · 210</text>
+        <path class="line" d="M420,186 L420,152" marker-end="url(#c1)"/>
+
+        <rect class="box-b" x="620" y="186" width="260" height="52" rx="8"/>
+        <text x="750" y="208" text-anchor="middle" font-weight="600" font-size="14">CpuW65C02</text>
+        <text x="750" y="226" text-anchor="middle" class="muted" font-size="12">+ WAI STP · 212</text>
+        <path class="line" d="M620,212 L520,212" marker-end="url(#c1)"/>
+
+        <rect class="box-d" x="10" y="140" width="200" height="52" rx="8"/>
+        <text x="110" y="162" text-anchor="middle" font-weight="600" font-size="14">CpuFactory</text>
+        <text x="110" y="180" text-anchor="middle" class="muted" font-size="12">Create(name)</text>
+        <path class="line" d="M210,160 L320,56" marker-end="url(#c1)" stroke-dasharray="2 4"/>
+        <text x="268" y="128" class="muted" font-size="12">creates any of them</text>
+        <text x="620" y="110" class="muted" font-size="12">Solid arrows: "derives from". Dashed: "implements".</text>
+      </svg>
+    </div>
+
+    <h2 id="selecting">Choosing a CPU</h2>
+    <p>The CPU comes from the target (each system in the catalog names one), and <code>-cpu</code> or the configuration overrides it; see <a href="targets.html">Targets</a>. The name is turned into an instance by <code>CpuFactory.Create</code>, after <code>Normalize</code> (lower case, hyphens and spaces removed, so <code>W65C02-S</code> works):</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Accepted names</th><th>Instance</th></tr></thead>
+      <tbody>
+        <tr><td>empty, <code>6502</code>, <code>nmos</code>, <code>nmos6502</code></td><td><code>Cpu6502</code></td></tr>
+        <tr><td><code>6502x</code>, <code>nmos6502x</code>, <code>6502illegal</code></td><td><code>Cpu6502X</code></td></tr>
+        <tr><td><code>65c02</code>, <code>cmos</code></td><td><code>Cpu65C02</code></td></tr>
+        <tr><td><code>r65c02</code>, <code>rockwell</code></td><td><code>CpuR65C02</code></td></tr>
+        <tr><td><code>w65c02</code>, <code>w65c02s</code>, <code>wdc65c02</code></td><td><code>CpuW65C02</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Anything else throws an <code>ArgumentException</code> naming the canonical list, <code>CpuFactory.Names</code> = <code>6502, 6502x, 65c02, r65c02, w65c02</code>; the command line reports it as a configuration error. <code>CpuFactory.All</code> returns one instance of each, keyed by canonical name.</p>
+
+    <h2 id="interface">The ICpuInstructionSet contract</h2>
+<pre><code>public interface ICpuInstructionSet
+{
+    bool IsInstruction(string mnemonic);
+    bool IsRelativeBranch(string mnemonic);
+    bool IsAccumulatorInstruction(string mnemonic);
+    bool TryGetOpcode(string mnemonic, AddressingMode mode, out byte opcode);
+    IReadOnlyList&lt;OpcodeEntry&gt; Opcodes { get; }        // every form, sorted
+    IReadOnlyCollection&lt;string&gt; Mnemonics { get; }     // upper case
+    InstructionInfo ParseOperand(string mnemonic, string operand);
+    bool TryOptimizeZeroPage(string mnemonic, AddressingMode currentMode, long value,
+        out AddressingMode optimizedMode, out byte opcode, out byte length);
+    bool TryCalculateRelativeOffset(long targetAddress, long instructionAddress,
+        out byte offset, out string error);
+}</code></pre>
+    <p><code>ParseOperand</code> returns an <code>InstructionInfo</code>: <code>Mode</code>, <code>Opcode</code>, <code>Length</code>, <code>OperandExpression</code>, <code>SecondOperandExpression</code> (the branch target of <code>BBRn</code>), and <code>HasOpcode</code>, which says whether the CPU really has that form. <code>OpcodeEntry</code> is a <code>readonly struct</code> of <code>Mnemonic</code>, <code>Mode</code> and <code>Opcode</code>.</p>
+
+    <h2 id="tables">Opcode tables</h2>
+    <p>The NMOS set is written as literal rows, one byte per addressing mode 0 to 12, with <code>0xFF</code> meaning "no such form":</p>
+<pre><code>// Mode index: IMP=0, ACC=1, IMM=2, ABS=3, ABX=4, ABY=5, ZPG=6, ZPX=7, ZPY=8, IND=9, INX=10, INY=11, REL=12
+{ "LDA", new byte[] {0xff, 0xff, 0xa9, 0xad, 0xbd, 0xb9, 0xa5, 0xb5, 0xff, 0xff, 0xa1, 0xb1, 0xff } },</code></pre>
+    <p>Those rows are read once by <code>FromRows</code> into the shape everything else uses, a map <code>mnemonic → (AddressingMode → opcode)</code>, in which <strong>a missing key is a missing form</strong>. The sentinel stops there: in the map any byte is an opcode, <code>$FF</code> included (it is <code>ISC abs,X</code> on the 6502X). Each subclass overrides one virtual property and builds its map from its parent's with two helpers:</p>
+<pre><code>protected virtual Dictionary&lt;string, Dictionary&lt;AddressingMode, byte&gt;&gt; OpcodeMap { get; }
+
+// Cpu65C02.CreateCmosOpcodeMap()
+Dictionary&lt;string, Dictionary&lt;AddressingMode, byte&gt;&gt; table = Copy(FromRows(NmosOpcodeTable));
+Set(table, "LDA", AddressingMode.ZeroPageIndirect, 0xB2);
+Set(table, "BRA", AddressingMode.Relative, 0x80);
+…</code></pre>
+    <p>The other virtual members say which mnemonics take a special operand shape: <code>RelativeBranchMnemonics</code> (the eight NMOS branches, plus <code>BRA</code> on CMOS), <code>AccumulatorMnemonics</code> (<code>ASL LSR ROL ROR</code>, plus <code>INC DEC</code> on CMOS) and <code>BitBranchMnemonics</code> (<code>BBR0–7</code>, <code>BBS0–7</code> on the Rockwell and WDC parts). <code>Opcodes</code> flattens the map into a list sorted by mnemonic then mode, built once per instance; that list is what the documentation and the disassembler consume.</p>
+
+    <h2 id="modes">Addressing modes</h2>
+    <p><code>AddressingMode</code> has sixteen values (plus <code>None</code> = −1). Values 0 to 12 are the NMOS modes and the column order of the literal rows; 13 to 15 were added for the CMOS and Rockwell parts. Length is <code>Disassembler.ModeLength</code>, syntax is <code>InstructionDocs.SyntaxFor</code>; the last columns count the forms of each CPU in that mode.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>Mode</th><th>Syntax</th><th>Bytes</th><th>6502</th><th>6502x</th><th>65c02</th><th>r65c02</th><th>w65c02</th></tr></thead>
+      <tbody>
+        <tr><td>0</td><td><code>Implicit</code></td><td>—</td><td>1</td><td>25</td><td>26</td><td>29</td><td>29</td><td>31</td></tr>
+        <tr><td>1</td><td><code>Accumulator</code></td><td><code>A</code> or nothing</td><td>1</td><td>4</td><td>4</td><td>6</td><td>6</td><td>6</td></tr>
+        <tr><td>2</td><td><code>Immediate</code></td><td><code>#$nn</code></td><td>2</td><td>11</td><td>16</td><td>12</td><td>12</td><td>12</td></tr>
+        <tr><td>3</td><td><code>Absolute</code></td><td><code>$nnnn</code></td><td>3</td><td>23</td><td>32</td><td>26</td><td>26</td><td>26</td></tr>
+        <tr><td>4</td><td><code>AbsoluteX</code></td><td><code>$nnnn,x</code></td><td>3</td><td>15</td><td>22</td><td>17</td><td>17</td><td>17</td></tr>
+        <tr><td>5</td><td><code>AbsoluteY</code></td><td><code>$nnnn,y</code></td><td>3</td><td>9</td><td>17</td><td>9</td><td>9</td><td>9</td></tr>
+        <tr><td>6</td><td><code>ZeroPage</code></td><td><code>$nn</code></td><td>2</td><td>21</td><td>30</td><td>24</td><td>40</td><td>40</td></tr>
+        <tr><td>7</td><td><code>ZeroPageX</code></td><td><code>$nn,x</code></td><td>2</td><td>16</td><td>23</td><td>18</td><td>18</td><td>18</td></tr>
+        <tr><td>8</td><td><code>ZeroPageY</code></td><td><code>$nn,y</code></td><td>2</td><td>2</td><td>4</td><td>2</td><td>2</td><td>2</td></tr>
+        <tr><td>9</td><td><code>Indirect</code></td><td><code>($nnnn)</code></td><td>3</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td></tr>
+        <tr><td>10</td><td><code>IndirectX</code></td><td><code>($nn,x)</code></td><td>2</td><td>8</td><td>16</td><td>8</td><td>8</td><td>8</td></tr>
+        <tr><td>11</td><td><code>IndirectY</code></td><td><code>($nn),y</code></td><td>2</td><td>8</td><td>15</td><td>8</td><td>8</td><td>8</td></tr>
+        <tr><td>12</td><td><code>Relative</code></td><td><code>target</code></td><td>2</td><td>8</td><td>8</td><td>9</td><td>9</td><td>9</td></tr>
+        <tr><td>13</td><td><code>ZeroPageIndirect</code></td><td><code>($nn)</code></td><td>2</td><td>—</td><td>—</td><td>8</td><td>8</td><td>8</td></tr>
+        <tr><td>14</td><td><code>AbsoluteIndexedIndirect</code></td><td><code>($nnnn,x)</code></td><td>3</td><td>—</td><td>—</td><td>1</td><td>1</td><td>1</td></tr>
+        <tr><td>15</td><td><code>ZeroPageRelative</code></td><td><code>$nn,target</code></td><td>3</td><td>—</td><td>—</td><td>—</td><td>16</td><td>16</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p><code>AddressingModes.Describe(mode)</code> gives the name used in messages and hover cards ("indirect indexed (zp),Y"), and <code>AddressingModes.ZeroPageOf(mode)</code> maps <code>Absolute</code>, <code>AbsoluteX</code>, <code>AbsoluteY</code> to their zero-page twins.</p>
+
+    <h2 id="choosing">Choosing the addressing mode</h2>
+    <p>Two steps. <code>ParseOperand</code> decides from the <em>shape</em> of the operand text; the engine's <code>HandleInstruction</code> then decides from the <em>value</em>, when it is known.</p>
+
+    <h3>1. The shape: ParseOperand</h3>
+    <div class="figure">
+      <svg viewBox="0 0 900 420" role="img" aria-label="ParseOperand decision order: empty operand or A gives accumulator or implied; a relative branch mnemonic gives Relative; a bit-branch mnemonic gives ZeroPageRelative; then, after removing whitespace, a leading # gives Immediate, (…,x) gives IndirectX, (…),y gives IndirectY, (…) gives Indirect, …,x gives AbsoluteX, …,y gives AbsoluteY, anything else Absolute">
+        <defs>
+          <marker id="c2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <g font-size="13">
+          <rect class="box-c" x="60" y="10" width="420" height="28" rx="6"/>
+          <text x="72" y="29">operand empty, or <tspan font-family="Consolas, monospace">A</tspan> on ASL/LSR/ROL/ROR (+INC/DEC on CMOS)</text>
+          <rect class="box-b" x="560" y="10" width="320" height="28" rx="6"/>
+          <text x="572" y="29">Accumulator if it has that form, else Implicit</text>
+
+          <rect class="box-c" x="60" y="48" width="420" height="28" rx="6"/>
+          <text x="72" y="67">mnemonic is a relative branch (Bxx, BRA)</text>
+          <rect class="box-b" x="560" y="48" width="320" height="28" rx="6"/>
+          <text x="572" y="67">Relative, 2 bytes</text>
+
+          <rect class="box-c" x="60" y="86" width="420" height="28" rx="6"/>
+          <text x="72" y="105">mnemonic is BBRn / BBSn</text>
+          <rect class="box-b" x="560" y="86" width="320" height="28" rx="6"/>
+          <text x="572" y="105">ZeroPageRelative, 3 bytes, two operands</text>
+
+          <rect class="frame" x="50" y="126" width="840" height="10" rx="2"/>
+          <text x="60" y="152" class="muted" font-size="12">whitespace removed outside literals (RemoveWhitespaceOutsideQuotes), then:</text>
+
+          <rect class="box-a" x="60" y="164" width="420" height="28" rx="6"/>
+          <text x="72" y="183">starts with <tspan font-family="Consolas, monospace">#</tspan></text>
+          <rect class="box-b" x="560" y="164" width="320" height="28" rx="6"/>
+          <text x="572" y="183">Immediate, 2 bytes</text>
+
+          <rect class="box-a" x="60" y="202" width="420" height="28" rx="6"/>
+          <text x="72" y="221"><tspan font-family="Consolas, monospace">(…,x)</tspan></text>
+          <rect class="box-b" x="560" y="202" width="320" height="28" rx="6"/>
+          <text x="572" y="221">IndirectX, 2 · CMOS JMP: AbsoluteIndexedIndirect, 3</text>
+
+          <rect class="box-a" x="60" y="240" width="420" height="28" rx="6"/>
+          <text x="72" y="259"><tspan font-family="Consolas, monospace">(…),y</tspan></text>
+          <rect class="box-b" x="560" y="240" width="320" height="28" rx="6"/>
+          <text x="572" y="259">IndirectY, 2 bytes</text>
+
+          <rect class="box-a" x="60" y="278" width="420" height="28" rx="6"/>
+          <text x="72" y="297"><tspan font-family="Consolas, monospace">(…)</tspan></text>
+          <rect class="box-b" x="560" y="278" width="320" height="28" rx="6"/>
+          <text x="572" y="297">Indirect, 3 · CMOS non-JMP: ZeroPageIndirect, 2</text>
+
+          <rect class="box-a" x="60" y="316" width="420" height="28" rx="6"/>
+          <text x="72" y="335">ends with <tspan font-family="Consolas, monospace">,x</tspan></text>
+          <rect class="box-b" x="560" y="316" width="320" height="28" rx="6"/>
+          <text x="572" y="335">AbsoluteX, 3 bytes</text>
+
+          <rect class="box-a" x="60" y="354" width="420" height="28" rx="6"/>
+          <text x="72" y="373">ends with <tspan font-family="Consolas, monospace">,y</tspan></text>
+          <rect class="box-b" x="560" y="354" width="320" height="28" rx="6"/>
+          <text x="572" y="373">AbsoluteY, 3 bytes</text>
+
+          <rect class="box-d" x="60" y="392" width="420" height="24" rx="6"/>
+          <text x="72" y="409">anything else</text>
+          <rect class="box-b" x="560" y="392" width="320" height="24" rx="6"/>
+          <text x="572" y="409">Absolute, 3 bytes</text>
+        </g>
+        <path class="line" d="M30,20 L30,404" marker-end="url(#c2)"/>
+        <path class="line" d="M480,24 L560,24" marker-end="url(#c2)"/>
+        <path class="line" d="M480,62 L560,62" marker-end="url(#c2)"/>
+        <path class="line" d="M480,100 L560,100" marker-end="url(#c2)"/>
+        <path class="line" d="M480,178 L560,178" marker-end="url(#c2)"/>
+        <path class="line" d="M480,216 L560,216" marker-end="url(#c2)"/>
+        <path class="line" d="M480,254 L560,254" marker-end="url(#c2)"/>
+        <path class="line" d="M480,292 L560,292" marker-end="url(#c2)"/>
+        <path class="line" d="M480,330 L560,330" marker-end="url(#c2)"/>
+        <path class="line" d="M480,368 L560,368" marker-end="url(#c2)"/>
+        <path class="line" d="M480,404 L560,404" marker-end="url(#c2)"/>
+      </svg>
+    </div>
+    <p>The parser never produces a zero-page mode itself (except <code>(zp)</code> on CMOS): <code>$10</code> and <code>$0010</code> are both <code>Absolute</code> at this stage. <code>A</code> is the accumulator only for a mnemonic that has that form, so <code>LDA A</code> reads a symbol called <code>A</code>. The two <code>Cpu65C02</code> overrides, <code>ParseIndexedIndirectX</code> and <code>ParseIndirect</code>, are the only places a CPU changes the decision.</p>
+
+    <h3>2. The value: HandleInstruction</h3>
+    <ol>
+      <li><strong>Form missing.</strong> If <code>HasOpcode</code> is false and the mode has a zero-page twin the CPU does have, that twin is taken with length 2 (<code>STX $10,y</code> has no absolute form: it becomes <code>96 10</code>). Otherwise: <code>"{mnemonic} does not support {mode} addressing"</code>.</li>
+      <li><strong>Resolved operand, relative.</strong> <code>TryCalculateRelativeOffset</code> computes <code>target − (instruction + 2)</code> and refuses anything outside −128..127 ("Relative jump is too big"). <code>BBRn</code> passes <code>instruction + 1</code> so its displacement counts from the end of its three bytes.</li>
+      <li><strong>Resolved operand, range.</strong> A 2-byte form needs −128..255, a 3-byte form −32768..65535; a value outside is an error and zeros are emitted in its place.</li>
+      <li><strong>Resolved operand, zero page.</strong> <code>TryOptimizeZeroPage</code>: if the mode is <code>Absolute</code>, <code>AbsoluteX</code> or <code>AbsoluteY</code>, the value is 0..255 and the CPU has the zero-page twin, the shorter form is emitted. The relocation is recorded afterwards, so its width follows the bytes actually written.</li>
+      <li><strong>Pending operand.</strong> The opcode and a zero placeholder sized by <code>info.Length</code> are emitted, and a fixup is registered (<a href="assembler.html#fixups">Assembly pipeline: fixups</a>). The zero-page decision cannot be made, so a forward reference to a zero-page address keeps the absolute form.</li>
+    </ol>
+    <p>Lines assembled by the current code (listing rows from <code>InMemoryListingService</code>):</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>CPU</th><th>Source</th><th>Bytes</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>6502</td><td><code>lda $10</code></td><td><code>A5 10</code></td><td>Absolute shrunk to ZeroPage.</td></tr>
+        <tr><td>6502</td><td><code>lda $0010</code></td><td><code>A5 10</code></td><td>The value decides, not the spelling.</td></tr>
+        <tr><td>6502</td><td><code>lda later</code> (<code>later = $10</code> further down)</td><td><code>AD 10 00</code></td><td>Forward reference: width fixed at 3.</td></tr>
+        <tr><td>6502</td><td><code>stx $10,y</code></td><td><code>96 10</code></td><td>No <code>STX abs,Y</code>: zero-page twin.</td></tr>
+        <tr><td>6502</td><td><code>ldx $1234,y</code></td><td><code>BE 34 12</code></td><td>Does not fit a byte.</td></tr>
+        <tr><td>6502</td><td><code>jmp ($1234)</code></td><td><code>6C 34 12</code></td><td>Indirect.</td></tr>
+        <tr><td>6502</td><td><code>bne *</code></td><td><code>D0 FE</code></td><td>Displacement −2.</td></tr>
+        <tr><td>6502</td><td><code>asl</code> / <code>asl a</code></td><td><code>0A</code></td><td>Accumulator, both spellings.</td></tr>
+        <tr><td>6502</td><td><code>ldx ($10),y</code></td><td>—</td><td>Error: LDX does not support indirect indexed (zp),Y addressing.</td></tr>
+        <tr><td>65c02</td><td><code>lda ($10)</code></td><td><code>B2 10</code></td><td>ZeroPageIndirect.</td></tr>
+        <tr><td>65c02</td><td><code>jmp ($1234,x)</code></td><td><code>7C 34 12</code></td><td>AbsoluteIndexedIndirect.</td></tr>
+        <tr><td>r65c02</td><td><code>bbr3 $10, *</code></td><td><code>3F 10 FD</code></td><td>Zero page, then displacement −3.</td></tr>
+        <tr><td>6502x</td><td><code>lax ($10),y</code></td><td><code>B3 10</code></td><td>Undocumented; on <code>6502</code>: "Unknown instruction or macro 'lax'".</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2 id="consumers">One table, four readers</h2>
+    <p>The opcode map is the only description of an instruction set. Everything else is derived from it, so the assembler, the disassembler and the editor cannot disagree about which forms exist.</p>
+    <div class="figure">
+      <svg viewBox="0 0 900 330" role="img" aria-label="The CPU opcode map feeds the assembler through ParseOperand and TryGetOpcode, the Disassembler through an inverted index, and InstructionDocs; CycleTimings feeds InstructionDocs and reads Cpu6502CycleTable, which the execution core also uses; the monitor reads the Disassembler and InstructionDocs, the language server hover card and the syntax lexer read InstructionDocs">
+        <defs>
+          <marker id="c3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <rect class="box-a" x="10" y="60" width="180" height="64" rx="8"/>
+        <text x="100" y="86" text-anchor="middle" font-weight="600" font-size="14">OpcodeMap</text>
+        <text x="100" y="106" text-anchor="middle" class="muted" font-size="12">→ Opcodes (OpcodeEntry)</text>
+
+        <rect class="box-a" x="10" y="222" width="180" height="56" rx="8"/>
+        <text x="100" y="246" text-anchor="middle" font-weight="600" font-size="14">Cpu6502CycleTable</text>
+        <text x="100" y="265" text-anchor="middle" class="muted" font-size="12">NMOS cycles by opcode</text>
+
+        <rect class="box-c" x="260" y="10" width="200" height="56" rx="8"/>
+        <text x="360" y="34" text-anchor="middle" font-weight="600" font-size="14">AssemblerEngine</text>
+        <text x="360" y="53" text-anchor="middle" class="muted" font-size="12">ParseOperand, TryGetOpcode</text>
+
+        <rect class="box-c" x="260" y="90" width="200" height="56" rx="8"/>
+        <text x="360" y="114" text-anchor="middle" font-weight="600" font-size="14">Disassembler</text>
+        <text x="360" y="133" text-anchor="middle" class="muted" font-size="12">opcode → form index</text>
+
+        <rect class="box-b" x="260" y="170" width="200" height="56" rx="8"/>
+        <text x="360" y="194" text-anchor="middle" font-weight="600" font-size="14">InstructionDocs</text>
+        <text x="360" y="213" text-anchor="middle" class="muted" font-size="12">+ ModeLength, SyntaxFor</text>
+
+        <rect class="box-b" x="260" y="250" width="200" height="56" rx="8"/>
+        <text x="360" y="274" text-anchor="middle" font-weight="600" font-size="14">CycleTimings</text>
+        <text x="360" y="293" text-anchor="middle" class="muted" font-size="12">base count + note</text>
+
+        <rect class="box-d" x="540" y="90" width="170" height="56" rx="8"/>
+        <text x="625" y="114" text-anchor="middle" font-weight="600" font-size="14">Monitor</text>
+        <text x="625" y="133" text-anchor="middle" class="muted" font-size="12">memory views, listing</text>
+
+        <rect class="box-d" x="540" y="170" width="170" height="56" rx="8"/>
+        <text x="625" y="194" text-anchor="middle" font-weight="600" font-size="14">LSP HoverCard</text>
+        <text x="625" y="213" text-anchor="middle" class="muted" font-size="12">+ InstructionDescriptions</text>
+
+        <rect class="box-d" x="540" y="250" width="170" height="56" rx="8"/>
+        <text x="625" y="274" text-anchor="middle" font-weight="600" font-size="14">AssemblyLexer</text>
+        <text x="625" y="293" text-anchor="middle" class="muted" font-size="12">mnemonic colouring</text>
+
+        <rect class="box-d" x="740" y="250" width="150" height="56" rx="8"/>
+        <text x="815" y="274" text-anchor="middle" font-weight="600" font-size="14">Cpu6502Core</text>
+        <text x="815" y="293" text-anchor="middle" class="muted" font-size="12">execution core</text>
+
+        <path class="line" d="M190,80 L260,40" marker-end="url(#c3)"/>
+        <path class="line" d="M190,96 L260,116" marker-end="url(#c3)"/>
+        <path class="line" d="M190,112 L260,190" marker-end="url(#c3)"/>
+        <path class="line" d="M190,256 L260,276" marker-end="url(#c3)"/>
+        <path class="line" d="M360,250 L360,226" marker-end="url(#c3)"/>
+        <path class="line" d="M100,278 L100,320 L815,320 L815,306" marker-end="url(#c3)"/>
+        <path class="line" d="M460,118 L540,118" marker-end="url(#c3)"/>
+        <path class="line" d="M460,182 L540,136" marker-end="url(#c3)"/>
+        <path class="line" d="M460,198 L540,198" marker-end="url(#c3)"/>
+        <path class="line" d="M460,214 L540,266" marker-end="url(#c3)"/>
+      </svg>
+    </div>
+    <p class="caption">The cycle table is keyed by opcode byte and knows nothing of mnemonics. In the monitor, <code>AssemblerListingSource</code> reads <code>InstructionDocs</code> (and colours lines with <code>AssemblyLexer</code>), while <code>MonitorSession</code> and <code>ProtocolServer</code> disassemble memory.</p>
+
+    <h2 id="timings">Cycle timings</h2>
+    <p><code>CycleTimings.Of(cpu, mnemonic, mode, opcode, out cycles, out note)</code> gives every form a base count and a note for when it takes longer.</p>
+    <ul>
+      <li>The 151 documented NMOS forms read <code>Cpu6502CycleTable.Base(opcode)</code>, the execution core's own table. <code>CycleTimingsTests.TheDocumentedNmosCountsAreTheExecutionCoresOwn</code> keeps the two identical.</li>
+      <li>Forms the core does not execute (undocumented opcodes, CMOS additions, Rockwell and WDC bit instructions) take counts written in <code>TryExtra</code>.</li>
+      <li>On a CMOS CPU (<code>cpu is Cpu65C02</code>, which includes the Rockwell and WDC classes) <code>JMP ($nnnn)</code> is 6 cycles instead of 5 and <code>ASL/LSR/ROL/ROR abs,X</code> are 6 plus a page-crossing note.</li>
+      <li><code>JAM</code> has no count (<code>null</code>): it halts the processor.</li>
+    </ul>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Note</th><th>Applies to</th></tr></thead>
+      <tbody>
+        <tr><td><code>+1 if a page is crossed</code> (<code>PageCrossNote</code>)</td><td><code>abs,X</code>, <code>abs,Y</code>, <code>(zp),Y</code> reads of <code>ADC AND CMP EOR LDA LDX LDY ORA SBC LAX LAS NOP BIT</code>; CMOS shifts <code>abs,X</code></td></tr>
+        <tr><td><code>+1 if taken, +2 if taken across a page</code> (<code>BranchNote</code>)</td><td>relative branches and <code>BBRn</code>/<code>BBSn</code></td></tr>
+        <tr><td><code>+1 if it crosses a page</code></td><td><code>BRA</code></td></tr>
+        <tr><td><code>+1 in decimal mode</code> (<code>DecimalNote</code>)</td><td><code>ADC</code>, <code>SBC</code> on CMOS</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2 id="docs">InstructionDocs and InstructionDescriptions</h2>
+    <p>Two sources, deliberately split:</p>
+    <div class="grid-2">
+      <div class="card">
+        <h4>InstructionDocs <span class="tag">derived</span></h4>
+        <p><code>ForCpu(cpu)</code> turns every <code>OpcodeEntry</code> into an <code>InstructionDocumentation</code>: <code>Mnemonic</code>, <code>Mode</code>, <code>Opcode</code>, <code>Length</code> (<code>Disassembler.ModeLength</code>), <code>Syntax</code> (<code>SyntaxFor</code>), <code>Cycles</code>, <code>CycleNote</code>, <code>CyclesText</code>. Cached per CPU instance in a <code>ConditionalWeakTable</code>. Also <code>ForMnemonic</code>, <code>TryGet</code>, <code>MnemonicsFor</code>, <code>IsMnemonic</code>.</p>
+      </div>
+      <div class="card">
+        <h4>InstructionDescriptions <span class="tag">written</span></h4>
+        <p>The prose: for each mnemonic, its full name ("Load Accumulator"), a one-sentence summary and the flags it changes ("N Z"). <code>RMBn</code>, <code>SMBn</code>, <code>BBRn</code>, <code>BBSn</code> are generated from the digit. <code>InstructionDescriptionsTests.EveryMnemonicOfEveryCpuIsDescribed</code> checks coverage.</p>
+      </div>
+    </div>
+    <p>The language server builds its instruction hover from both (<code>HoverCard.Instruction</code>): the description gives the title, summary and <code>@flags</code>; the form the line assembled to gives <code>@mode</code>, <code>@cycles</code> and <code>@bytes</code>; the table lists every form of the mnemonic on the project's CPU, with a ◀ on the one used. The assembled form is found by matching the listing row's first byte and length against <code>InstructionDocs.ForCpu</code> and checking the mnemonic is written on the line.</p>
+    <figure class="shot">
+      <a href="img/vscode-hover-instruction.png"><img src="img/vscode-hover-instruction.png" alt="Hover card on LDA STAGE_STARTED: Load A, zero page form, 3 cycles, 2 bytes A5 60 at $C026, flags N Z, and a table of all eight LDA forms with opcodes, bytes and cycles"></a>
+      <figcaption>The hover of an <code>LDA</code> in the Bomberman example. The cycle column and the "+p" legend come from <code>CycleTimings</code>; the opcode and byte columns from the opcode table.</figcaption>
+    </figure>
+    <p><code>InstructionDocs.MnemonicsFor(cpu)</code> is also what <code>TextFormat/AssemblyLexer</code> classifies mnemonics against when it colours a line.</p>
+
+    <h2 id="disassembler">The disassembler</h2>
+    <p><code>new Disassembler(cpu)</code> inverts <code>cpu.Opcodes</code> into an <code>opcode → OpcodeInfo(mnemonic, mode, length)</code> index, and throws at construction if one opcode maps to two different forms: refusing to start is preferred over disassembling wrong. <code>Disassemble(address, memory, offset)</code> returns a <code>DisassembledInstruction</code>:</p>
+    <ul>
+      <li>an opcode not in the table gives <code>IsKnown = false</code> and the text <code>.byte $xx</code>, never a guess (<code>$02</code> on an R65C02 for example);</li>
+      <li>operands are rendered by <code>RenderOperand</code> in the syntax the assembler accepts, upper-case hexadecimal; the accumulator form is rendered with no operand;</li>
+      <li>branches show their target address and fill <code>TargetAddress</code>; <code>BBRn</code> shows <code>$zp,$target</code> (bytes <code>3F 10 FD</code> at $8000 give <code>BBR3 $10,$8000</code>);</li>
+      <li>a buffer too short for the instruction gives the bytes available while <code>Length</code> stays the instruction's length.</li>
+    </ul>
+    <p>Because the zero-page form is kept as it is, assembling a disassembly gives back the same bytes; <code>DisassemblerTests</code> checks that round trip. The monitor uses the disassembler for memory views (<code>MonitorSession</code>, <code>ProtocolServer</code>); see <a href="monitor.html">Monitor</a>.</p>
+
+    <h2 id="execution">The execution core</h2>
+    <p><code>Execution/Cpu6502Core</code> is a small NMOS 6502 interpreter. It exists to <em>run</em> code the toolchain generates, such as the relocating stub built by <code>TextFormat/RuntimeBlock</code>, instead of only comparing its bytes. It executes the processor and nothing else: no video, no hardware, no real-time clock.</p>
+    <div class="figure">
+      <svg viewBox="0 0 900 220" role="img" aria-label="Execution core: Cpu6502Core reads and writes through ICpuBus, implemented by RamBus; it charges cycles from Cpu6502CycleTable; it checks breakpoints and a WatchpointSet; Run and Step return an ExecutionStop; CaptureState returns a ProcessorState">
+        <defs>
+          <marker id="c4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <rect class="box-a" x="330" y="70" width="240" height="80" rx="8"/>
+        <text x="450" y="98" text-anchor="middle" font-weight="600" font-size="15">Cpu6502Core</text>
+        <text x="450" y="118" text-anchor="middle" class="muted" font-size="12">PC A X Y SP, flags</text>
+        <text x="450" y="136" text-anchor="middle" class="muted" font-size="12">Instructions, Cycles</text>
+
+        <rect class="box-c" x="20" y="20" width="200" height="52" rx="8"/>
+        <text x="120" y="42" text-anchor="middle" font-weight="600" font-size="14">ICpuBus</text>
+        <text x="120" y="60" text-anchor="middle" class="muted" font-size="12">Read / Write</text>
+        <rect class="box-c" x="20" y="148" width="200" height="52" rx="8"/>
+        <text x="120" y="170" text-anchor="middle" font-weight="600" font-size="14">RamBus</text>
+        <text x="120" y="188" text-anchor="middle" class="muted" font-size="12">flat 64K, Load, Fill</text>
+        <path class="line" d="M120,148 L120,72" marker-end="url(#c4)" stroke-dasharray="5 4"/>
+        <path class="line" d="M330,96 L220,52" marker-end="url(#c4)"/>
+
+        <rect class="box-b" x="330" y="168" width="240" height="42" rx="8"/>
+        <text x="450" y="194" text-anchor="middle" font-weight="600" font-size="13">Cpu6502CycleTable</text>
+        <path class="line" d="M450,168 L450,150" marker-end="url(#c4)"/>
+
+        <rect class="box-b" x="330" y="10" width="240" height="42" rx="8"/>
+        <text x="450" y="36" text-anchor="middle" font-weight="600" font-size="13">breakpoints · WatchpointSet</text>
+        <path class="line" d="M450,52 L450,70" marker-end="url(#c4)"/>
+
+        <rect class="box-d" x="660" y="40" width="220" height="52" rx="8"/>
+        <text x="770" y="62" text-anchor="middle" font-weight="600" font-size="14">ExecutionStop</text>
+        <text x="770" y="80" text-anchor="middle" class="muted" font-size="12">Run(options), Step()</text>
+        <rect class="box-d" x="660" y="128" width="220" height="52" rx="8"/>
+        <text x="770" y="150" text-anchor="middle" font-weight="600" font-size="14">ProcessorState</text>
+        <text x="770" y="168" text-anchor="middle" class="muted" font-size="12">CaptureState()</text>
+        <path class="line" d="M570,96 L660,66" marker-end="url(#c4)"/>
+        <path class="line" d="M570,124 L660,154" marker-end="url(#c4)"/>
+      </svg>
+    </div>
+
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Part</th><th>Role</th></tr></thead>
+      <tbody>
+        <tr><td><code>ICpuBus</code> / <code>RamBus</code></td><td>The address space. <code>new Cpu6502Core()</code> runs over a <code>RamBus</code> (64K, all writable); <code>new Cpu6502Core(bus)</code> takes any bus, for a ROM, a banking window or a spy.</td></tr>
+        <tr><td>loading</td><td><code>Load(address, bytes)</code>, the indexer <code>cpu[address]</code>, <code>LoadProgram(address, code, returnAddress)</code> (writes the code, sets the reset vector, pushes a return address, sets <code>PC</code>), <code>Reset()</code> (PC from $FFFC, SP $FD, I set).</td></tr>
+        <tr><td><code>Run(stopAt, maxSteps)</code></td><td>Runs until <code>PC == stopAt</code>; throws <code>InvalidOperationException</code> if not reached within the budget. What the tests use.</td></tr>
+        <tr><td><code>Run(ExecutionOptions)</code></td><td>Runs until a breakpoint, a watchpoint or the step budget (<code>MaxSteps</code>, default 200 000) and returns an <code>ExecutionStop</code>. <code>CheckBreakpoints</code> and <code>CheckWatchpoints</code> can be switched off.</td></tr>
+        <tr><td><code>Step()</code></td><td>One instruction. Breakpoints are ignored; a watchpoint touched by the instruction is still reported.</td></tr>
+        <tr><td><code>Interrupt()</code>, <code>NonMaskableInterrupt()</code>, <code>Break()</code></td><td>IRQ (masked by I), NMI, and the BRK sequence through the vector; 7 cycles each.</td></tr>
+        <tr><td>breakpoints</td><td><code>AddBreakpoint</code>, <code>RemoveBreakpoint</code>, <code>ClearBreakpoints</code>, <code>HasBreakpoint</code>. They survive <code>Reset()</code>.</td></tr>
+        <tr><td>watchpoints</td><td><code>AddWatchpoint(kind, start, end)</code> with <code>WatchpointKind.Read</code>/<code>Write</code> over an inclusive range (start ≤ end, no wrap). Only accesses made while an instruction executes count, so a debugger reading memory through the bus does not trigger them. The first match in insertion order wins, and the instruction finishes before the stop.</td></tr>
+        <tr><td><code>CaptureState()</code></td><td>A <code>ProcessorState</code> snapshot: <code>Pc A X Y Sp Ps</code>, <code>Cycles</code>, <code>Instructions</code>, and <code>LooksPoweredDown</code> (at $8000 with 16 cycles or fewer).</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Why a run stops</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th><code>ExecutionStopReason</code></th><th><code>ExecutionStop.Address</code></th></tr></thead>
+      <tbody>
+        <tr><td><code>StepComplete</code></td><td>the program counter</td></tr>
+        <tr><td><code>Breakpoint</code></td><td>the program counter</td></tr>
+        <tr><td><code>ReadWatchpoint</code> / <code>WriteWatchpoint</code></td><td>the address touched</td></tr>
+        <tr><td><code>StepBudgetExhausted</code></td><td>the program counter; a stop, not an error</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Cycles</h3>
+    <p>Each instruction costs <code>Cpu6502CycleTable.Base(opcode)</code>, plus one when a branch is taken, plus one more when a branch or an indexed read crosses a page. Indexed <em>stores</em> never pay the crossing. <code>Cpu6502Core.GetBaseCycles(opcode)</code> exposes the base count; an opcode the core does not implement reads 0.</p>
+
+    <h3>What it does not do</h3>
+    <ul>
+      <li>It executes the <strong>151 documented NMOS opcodes</strong> only (the opcodes with a non-zero base count are exactly the <code>Cpu6502</code> table). Any other opcode throws <code>NotSupportedException</code>; there is no 65C02 or undocumented-opcode execution.</li>
+      <li><code>ADC</code>/<code>SBC</code> with the decimal flag set throw <code>NotSupportedException</code> rather than computing a wrong result.</li>
+      <li><code>Peek16</code> does not reproduce the NMOS page wrap of <code>JMP ($xxFF)</code>.</li>
+      <li><code>Push</code>/<code>Pull</code> use <code>SP</code> itself as the address, so the stack lives at <code>$00xx</code> rather than <code>$01xx</code>; and <code>zp,X</code>/<code>zp,Y</code> add the index without wrapping inside page zero. Neither matters to the generated stubs it runs, but both matter to anyone pointing it at arbitrary code.</li>
+    </ul>
+
+    <h3>Who uses it</h3>
+    <p>Today, only tests and the cycle documentation:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>User</th><th>What for</th></tr></thead>
+      <tbody>
+        <tr><td><code>TestCpu6502Tests</code></td><td>The interpreter against known answers (13 tests).</td></tr>
+        <tr><td><code>ExecutionCoreTests</code></td><td>Breakpoints, watchpoints, stop reasons, interrupts, cycle counting, state (45 tests).</td></tr>
+        <tr><td><code>RuntimeStubTests</code></td><td>Assembles and runs the relocating stub of <code>RuntimeBlock</code> over a linked image and checks what the machine did (12 tests).</td></tr>
+        <tr><td><code>CycleTimingsTests</code>, <code>CycleTimings</code></td><td>The documented cycle counts shown in the editor come from the same table.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The monitor and the debug adapter do not use it: they debug on Mesen2 through its Lua bridge (<a href="monitor.html">Monitor</a>, <a href="tooling.html">Tooling</a>). The core's own documentation describes it as a deterministic machine a debugger could be pointed at without an emulator; that connection does not exist yet.</p>
+
+    <h2 id="adding">Adding an instruction or a CPU</h2>
+    <ol>
+      <li>Derive from the closest CPU, build the map from a <code>Copy</code> of the parent's and <code>Set</code> the new forms; override <code>OpcodeMap</code>, and the mnemonic sets if the new instructions branch or take an accumulator.</li>
+      <li>Register the name and its aliases in <code>CpuFactory.Create</code> and <code>CpuFactory.Names</code>.</li>
+      <li>Give every new mnemonic a line in <code>InstructionDescriptions</code>, and its cycle counts in <code>CycleTimings.TryExtra</code>; the coverage tests walk every CPU in <code>CpuFactory.All</code> and fail on a missing description or count.</li>
+      <li>A new addressing mode also needs <code>ParseOperand</code> (or an override), <code>Disassembler.ModeLength</code> and <code>RenderOperand</code>, <code>InstructionDocs.SyntaxFor</code>, <code>AddressingModes.Describe</code>, and possibly <code>AssemblerEngine.HandleInstruction</code>.</li>
+    </ol>
+
+    <footer>
+      <p>Opcode and mnemonic counts were computed from the built <code>WinASM65.dll</code> (<code>CpuFactory.All</code>, <code>Opcodes</code>, <code>Mnemonics</code>); the example bytes were produced by assembling each line with the current code.</p>
+    </footer>
+  </main>
+
+  <aside class="toc" aria-label="On this page"></aside>
+</div>
+</body>
+</html>
