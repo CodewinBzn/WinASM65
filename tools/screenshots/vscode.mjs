@@ -88,6 +88,8 @@ export async function command(page, title) {
     .filter({ hasText: new RegExp('^' + title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }).first();
   await label.waitFor({ timeout: 10000 });
   await label.click();
+  // Off the editor: a pointer left over the text would close the next hover.
+  await page.mouse.move(24, 600);
   await page.waitForTimeout(600);
 }
 

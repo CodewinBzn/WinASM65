@@ -1,5 +1,5 @@
-// The VS Code screenshots of the documentation: the extension on the Bomberman
-// example, from editing to a debug session on Mesen2.
+// The VS Code screenshots of the documentation: the extension on the NES
+// example (example_nes_game), from editing to a debug session on Mesen2.
 //   node shoot-vscode.mjs [--mesen C:\path\to\Mesen.exe]
 
 import { execFileSync } from 'node:child_process';
@@ -22,7 +22,7 @@ function powershell(script) {
 
 function findMesen() {
   // The emulator the examples are configured with, when it is installed here.
-  for (const config of ['example_nes_game/config.json', 'example_bomberman-nes/config.json']) {
+  for (const config of ['example_nes_game/config.json']) {
     try {
       const text = fs.readFileSync(path.join(repo, config), 'utf8');
       const match = /"Path"\s*:\s*"([^"]+Mesen[^"]*\.exe)"/i.exec(text);
@@ -70,8 +70,11 @@ async function hoverAt(page, line, column) {
     await page.keyboard.press('Control+ArrowDown'); // the line near the top: room below for the card
   }
   await page.waitForTimeout(300);
-  await command(page, 'Show or Focus Hover');
-  await page.waitForSelector('.monaco-hover:not(.hidden) .markdown-hover', { timeout: 15000 });
+  // The keyboard shortcut, not the palette: a click would leave the pointer on the text.
+  await page.keyboard.press('Control+K');
+  await page.keyboard.press('Control+I');
+  // The editor's hover, not a tooltip of the workbench, once the server answered.
+  await page.locator('.monaco-resizable-hover .monaco-hover:not(.hidden)', { hasText: '@' }).first().waitFor({ timeout: 15000 });
   await page.waitForTimeout(500);
   // A hover is at most a quarter of the editor high and scrolls: give it the
   // height of its contents so the whole card shows in one picture.
@@ -87,7 +90,7 @@ async function hoverAt(page, line, column) {
   await page.waitForTimeout(400);
 }
 
-const workspace = cleanCopy('example_bomberman-nes');
+const workspace = cleanCopy('example_nes_game');
 const { app, page } = await launch(workspace, {
   'editor.colorDecorators': false,
   'editor.hover.above': false,
@@ -101,18 +104,18 @@ const editorPart = '.part.editor';
 
 try {
   await step('editor', async () => {
-    await openFile(page, 'BMAN_BANK1.NAS', 30);
+    await openFile(page, 'background.asm', 41);
     await page.waitForTimeout(4000); // the language server's first assembly
     await shot(page, 'vscode-editor');
   });
 
   await step('hover on an instruction', async () => {
-    await hoverAt(page, 38, 10);
+    await hoverAt(page, 49, 4);
     await shot(page, 'vscode-hover-instruction', await box(page, editorPart), true);
   });
 
   await step('hover on a name', async () => {
-    await hoverAt(page, 38, 15);
+    await hoverAt(page, 49, 9);
     await shot(page, 'vscode-hover-symbol', await box(page, editorPart), true);
     await page.keyboard.press('Escape');
   });
@@ -137,7 +140,7 @@ try {
 
   await step('diagnostics', async () => {
     await page.keyboard.press('Control+G');
-    await page.keyboard.type('35');
+    await page.keyboard.type('48');
     await page.keyboard.press('Enter');
     await page.keyboard.press('Home');
     await page.keyboard.press('Home');
@@ -164,7 +167,7 @@ try {
 
   if (mesen) {
     await step('debug session', async () => {
-      await openFile(page, 'BMAN_BANK1.NAS', 30);
+      await openFile(page, 'background.asm', 77); // the first line of NMI
       await page.keyboard.press('F9');
       await page.keyboard.press('F5');
       await page.getByText(/Paused on breakpoint/i).first().waitFor({ timeout: 90000 });

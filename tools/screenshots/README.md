@@ -12,7 +12,7 @@ powershell -ExecutionPolicy Bypass -File shoot-all.ps1 [-Mesen C:\path\to\Mesen.
 
 | Script | Takes |
 |---|---|
-| `shoot-vscode.mjs` | VS Code (the build `@vscode/test-electron` caches) with the extension under development, driven by Playwright on a clean copy of the Bomberman example: editor, hovers, context menu, listing column, diagnostics, build task, and with Mesen2 a debug session, the RAM panel and the emulator window |
+| `shoot-vscode.mjs` | VS Code (the build `@vscode/test-electron` caches) with the extension under development, driven by Playwright on a clean copy of the NES example (`example_nes_game`): editor, hovers, context menu, listing column, diagnostics, build task, and with Mesen2 a debug session, the RAM panel and the emulator window |
 | `shoot-pages.mjs` | The module viewer's report on `samples/lib.asm` + `samples/app.asm`, in Chromium |
 | `shoot-windows.ps1` | The command line and the terminal monitor, each in a classic console window |
 | `capture-window.ps1` | Captures one window to a PNG (used by the two above) |
