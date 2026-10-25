@@ -118,7 +118,8 @@ namespace WinASM65.Tooling
             McpLineWriter writer = new McpLineWriter(output);
             using (DebugTools debug = new DebugTools())
             {
-                System.Collections.Generic.List<McpTool> tools = CodeTools.All().Concat(debug.All()).Concat(GraphicsTools.All()).ToList();
+                System.Collections.Generic.List<McpTool> tools = CodeTools.All().Concat(debug.All()).Concat(GraphicsTools.All())
+                    .Concat(KnowledgeTools.All()).ToList();
                 new McpServer(tools, writer.Write).Run(new StreamReader(input, new System.Text.UTF8Encoding(false)));
             }
             return 0;

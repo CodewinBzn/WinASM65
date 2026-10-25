@@ -1,0 +1,9 @@
+{
+  "id": "04-move-horizontal",
+  "level": "easy",
+  "title": "Left and right",
+  "prompt": "Let the player move the ship with the d-pad: holding Right moves it right and holding Left moves it left, 1 or 2 pixels per frame.",
+  "start": "template",
+  "check": "04-move-horizontal.lua",
+  "solution": "solutions/04-move-horizontal"
+}

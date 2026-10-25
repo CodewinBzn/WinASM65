@@ -1,0 +1,9 @@
+{
+  "id": "08-counter",
+  "level": "hard",
+  "title": "Count the presses",
+  "prompt": "Show a two-digit decimal counter at row 2, column 2 of the background. It starts at 00 and goes up by one each time the A button is pressed (00, 01, ... 09, 10, 11 ...).",
+  "start": "template",
+  "check": "08-counter.lua",
+  "solution": "solutions/08-counter"
+}

@@ -1,0 +1,9 @@
+{
+  "id": "06-second-sprite",
+  "level": "medium",
+  "title": "A star sprite",
+  "prompt": "Keep the ship, and add a second sprite: a star (tile $03) at X=60, Y=150, drawn with sprite palette 1.",
+  "start": "template",
+  "check": "06-second-sprite.lua",
+  "solution": "solutions/06-second-sprite"
+}

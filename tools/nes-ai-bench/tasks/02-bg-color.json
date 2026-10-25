@@ -1,0 +1,9 @@
+{
+  "id": "02-bg-color",
+  "level": "easy",
+  "title": "Blue background",
+  "prompt": "Make the background colour of the screen blue instead of black.",
+  "start": "template",
+  "check": "02-bg-color.lua",
+  "solution": "solutions/02-bg-color"
+}

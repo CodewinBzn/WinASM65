@@ -34,4 +34,18 @@
     <InternalsVisibleTo Include="WinASM65.Tooling.Tests" />
   </ItemGroup>
 
+  <!--
+    The NES knowledge base of the MCP tools (nes_reference, nes_search,
+    nes_snippet, new_nes_project) ships next to the executable, so that build
+    and publish outputs find it as knowledge/nes. Build outputs a template
+    may hold after a manual build are left out.
+  -->
+  <ItemGroup>
+    <Content Include="..\knowledge\**\*" Exclude="..\knowledge\**\*.o;..\knowledge\**\*.symb;..\knowledge\**\*.lst;..\knowledge\**\*.nes;..\knowledge\**\*.Unsolved*">
+      <Link>knowledge\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

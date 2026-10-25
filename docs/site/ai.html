@@ -109,6 +109,21 @@
     </table>
     </div>
 
+    <h3 id="knowledge-tools">NES knowledge</h3>
+    <p>A small assistant, such as a local model, knows little of the NES and invents what it does not know. These tools give it checked facts and tested code from <code>knowledge/nes</code>, shipped next to the server (or the folder <code>WINASM65_KNOWLEDGE</code> names): twelve pages (memory map, PPU registers and memory, sprites, timing, controllers, sound, NROM, palettes, WinASM65 syntax and projects, the graphics workflow), nineteen routines that the tests assemble and partly run on the CPU core, and a template game that builds.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Tool</th><th>What it does</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>nes_reference</code></td><td>A page by name or keyword; an unknown topic lists the pages and routines.</td><td>read-only</td></tr>
+        <tr><td><code>nes_search</code></td><td>The three sections that best match a query, with their file and heading.</td><td>read-only</td></tr>
+        <tr><td><code>nes_snippet</code></td><td>A routine with its header: purpose, inputs, outputs, registers changed, the variables and constants it needs.</td><td>read-only</td></tr>
+        <tr><td><code>new_nes_project</code></td><td>A new NROM game from the template (palettes, a text, a sprite, the joypad) in an empty folder.</td><td>writes</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p><code>tools/nes-ai-bench/run-bench.py</code> measures how well a local model (through Ollama) does NES tasks with these tools: ten tasks from changing a text to scrolling, each checked by a Lua script in Mesen2's test runner, with reference solutions that pass every check. Results are in <code>tools/nes-ai-bench/results</code>.</p>
+
     <h2 id="example">An example session</h2>
     <p>What an assistant sees when it debugs the <a href="example.html">example game</a> (output of <code>tools/mcp-smoke.py</code> against the real Mesen2):</p>
 <pre><code>build_project {"config": "example_star_catcher/config.json"}

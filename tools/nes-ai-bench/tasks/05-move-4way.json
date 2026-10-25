@@ -1,0 +1,9 @@
+{
+  "id": "05-move-4way",
+  "level": "medium",
+  "title": "Four directions",
+  "prompt": "Let the player move the ship in four directions with the d-pad (Up, Down, Left, Right), 1 or 2 pixels per frame, while the button is held.",
+  "start": "template",
+  "check": "05-move-4way.lua",
+  "solution": "solutions/05-move-4way"
+}

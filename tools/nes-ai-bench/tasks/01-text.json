@@ -1,0 +1,9 @@
+{
+  "id": "01-text",
+  "level": "easy",
+  "title": "Change the text",
+  "prompt": "Change the text shown on the screen: instead of HELLO NES, show GAME ON at row 10, column 5 of the background (rows and columns counted in tiles from 0).",
+  "start": "template",
+  "check": "01-text.lua",
+  "solution": "solutions/01-text"
+}
