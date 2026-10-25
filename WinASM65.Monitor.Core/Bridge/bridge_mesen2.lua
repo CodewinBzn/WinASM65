@@ -63,6 +63,12 @@
 local NAME = "Mesen2"
 local VERSION = "2.1.1"
 
+-- Version 2 of the bridge contract (docs/site/bridges.html): HELLO, and memory
+-- spaces named in READ and WRITE as SPACE:address.
+local PROTOCOL = 2
+local SYSTEM = "nes"
+local CAPABILITIES = "memory,cpu,pause,resume,reset,step,break,watchread,watchwrite,state,status"
+
 local DEFAULT_PORT = 45678
 
 -- Measured bound of the protocol, mirrored from MonitorProtocol.cs. The bridge
@@ -228,24 +234,55 @@ local function parse_address(text)
   return tonumber(value, 16)
 end
 
-local function in_range(address, length)
-  return address ~= nil and length ~= nil and address >= 0 and length >= 0
-    and address <= ADDRESS_MAX and address + length <= ADDRESS_MAX + 1
-end
-
 ------------------------------------------------------------------- memory
 
-local function read_memory(address, length)
+-- The memories a client can name, as the NES definition of WinASM65.Systems
+-- declares them. CPU is the processor's bus, and the default. The debug memory
+-- types read without side effects: reading $2002 through them does not clear
+-- the vertical blank flag the game is waiting for.
+local function chr_type()
+  local ok, size = pcall(emu.getMemorySize, emu.memType.nesChrRam)
+  if ok and size ~= nil and size > 0 then return emu.memType.nesChrRam end
+  return emu.memType.nesChrRom
+end
+
+local SPACES = {
+  CPU = { type = emu.memType.nesDebug, size = ADDRESS_MAX + 1 },
+  PPU = { type = emu.memType.nesPpuDebug, size = 0x4000 },
+  PAL = { type = emu.memType.nesPaletteRam, size = 0x20 },
+  OAM = { type = emu.memType.nesSpriteRam, size = 0x100 },
+  CHR = { type = chr_type(), size = 0x2000 },
+}
+local SPACE_NAMES = "PPU,PAL,OAM,CHR"
+
+local function in_range(address, length, space)
+  local size = (space or SPACES.CPU).size
+  return address ~= nil and length ~= nil and address >= 0 and length >= 0
+    and address < size and address + length <= size
+end
+
+-- "PAL:$00" names a space and an address; "$C000" is the CPU's. Returns the
+-- space (nil for an unknown name, with the name) and the address text.
+local function split_space(text)
+  local colon = text:find(":", 1, true)
+  if colon == nil then return SPACES.CPU, text, "CPU" end
+  local name = text:sub(1, colon - 1):upper()
+  return SPACES[name], text:sub(colon + 1), name
+end
+
+local function read_memory(address, length, space)
+  local memory = (space or SPACES.CPU).type
   local bytes = {}
   for i = 0, length - 1 do
-    bytes[i + 1] = emu.read(address + i, emu.memType.nesDebug)
+    bytes[i + 1] = emu.read(address + i, memory)
   end
   return bytes
 end
 
-local function write_memory(address, bytes)
+local function write_memory(address, bytes, space)
+  local memory = (space or SPACES.CPU).type
   for i = 1, #bytes do
-    emu.write(address + i - 1, bytes[i], emu.memType.nesDebug)
+    emu.write(address + i - 1, bytes[i], memory)
   end
 end
 
@@ -584,29 +621,38 @@ local function dispatch(line)
     return "OK " .. NAME .. " " .. VERSION
   end
 
+  if command == "HELLO" then
+    return string.format("OK protocol=%d name=%s version=%s system=%s caps=%s spaces=%s",
+      PROTOCOL, NAME, VERSION, SYSTEM, CAPABILITIES, SPACE_NAMES)
+  end
+
   if command == "STATUS" then
     if stopped_info == nil then return "OK running" end
     return "OK stopped " .. stopped_info
   end
 
   if command == "READ" then
-    if #tokens ~= 3 then return fail("READ expects <address> <length>") end
-    local address = parse_address(tokens[2])
+    if #tokens ~= 3 then return fail("READ expects [space:]<address> <length>") end
+    local space, address_text, space_name = split_space(tokens[2])
+    if space == nil then return fail("unknown memory space: " .. space_name) end
+    local address = parse_address(address_text)
     if address == nil then return fail("invalid address: " .. tokens[2]) end
     local length = tonumber(tokens[3], 10)
     if length == nil then return fail("invalid length: " .. tokens[3]) end
     if length < 0 or length > MAX_READ then
       return fail("length out of bounds (0.." .. MAX_READ .. "): " .. length)
     end
-    if not in_range(address, length) then
-      return fail(string.format("range $%04X+%d exceeds the address space", address, length))
+    if not in_range(address, length, space) then
+      return fail(string.format("range $%04X+%d exceeds the %s space", address, length, space_name))
     end
-    return "OK " .. to_hex(read_memory(address, length))
+    return "OK " .. to_hex(read_memory(address, length, space))
   end
 
   if command == "WRITE" then
-    if #tokens ~= 3 then return fail("WRITE expects <address> <hex>") end
-    local address = parse_address(tokens[2])
+    if #tokens ~= 3 then return fail("WRITE expects [space:]<address> <hex>") end
+    local space, address_text, space_name = split_space(tokens[2])
+    if space == nil then return fail("unknown memory space: " .. space_name) end
+    local address = parse_address(address_text)
     if address == nil then return fail("invalid address: " .. tokens[2]) end
     -- Checked before decoding so the refusal names the real reason, and again inside
     -- from_hex so the bound holds no matter which caller is reached.
@@ -615,17 +661,17 @@ local function dispatch(line)
     end
     local bytes = from_hex(tokens[3], MAX_WRITE)
     if bytes == nil then return fail("invalid hex") end
-    if not in_range(address, #bytes) then
-      return fail(string.format("range $%04X+%d exceeds the address space", address, #bytes))
+    if not in_range(address, #bytes, space) then
+      return fail(string.format("range $%04X+%d exceeds the %s space", address, #bytes, space_name))
     end
 
-    local ok, message = pcall(write_memory, address, bytes)
+    local ok, message = pcall(write_memory, address, bytes, space)
     if not ok then return fail("write refused by the emulator: " .. tostring(message)) end
 
     -- Verified, not assumed: PRG ROM is read-only and the emulator accepts a
     -- write there without complaint. An unverified OK would report a poke that
     -- never landed, which is the one failure this tool refuses to perform.
-    local back = read_memory(address, #bytes)
+    local back = read_memory(address, #bytes, space)
     for i = 1, #bytes do
       if back[i] ~= bytes[i] then
         return fail(string.format(

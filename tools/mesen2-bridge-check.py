@@ -7,7 +7,8 @@ The address must be an instruction the ROM executes repeatedly (an NMI handler
 is ideal). Close any running Mesen2 first: it runs as a single instance and
 would swallow the launch.
 
-Checks, in order: STATUS while running; a breakpoint stops *before* its
+Checks, in order: STATUS while running; HELLO and the memory spaces (contract
+version 2: READ/WRITE PAL, CHR, OAM, PPU); a breakpoint stops *before* its
 instruction (PUSH STOPPED reason=breakpoint pc=<address>); STEP stops one
 instruction later; BREAK REMOVE and BREAK CLEAR really remove; PAUSE stops with
 reason=pause; every RESUME is followed by PUSH RESUMED.
@@ -76,6 +77,23 @@ def main():
 
         check(send("PING").startswith("OK Mesen2"), "PING answers Mesen2")
         check(send("STATUS") == "OK running", "STATUS reports a running machine")
+
+        # Contract version 2: HELLO, and memory spaces as SPACE:address.
+        hello = send("HELLO")
+        check(hello.startswith("OK protocol=2 name=Mesen2") and "system=nes" in hello
+              and "spaces=PPU,PAL,OAM,CHR" in hello, "HELLO describes the bridge: " + hello)
+        palette = send("READ PAL:$00 32")
+        check(palette.startswith("OK ") and len(palette) == 3 + 64, "READ PAL reads the 32 palette bytes")
+        old = palette[3:5]
+        check(send("WRITE PAL:$01 16") == "OK" and send("READ PAL:$01 1") == "OK 16", "WRITE PAL changes a colour")
+        send("WRITE PAL:$01 " + palette[5:7])
+        chr_bytes = send("READ CHR:$0010 2")
+        check(send("WRITE CHR:$0010 AA55") == "OK" and send("READ CHR:$0010 2") == "OK AA55", "WRITE CHR changes a tile")
+        send("WRITE CHR:$0010 " + chr_bytes[3:])
+        check(send("READ OAM:$00 4").startswith("OK "), "READ OAM reads the sprite table")
+        check(send("READ PPU:$3F00 1") == "OK " + old, "PPU:$3F00 is palette entry 0 through the PPU bus")
+        check(send("READ NOPE:$00 1").startswith("ERR unknown memory space"), "an unknown space is refused by name")
+        check(send("READ PAL:$1F 2").startswith("ERR range"), "a read past the end of a space is refused")
 
         send("BREAK SET exec " + target)
         stop = push("PUSH STOPPED")

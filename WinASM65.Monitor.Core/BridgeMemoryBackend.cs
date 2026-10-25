@@ -22,7 +22,7 @@ namespace WinASM65.Monitor
     /// backend that swallowed it would turn "this host has no emu.pause" into a
     /// generic failure, which is the one thing the protocol forbids.
     /// </summary>
-public sealed class BridgeMemoryBackend : IMemoryBackend, ICpuStateSource, IRomInfoSource, IRomTransferTarget, IExecutionAdapter, IReconnectable, IExecutionEvents, IBreakpointRemoval
+public sealed class BridgeMemoryBackend : IMemoryBackend, ICpuStateSource, IRomInfoSource, IRomTransferTarget, IExecutionAdapter, IReconnectable, IExecutionEvents, IBreakpointRemoval, IVideoMemory
     {
         private ProtocolClient _client;
         private readonly int _port;
@@ -401,6 +401,20 @@ public CpuSnapshot ReadCpuState()
         public string EmulatorName { get; private set; }
         public string EmulatorVersion { get; private set; }
 
+        /// <summary>The contract version the bridge speaks: 2 when it answered HELLO, 1 otherwise.</summary>
+        public int ProtocolVersion { get; private set; }
+
+        /// <summary>The system the bridge said it runs (HELLO), or null.</summary>
+        public string BridgeSystem { get; private set; }
+
+        private IReadOnlyList<string> _spaces = new string[0];
+
+        /// <summary>The memory spaces the bridge named in its HELLO; empty for a version 1 bridge.</summary>
+        public IReadOnlyList<string> MemorySpaces
+        {
+            get { return _spaces; }
+        }
+
         /// <summary>
         /// False only when the bridge said the machine stopped. A bridge that does
         /// not report run state is assumed to be running, as before.
@@ -714,7 +728,86 @@ public CpuSnapshot ReadCpuState()
             if (parts.Length == 0)
                 throw new MonitorException("the bridge sent an empty handshake: '" + banner + "'");
 
+            // Version 2 bridges describe themselves; a version 1 bridge answers
+            // HELLO with an error and is taken from the table of measured hosts.
+            BridgeHello hello;
+            string answer = _client.Send("HELLO");
+            if (ProtocolClient.IsOk(answer) && BridgeHello.TryParse(ProtocolClient.PayloadOf(answer), out hello))
+            {
+                ProtocolVersion = hello.Protocol;
+                EmulatorName = hello.Name;
+                if (!string.IsNullOrEmpty(hello.Version))
+                    EmulatorVersion = hello.Version;
+                BridgeSystem = hello.System;
+                _spaces = hello.Spaces;
+                _capabilities = hello.Capabilities;
+                return;
+            }
+
+            ProtocolVersion = 1;
+            BridgeSystem = null;
+            _spaces = new string[0];
             _capabilities = ExecutionCapabilities.For(EmulatorName, EmulatorVersion);
+        }
+
+        // ---------------------------------------------------------------- memory spaces
+
+        public byte[] ReadSpace(string space, int address, int length)
+        {
+            string name = SpaceName(space);
+            if (length < 0 || length > MonitorProtocol.MaxReadLength)
+                throw new MonitorException("read of " + length + " bytes exceeds the protocol bound ("
+                    + MonitorProtocol.MaxReadLength + ")");
+
+            byte[] result = new byte[length];
+            int done = 0;
+            while (done < length)
+            {
+                int take = Math.Min(ChunkSize, length - done);
+                string response = _client.Send("READ " + name + ":$" + (address + done).ToString("X4") + " " + take);
+                Expect(response, "READ");
+                byte[] chunk;
+                if (!MonitorProtocol.TryParseHex(ProtocolClient.PayloadOf(response), out chunk) || chunk.Length != take)
+                    throw new MonitorException("the bridge answered a read of " + name + " with something else than "
+                        + take + " bytes");
+                Buffer.BlockCopy(chunk, 0, result, done, take);
+                done += take;
+            }
+            return result;
+        }
+
+        public void WriteSpace(string space, int address, byte[] bytes)
+        {
+            if (bytes == null)
+                throw new ArgumentNullException("bytes");
+            string name = SpaceName(space);
+            if (bytes.Length > MonitorProtocol.MaxWriteLength)
+                throw new MonitorException("write of " + bytes.Length + " bytes exceeds the protocol bound ("
+                    + MonitorProtocol.MaxWriteLength + ")");
+
+            int done = 0;
+            while (done < bytes.Length)
+            {
+                int take = Math.Min(ChunkSize, bytes.Length - done);
+                byte[] chunk = new byte[take];
+                Buffer.BlockCopy(bytes, done, chunk, 0, take);
+                Expect(_client.Send("WRITE " + name + ":$" + (address + done).ToString("X4")
+                    + " " + MonitorProtocol.ToHex(chunk)), "WRITE");
+                done += take;
+            }
+        }
+
+        // The space as the bridge spells it, or a refusal that names what it has.
+        private string SpaceName(string space)
+        {
+            foreach (string known in _spaces)
+            {
+                if (string.Equals(known, space, StringComparison.OrdinalIgnoreCase))
+                    return known;
+            }
+            throw new MonitorException(_spaces.Count == 0
+                ? EmulatorName + " " + EmulatorVersion + " offers no memory besides the CPU's"
+                : "no memory space " + space + " (the bridge has " + string.Join(", ", _spaces) + ")");
         }
 
         // ---------------------------------------------------------------- the contract
