@@ -880,9 +880,13 @@ namespace WinASM65.Core
                     string trimmed = rawLine.Trim();
                     _currentFile.CurrentLineNumber++;
 
-                    // Strip the comment: the first ';' that is not inside a string or a
-                    // character literal, so ".byte "a;b"" and "cmp #';'" keep their data.
-                    trimmed = SourceText.StripComment(trimmed).Trim();
+                    // Strip the comments: the first ';' that is not inside a string or a
+                    // character literal, so ".byte "a;b"" and "cmp #';'" keep their data,
+                    // and /* ... */, which may span lines (each file keeps its own state).
+                    bool opened;
+                    trimmed = SourceText.StripComments(trimmed, ref _currentFile.InComment, out opened).Trim();
+                    if (opened)
+                        _currentFile.CommentLine = _currentFile.CurrentLineNumber;
                     if (string.IsNullOrWhiteSpace(trimmed))
                     {
                         _listingService.EndLine();
@@ -902,6 +906,9 @@ namespace WinASM65.Core
                     }
                 }
 
+                if (_currentFile.InComment && !_stopAssembling)
+                    _diagnostics.ReportError(new SourceLocation(_currentFile.FilePath, _currentFile.CommentLine),
+                        ErrorCodes.UNTERMINATED_COMMENT);
                 _currentFile.Close();
                 _currentFile = _fileStack.Count > 0 ? _fileStack.Pop() : null;
             }
@@ -1929,6 +1936,10 @@ namespace WinASM65.Core
         {
             public string FilePath { get; private set; }
             public int CurrentLineNumber { get; set; }
+
+            /// <summary>Inside a <c>/* ... */</c> that started on line <see cref="CommentLine"/>.</summary>
+            public bool InComment;
+            public int CommentLine;
 
             private readonly StreamReader _reader;
             private readonly IReadOnlyList<string> _lines;

@@ -79,6 +79,30 @@ namespace WinASM65.Tests
         }
 
         [TestMethod]
+        public void ABlockCommentInsideALineIsOneCommentToken()
+        {
+            IReadOnlyList<SourceToken> tokens = Lex("  lda /* the count */ #1");
+
+            Assert.AreEqual(4, tokens.Count, Describe(tokens));
+            Assert.AreEqual(SourceTokenKind.Mnemonic, tokens[0].Kind);
+            Assert.AreEqual(SourceTokenKind.Comment, tokens[1].Kind);
+            Assert.AreEqual("/* the count */", tokens[1].Text);
+            Assert.AreEqual(SourceTokenKind.Operator, tokens[2].Kind);
+        }
+
+        [TestMethod]
+        public void ABlockCommentRunsOverTheLinesUntilItCloses()
+        {
+            IReadOnlyList<SourceTokenLine> lines = new AssemblyLexer().Tokenize("nop /* one\n lda #1 ; two\nthree */ rts");
+
+            Assert.AreEqual("/* one", lines[0].Tokens[1].Text);
+            Assert.AreEqual(1, lines[1].Tokens.Count, "the middle line is all comment");
+            Assert.AreEqual(SourceTokenKind.Comment, lines[1].Tokens[0].Kind);
+            Assert.AreEqual("three */", lines[2].Tokens[0].Text);
+            Assert.AreEqual(SourceTokenKind.Mnemonic, lines[2].Tokens[1].Kind);
+        }
+
+        [TestMethod]
         public void ACommentRunsToTheEndOfTheLineAndIsNotLexed()
         {
             IReadOnlyList<SourceToken> tokens = Lex("  lda #$01  ; this ; is not code");

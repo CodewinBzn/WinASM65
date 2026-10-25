@@ -99,6 +99,7 @@ namespace WinASM65.Core
         public const string UNKNOWN_MNEMONIC = "Unknown instruction or macro '{0}'";
         public const string UNSUPPORTED_ADDRESSING_MODE = "{0} does not support {1} addressing";
         public const string UNKNOWN_DIRECTIVE = "Unknown directive '{0}'";
+        public const string UNTERMINATED_COMMENT = "Unterminated comment: this /* is never closed by */";
         public const string UNKNOWN_DIRECTIVE_LABEL = "Unknown directive '{0}'. A local label is written @{1}: (a label alone on its line takes a colon)";
         public const string EXPRESSION_INVALID_TOKEN = "Invalid token '{0}' in expression '{1}'";
         public const string EXPRESSION_SYNTAX = "Malformed expression '{0}'";

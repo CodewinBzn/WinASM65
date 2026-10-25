@@ -4,6 +4,9 @@
   "scopeName": "source.winasm65",
   "patterns": [
     {
+      "include": "#block-comment"
+    },
+    {
       "include": "#comment"
     },
     {
@@ -44,6 +47,11 @@
     }
   ],
   "repository": {
+    "block-comment": {
+      "name": "comment.block.winasm65",
+      "begin": "/\\*",
+      "end": "\\*/"
+    },
     "comment": {
       "name": "comment.line.semicolon.winasm65",
       "match": ";.*$"

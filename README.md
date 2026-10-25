@@ -335,9 +335,11 @@ The complete reference is [docs/site/syntax.html](docs/site/syntax.html). Beside
 
 Errors that used to be silent are reported: unknown instruction, mode or directive, invalid expression, division by zero.
 
-- Comments begin with a semicolon (;).
+- Comments begin with a semicolon (;), or run from /* to */, inside a line or over several.
 ```
 lda #$00 	; this is a comment
+/* this one
+   spans lines */
 ```
 
 - Labels are declared in two ways. 

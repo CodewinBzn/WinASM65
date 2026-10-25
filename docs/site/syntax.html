@@ -66,6 +66,15 @@ Table:  .byte 1, 2, 3   ; a label before a directive
     <!-- ============================================================ -->
     <h2 id="comments">Comments and strings</h2>
     <p>A comment starts at the first <code>;</code> that is not inside a string or a character. <code>.byte "a;b"</code> and <code>cmp #';'</code> therefore keep their semicolon. A lone apostrophe, as in <code>; wait for 2 VBlank's</code>, opens nothing.</p>
+    <p>A block comment runs from <code>/*</code> to <code>*/</code>, inside a line or over as many lines as it needs:</p>
+    <pre><code>/* Sound engine: pulse 1 for the effects,
+   noise for the explosions. */
+        lda #%00001001      /* pulse 1 and noise */ ; on
+        sta APU_STATUS
+/* .byte 1, 2, 3            a whole block left out ;
+   .byte 4, 5, 6 */
+        rts</code></pre>
+    <p>A block comment stands for a space, so <code>lda/*count*/#1</code> is <code>lda #1</code>, and code may follow its <code>*/</code> on the same line. A <code>;</code> inside it ends nothing; <code>/*</code> inside a string or a character is data (<code>.byte "/*"</code>). Each file keeps its own comment: one left open is reported, at the line of its <code>/*</code>, as <code>Unterminated comment</code>, and never runs on into the file that included it. Block comments do not nest.</p>
     <p>A string is written between double quotes and may contain commas, semicolons and escape sequences:</p>
     <div class="table-wrap">
     <table>
@@ -380,6 +389,7 @@ label:  bit register
         <tr><td>Division by zero in '…'</td><td>Division or modulo by zero.</td></tr>
         <tr><td>Number '…' is too large</td><td>A number beyond 64 bits.</td></tr>
         <tr><td>Unterminated string literal / Invalid escape sequence</td><td>Unclosed string, unknown escape.</td></tr>
+        <tr><td>Unterminated comment: this /* is never closed by */</td><td>A block comment left open at the end of its file; reported at the line of its <code>/*</code>.</td></tr>
         <tr><td>Value N is out of range for a 1-byte (2-byte) operand</td><td>Value too large for its field.</td></tr>
         <tr><td>Relative jump is too big</td><td>Branch further than 127 bytes.</td></tr>
         <tr><td>Undefined symbol: name. Define it, or declare it with .import when another module provides it.</td><td>A name never defined (nor imported).</td></tr>
@@ -405,7 +415,7 @@ label:  bit register
       <li><strong><code>.dc.b</code> / <code>.dc.w</code></strong> (68000 style): use <code>.byte</code> / <code>.word</code>.</li>
       <li><strong>ca65's <code>.proc</code>, <code>.scope</code>, <code>.segment</code></strong>: scopes are <code>{ }</code> and local labels; segments are described in <code>config.json</code> (see <a href="segments.html">Projects and segments</a>).</li>
       <li><strong>Local labels written <code>.name</code></strong>: the dot introduces directives, hence the choice of <code>@name</code>.</li>
-      <li><strong>Several instructions per line</strong>, and <code>*</code> comments in column 1 or <code>/* */</code> comments.</li>
+      <li><strong>Several instructions per line</strong>, and <code>*</code> comments in column 1.</li>
       <li><strong>Functions</strong> in expressions (<code>.defined()</code>, <code>.sizeof()</code>…).</li>
       <li><strong>Nested macros and <code>.rep</code>.</strong></li>
     </ul>

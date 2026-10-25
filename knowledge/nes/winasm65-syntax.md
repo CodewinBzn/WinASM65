@@ -6,6 +6,8 @@ Standard 6502 syntax, close to asm6/ca65. Full reference: docs/site/syntax.html.
 
 ```asm
 ; a comment starts with a semicolon
+/* a block comment may span
+   several lines */
 Label:                  ; a label alone on its line NEEDS the colon
 loop:   lda #1          ; label before an instruction: colon recommended
         sta $10         ; indentation does not matter
