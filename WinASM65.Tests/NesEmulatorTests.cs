@@ -227,6 +227,15 @@ namespace WinASM65.Tests
             return path;
         });
 
+        /// <summary>Deletes the modules' directory, once the class's tests are done.</summary>
+        [ClassCleanup]
+        public static void DeleteLinkDirectory()
+        {
+            if (!_linkDirectory.IsValueCreated)
+                return;
+            try { Directory.Delete(_linkDirectory.Value, true); } catch (IOException) { }
+        }
+
         /// <summary>
         /// Turns the linked image into a 32 KB PRG NES ROM, mapper 0, and publishes
         /// it with the project's own iNES writer. Two banks, because $8000-$BFFF and
