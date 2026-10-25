@@ -19,6 +19,11 @@ namespace WinASM65.Systems
                 { "famicom", Nes },
             };
 
+        // Systems without a definition yet whose programs are cartridges, started
+        // by the reset vector; every other system loads a program and runs it.
+        private static readonly HashSet<string> Cartridges =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "atari2600", "vcs", "lynx" };
+
         /// <summary>The ids that have a definition of their own (others get the generic 6502).</summary>
         public static IReadOnlyCollection<string> DefinedIds
         {
@@ -35,7 +40,10 @@ namespace WinASM65.Systems
             if (string.IsNullOrWhiteSpace(systemId) || string.Equals(systemId.Trim(), "raw", StringComparison.OrdinalIgnoreCase))
                 return null;
             SystemDefinition definition;
-            return Known.TryGetValue(systemId.Trim(), out definition) ? definition : new Generic6502System(systemId.Trim());
+            string id = systemId.Trim();
+            if (Known.TryGetValue(id, out definition))
+                return definition;
+            return new Generic6502System(id, Cartridges.Contains(id) ? BootKind.ResetVector : BootKind.LoadAndRun);
         }
 
         /// <summary>The machine an image's header names, or null.</summary>

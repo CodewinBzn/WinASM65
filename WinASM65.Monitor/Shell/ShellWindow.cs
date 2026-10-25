@@ -313,7 +313,7 @@ namespace WinASM65.Monitor.Shell
 
             if (_session.Launcher == null)
             {
-                PostMessage("no emulator is configured; start the monitor with --mesen");
+                PostMessage("no emulator is configured; give --emulator-path, or an Emulator section in config.json");
                 return;
             }
 

@@ -1,27 +1,66 @@
 import * as vscode from 'vscode';
 
 const DEBUG_TYPE = 'winasm65';
-const RAM_START = 0x0000;
-const RAM_LENGTH = 0x0800;
+const CPU = 'CPU';
 const LIVE_INTERVAL_MS = 500;
+const CHUNK = 4096;
 
-interface RamSymbol {
+interface MemorySymbol {
   name: string;
   value: number;
 }
 
+/** A window on one memory, as the system definition of the machine proposes it. */
+interface MemoryView {
+  name: string;
+  space: string;
+  start: number;
+  length: number;
+  writable: boolean;
+}
+
+interface MemorySpace {
+  name: string;
+  length: number;
+  writable: boolean;
+  description: string;
+  available: boolean;
+}
+
+/** What the debug adapter's winasm65.system request says about the machine. */
+interface SystemDescription {
+  id: string;
+  name: string;
+  cpu: string;
+  spaces: MemorySpace[];
+  views: MemoryView[];
+  emulator?: { name: string; version: string };
+}
+
+/** What an adapter that predates winasm65.system is shown: the NES work RAM, as before. */
+const FALLBACK: SystemDescription = {
+  id: '6502',
+  name: '6502',
+  cpu: '6502',
+  spaces: [{ name: CPU, length: 0x10000, writable: true, description: 'CPU address space', available: true }],
+  views: [{ name: 'RAM', space: CPU, start: 0x0000, length: 0x0800, writable: true }]
+};
+
 /**
- * The machine's 2 KiB of RAM ($0000-$07FF) in a panel beside the editor, read
- * through the debug adapter with the standard readMemory request. It refreshes
- * on every stop, marks the bytes that changed since the previous stop, shades the
- * zero page and the stack (with the byte at $0100+SP outlined), names the bytes
- * the build defined, and writes a byte edited in place with writeMemory.
+ * The machine's memories in a panel beside the editor: the views its system
+ * definition proposes (on the NES: RAM, PRG ROM, nametables, palettes, sprites,
+ * tiles), read through the debug adapter. It refreshes on every stop, marks the
+ * bytes that changed since the previous stop, shades the zero page and the stack
+ * of the CPU's memory (with the byte at $0100+SP outlined), names the bytes the
+ * build defined, and writes a byte edited in place.
  */
-export class RamPanel implements vscode.Disposable {
+export class MemoryPanel implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
   private session: vscode.DebugSession | undefined;
-  private previous: Uint8Array | undefined;
-  private symbols: RamSymbol[] | undefined;
+  private system: SystemDescription | undefined;
+  private viewIndex = 0;
+  private previous = new Map<number, Uint8Array>();
+  private symbols: MemorySymbol[] | undefined;
   private running = false;
   private live = false;
   private liveTimer: NodeJS.Timeout | undefined;
@@ -33,6 +72,13 @@ export class RamPanel implements vscode.Disposable {
       vscode.commands.registerCommand('winasm65.showRam', () => this.show()),
       vscode.debug.registerDebugAdapterTrackerFactory(DEBUG_TYPE, {
         createDebugAdapterTracker: session => ({
+          // The machine runs from the moment VS Code asks it to, whatever the
+          // adapter then reports: a resumption it asked for has no event.
+          onWillReceiveMessage: (message: { type?: string; command?: string }) => {
+            if (message.type === 'request' && ['continue', 'next', 'stepIn', 'stepOut'].includes(message.command ?? '')) {
+              this.setRunning(session, true);
+            }
+          },
           onDidSendMessage: (message: { type?: string; event?: string }) => {
             if (message.type !== 'event') {
               return;
@@ -48,6 +94,7 @@ export class RamPanel implements vscode.Disposable {
       vscode.debug.onDidTerminateDebugSession(session => {
         if (session === this.session) {
           this.session = undefined;
+          this.system = undefined;
           this.stopLive();
           this.post({ type: 'status', text: 'session ended' });
         }
@@ -60,7 +107,7 @@ export class RamPanel implements vscode.Disposable {
       this.panel.reveal(vscode.ViewColumn.Beside, true);
       return;
     }
-    this.panel = vscode.window.createWebviewPanel('winasm65.ram', 'RAM $0000-$07FF', {
+    this.panel = vscode.window.createWebviewPanel('winasm65.ram', 'Memory', {
       viewColumn: vscode.ViewColumn.Beside,
       preserveFocus: true
     }, { enableScripts: true, retainContextWhenHidden: true });
@@ -81,7 +128,8 @@ export class RamPanel implements vscode.Disposable {
   private async onStopped(session: vscode.DebugSession): Promise<void> {
     if (session !== this.session) {
       this.session = session;
-      this.previous = undefined;
+      this.system = undefined;
+      this.previous.clear();
       this.symbols = undefined;
     }
     this.running = false;
@@ -97,6 +145,51 @@ export class RamPanel implements vscode.Disposable {
     this.post({ type: 'status', text: running ? 'running' : 'stopped' });
   }
 
+  /** The machine, asked once per session. */
+  private async describe(session: vscode.DebugSession): Promise<SystemDescription> {
+    if (!this.system) {
+      try {
+        this.system = (await session.customRequest('winasm65.system')) as SystemDescription;
+        if (!this.system.views || this.system.views.length === 0) {
+          this.system = FALLBACK;
+        }
+      } catch {
+        this.system = FALLBACK;
+      }
+      this.viewIndex = Math.min(this.viewIndex, this.system.views.length - 1);
+      if (this.panel) {
+        this.panel.title = 'Memory — ' + this.system.name;
+      }
+      this.post({ type: 'views', views: this.system.views.map(v => this.describeView(v)), selected: this.viewIndex });
+    }
+    return this.system;
+  }
+
+  private describeView(view: MemoryView): { label: string; available: boolean } {
+    const space = this.system?.spaces.find(s => s.name.toUpperCase() === view.space.toUpperCase());
+    const end = view.start + view.length - 1;
+    const range = '$' + view.start.toString(16).toUpperCase().padStart(4, '0') + '-$' + end.toString(16).toUpperCase().padStart(4, '0');
+    const available = space ? space.available : view.space === CPU;
+    const emulator = this.system?.emulator ? this.system.emulator.name : 'the emulator';
+    return {
+      label: view.name + (view.space === CPU ? '' : ' (' + view.space + ')') + '  ' + range
+        + (available ? '' : '  — not offered by ' + emulator),
+      available
+    };
+  }
+
+  private async read(session: vscode.DebugSession, view: MemoryView): Promise<Uint8Array> {
+    const bytes = new Uint8Array(view.length);
+    for (let done = 0; done < view.length; done += CHUNK) {
+      const count = Math.min(CHUNK, view.length - done);
+      const reply = view.space === CPU
+        ? await session.customRequest('readMemory', { memoryReference: reference(view.start + done), count })
+        : await session.customRequest('winasm65.memory.read', { space: view.space, address: view.start + done, count });
+      bytes.set(Buffer.from(reply.data as string, 'base64'), done);
+    }
+    return bytes;
+  }
+
   private async refresh(fromLive = false): Promise<void> {
     const session = this.session;
     if (!this.panel || !session || this.refreshing) {
@@ -104,60 +197,66 @@ export class RamPanel implements vscode.Disposable {
     }
     this.refreshing = true;
     try {
-      const read = await session.customRequest('readMemory', {
-        memoryReference: '0x' + RAM_START.toString(16).padStart(4, '0'),
-        count: RAM_LENGTH
-      });
-      const bytes = Uint8Array.from(Buffer.from(read.data as string, 'base64'));
+      const system = await this.describe(session);
+      const view = system.views[this.viewIndex];
+      const bytes = await this.read(session, view);
 
       let sp: number | undefined;
-      try {
-        const evaluated = await session.customRequest('evaluate', { expression: 'SP', context: 'watch' });
-        sp = parseInt(String(evaluated.result).replace('$', ''), 16);
-      } catch {
-        sp = undefined;
-      }
-
-      if (!this.symbols) {
+      if (view.space === CPU) {
         try {
-          const reply = await session.customRequest('winasm65.symbols', { from: RAM_START, to: RAM_START + RAM_LENGTH - 1 });
-          this.symbols = reply.symbols as RamSymbol[];
+          const evaluated = await session.customRequest('evaluate', { expression: 'SP', context: 'watch' });
+          sp = parseInt(String(evaluated.result).replace('$', ''), 16);
         } catch {
-          this.symbols = [];
+          sp = undefined;
+        }
+        if (!this.symbols) {
+          try {
+            const reply = await session.customRequest('winasm65.symbols', { from: 0, to: 0xffff });
+            this.symbols = reply.symbols as MemorySymbol[];
+          } catch {
+            this.symbols = [];
+          }
         }
       }
 
-      // Changes are measured from one stop to the next; a live refresh while the
-      // machine runs compares against the last frame shown.
+      // Changes are measured from one stop to the next, per view; a live refresh
+      // while the machine runs compares against the last frame shown.
       const changed: number[] = [];
-      if (this.previous) {
+      const previous = this.previous.get(this.viewIndex);
+      if (previous && previous.length === bytes.length) {
         for (let i = 0; i < bytes.length; i++) {
-          if (bytes[i] !== this.previous[i]) {
+          if (bytes[i] !== previous[i]) {
             changed.push(i);
           }
         }
       }
-      this.previous = bytes;
+      this.previous.set(this.viewIndex, bytes);
 
       this.post({
         type: 'data',
-        start: RAM_START,
+        cpu: view.space === CPU,
+        writable: view.writable,
+        start: view.start,
         bytes: Array.from(bytes),
         changed,
         sp,
-        symbols: this.symbols,
+        symbols: view.space === CPU ? this.symbols : [],
         status: this.running ? (fromLive ? 'running (live)' : 'running') : 'stopped'
       });
     } catch (error) {
-      this.post({ type: 'status', text: 'cannot read RAM: ' + (error instanceof Error ? error.message : String(error)) });
+      this.post({ type: 'status', text: 'cannot read: ' + (error instanceof Error ? error.message : String(error)) });
     } finally {
       this.refreshing = false;
     }
   }
 
-  private async onMessage(message: { type: string; address?: number; value?: number; on?: boolean }): Promise<void> {
+  private async onMessage(message: { type: string; address?: number; value?: number; on?: boolean; index?: number }): Promise<void> {
     switch (message.type) {
       case 'refresh':
+        await this.refresh();
+        break;
+      case 'view':
+        this.viewIndex = message.index ?? 0;
         await this.refresh();
         break;
       case 'live':
@@ -172,23 +271,28 @@ export class RamPanel implements vscode.Disposable {
           this.stopLive();
         }
         break;
-      case 'write':
-        if (!this.session || message.address === undefined || message.value === undefined) {
+      case 'write': {
+        const view = this.system?.views[this.viewIndex];
+        if (!this.session || !view || message.address === undefined || message.value === undefined) {
           return;
         }
+        const data = Buffer.from([message.value & 0xff]).toString('base64');
         try {
-          await this.session.customRequest('writeMemory', {
-            memoryReference: '0x' + message.address.toString(16).padStart(4, '0'),
-            data: Buffer.from([message.value & 0xff]).toString('base64')
-          });
-          if (this.previous) {
-            this.previous[message.address - RAM_START] = message.value & 0xff;
+          if (view.space === CPU) {
+            await this.session.customRequest('writeMemory', { memoryReference: reference(message.address), data });
+          } else {
+            await this.session.customRequest('winasm65.memory.write', { space: view.space, address: message.address, data });
+          }
+          const previous = this.previous.get(this.viewIndex);
+          if (previous) {
+            previous[message.address - view.start] = message.value & 0xff;
           }
           await this.refresh();
         } catch (error) {
           this.post({ type: 'status', text: 'write refused: ' + (error instanceof Error ? error.message : String(error)) });
         }
         break;
+      }
     }
   }
 
@@ -210,6 +314,10 @@ export class RamPanel implements vscode.Disposable {
   }
 }
 
+function reference(address: number): string {
+  return '0x' + address.toString(16).padStart(4, '0');
+}
+
 function html(webview: vscode.Webview): string {
   const nonce = Array.from({ length: 24 }, () => Math.floor(Math.random() * 36).toString(36)).join('');
   return `<!doctype html>
@@ -219,9 +327,10 @@ function html(webview: vscode.Webview): string {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <style>
   body { font-family: var(--vscode-editor-font-family); font-size: var(--vscode-editor-font-size); color: var(--vscode-foreground); padding: 8px 12px; }
-  .bar { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; font-family: var(--vscode-font-family); font-size: 12px; }
+  .bar { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; font-family: var(--vscode-font-family); font-size: 12px; flex-wrap: wrap; }
   .bar button { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 3px 10px; cursor: pointer; }
   .bar button:hover { background: var(--vscode-button-hoverBackground); }
+  .bar select { background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border); padding: 2px 4px; font: inherit; }
   #status { color: var(--vscode-descriptionForeground); }
   .legend span { padding: 0 6px; margin-right: 6px; }
   .row { white-space: pre; line-height: 1.45; }
@@ -239,11 +348,12 @@ function html(webview: vscode.Webview): string {
 </head>
 <body>
 <div class="bar">
+  <select id="view" title="Memory"></select>
   <button id="refresh" type="button">Refresh</button>
   <label><input id="live" type="checkbox"> Live</label>
   <span id="status">waiting for a stop…</span>
 </div>
-<div class="bar legend">
+<div class="bar legend" id="legend">
   <span class="zp">zero page</span><span class="stack">stack</span><span class="b chg">changed</span><span class="b sp">SP</span>
   <span>double-click a byte to edit it</span>
 </div>
@@ -252,9 +362,12 @@ function html(webview: vscode.Webview): string {
   const vscode = acquireVsCodeApi();
   const dump = document.getElementById('dump');
   const status = document.getElementById('status');
+  const select = document.getElementById('view');
   const cells = [];
   const asciis = [];
-  let start = 0;
+  let start = -1;
+  let cpu = true;
+  let writable = true;
   let names = new Map();
 
   function hex(n, w) { return n.toString(16).toUpperCase().padStart(w, '0'); }
@@ -263,21 +376,23 @@ function html(webview: vscode.Webview): string {
     dump.textContent = '';
     cells.length = 0;
     asciis.length = 0;
+    const width = base + length > 0x10000 ? 5 : 4;
     for (let row = 0; row < length; row += 16) {
       const address = base + row;
-      if (address === 0x0000 || address === 0x0100 || address === 0x0200) {
+      // The zero page and the stack are the 6502's, so only the CPU's memory has them.
+      if (cpu && (address === 0x0000 || address === 0x0100 || address === 0x0200)) {
         const label = document.createElement('div');
         label.className = 'region';
         label.textContent = address === 0 ? 'zero page' : address === 0x100 ? 'stack' : 'RAM';
         dump.appendChild(label);
       }
       const line = document.createElement('div');
-      line.className = 'row' + (address < 0x100 ? ' zp' : address < 0x200 ? ' stack' : '');
+      line.className = 'row' + (cpu && address < 0x100 ? ' zp' : cpu && address < 0x200 ? ' stack' : '');
       const a = document.createElement('span');
       a.className = 'addr';
-      a.textContent = '$' + hex(address, 4) + '  ';
+      a.textContent = '$' + hex(address, width) + '  ';
       line.appendChild(a);
-      for (let i = 0; i < 16; i++) {
+      for (let i = 0; i < 16 && row + i < length; i++) {
         const b = document.createElement('span');
         b.className = 'b';
         b.dataset.index = String(row + i);
@@ -298,6 +413,7 @@ function html(webview: vscode.Webview): string {
   }
 
   function edit(event) {
+    if (!writable) return;
     const cell = event.currentTarget;
     const index = Number(cell.dataset.index);
     const input = document.createElement('input');
@@ -330,11 +446,26 @@ function html(webview: vscode.Webview): string {
       status.textContent = m.text;
       return;
     }
+    if (m.type === 'views') {
+      select.textContent = '';
+      m.views.forEach((v, i) => {
+        const option = document.createElement('option');
+        option.value = String(i);
+        option.textContent = v.label;
+        option.disabled = !v.available;
+        select.appendChild(option);
+      });
+      select.value = String(m.selected);
+      return;
+    }
     if (m.type !== 'data') return;
-    if (cells.length !== m.bytes.length || start !== m.start) {
+    if (cells.length !== m.bytes.length || start !== m.start || cpu !== m.cpu) {
       start = m.start;
+      cpu = m.cpu;
       build(m.start, m.bytes.length);
     }
+    writable = m.writable;
+    document.getElementById('legend').style.display = cpu ? '' : 'none';
     // Variables here are often plain "NAME = $0B" constants, so a small constant can
     // share an address with a variable: every name is shown rather than one guessed.
     names = new Map();
@@ -342,7 +473,7 @@ function html(webview: vscode.Webview): string {
       names.set(s.value, names.has(s.value) ? names.get(s.value) + ', ' + s.name : s.name);
     }
     const changed = new Set(m.changed);
-    const spIndex = m.sp === undefined || isNaN(m.sp) ? -1 : 0x100 + m.sp - start;
+    const spIndex = !cpu || m.sp === undefined || isNaN(m.sp) ? -1 : 0x100 + m.sp - start;
     for (let i = 0; i < m.bytes.length; i++) {
       const cell = cells[i];
       const value = m.bytes[i];
@@ -356,16 +487,17 @@ function html(webview: vscode.Webview): string {
     }
     for (let r = 0; r < asciis.length; r++) {
       let text = '';
-      for (let i = 0; i < 16; i++) {
+      for (let i = 0; i < 16 && r * 16 + i < m.bytes.length; i++) {
         const v = m.bytes[r * 16 + i];
         text += v >= 0x20 && v < 0x7f ? String.fromCharCode(v) : '.';
       }
       asciis[r].textContent = text;
     }
-    status.textContent = m.status + (m.sp === undefined || isNaN(m.sp) ? '' : '  ·  SP=$' + hex(m.sp, 2))
+    status.textContent = m.status + (!cpu || m.sp === undefined || isNaN(m.sp) ? '' : '  ·  SP=$' + hex(m.sp, 2))
       + '  ·  ' + changed.size + ' byte(s) changed';
   });
 
+  select.addEventListener('change', () => vscode.postMessage({ type: 'view', index: Number(select.value) }));
   document.getElementById('refresh').addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
   document.getElementById('live').addEventListener('change', e => vscode.postMessage({ type: 'live', on: e.target.checked }));
 </script>

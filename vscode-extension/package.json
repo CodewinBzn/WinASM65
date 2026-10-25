@@ -1,7 +1,7 @@
 {
   "name": "winasm65",
   "displayName": "WinASM65",
-  "description": "6502 assembly for WinASM65 projects: build, debug on Mesen2 with source breakpoints, live diagnostics.",
+  "description": "6502 assembly for WinASM65 projects: build, debug in any emulator with a WinASM65 bridge (Mesen2 included) with source breakpoints, live diagnostics.",
   "version": "0.3.2",
   "publisher": "codewinbzn",
   "license": "Zlib",
@@ -21,6 +21,7 @@
     "nes",
     "assembly",
     "mesen",
+    "emulator",
     "retro"
   ],
   "main": "./out/extension.js",
@@ -54,7 +55,7 @@
     "debuggers": [
       {
         "type": "winasm65",
-        "label": "WinASM65 (Mesen2)",
+        "label": "WinASM65",
         "languages": [
           "winasm65"
         ],
@@ -71,16 +72,19 @@
               },
               "emulatorPath": {
                 "type": "string",
-                "description": "Mesen.exe. Defaults to the winasm65.emulatorPath setting, then to Emulator.Path in config.json."
+                "description": "The emulator's executable. Defaults to the winasm65.emulatorPath setting, then to Emulator.Path in config.json."
               },
               "emulator": {
                 "type": "string",
-                "enum": [
+                "examples": [
                   "mesen2",
                   "mesence"
                 ],
-                "description": "Which bridge to load. Only Mesen2 can pause, step and stop on breakpoints.",
-                "default": "mesen2"
+                "description": "The emulator adapter: mesen2, mesence, or any other name for a custom emulator started with Emulator.Arguments. Defaults to Emulator.Name in config.json, then to mesen2 for a Mesen.exe."
+              },
+              "bridge": {
+                "type": "string",
+                "description": "The bridge script to load instead of the adapter's own (relative to config.json). See the bridge contract in docs/site/bridges.html."
               },
               "rom": {
                 "type": "string",
@@ -93,7 +97,7 @@
               },
               "stopOnEntry": {
                 "type": "boolean",
-                "description": "Stop at the reset vector.",
+                "description": "Stop on the program's first instruction: the reset vector of a cartridge, the load address of a loaded program.",
                 "default": false
               },
               "connectTimeoutMs": {
@@ -107,7 +111,7 @@
             "properties": {
               "port": {
                 "type": "number",
-                "description": "Port of a bridge already running in Mesen2.",
+                "description": "Port of a bridge already running in an emulator.",
                 "default": 45678
               },
               "config": {
@@ -126,28 +130,28 @@
           {
             "type": "winasm65",
             "request": "launch",
-            "name": "Debug on Mesen2",
+            "name": "Debug",
             "config": "${workspaceFolder}/config.json"
           }
         ],
         "configurationSnippets": [
           {
-            "label": "WinASM65: Debug on Mesen2",
-            "description": "Build the project, start Mesen2 and debug.",
+            "label": "WinASM65: Debug",
+            "description": "Build the project, start the configured emulator and debug.",
             "body": {
               "type": "winasm65",
               "request": "launch",
-              "name": "Debug on Mesen2",
+              "name": "Debug",
               "config": "^\"\\${workspaceFolder}/config.json\""
             }
           },
           {
-            "label": "WinASM65: Attach to Mesen2",
-            "description": "Attach to a Mesen2 already running the bridge.",
+            "label": "WinASM65: Attach",
+            "description": "Attach to an emulator already running a WinASM65 bridge.",
             "body": {
               "type": "winasm65",
               "request": "attach",
-              "name": "Attach to Mesen2",
+              "name": "Attach",
               "port": 45678,
               "config": "^\"\\${workspaceFolder}/config.json\""
             }
@@ -166,7 +170,7 @@
         "winasm65.emulatorPath": {
           "type": "string",
           "default": "",
-          "description": "Mesen.exe, used when neither launch.json nor config.json names one."
+          "description": "The emulator's executable, used when neither launch.json nor config.json names one."
         },
         "winasm65.languageServer.enabled": {
           "type": "boolean",
@@ -176,7 +180,7 @@
         "winasm65.ram.openOnStop": {
           "type": "boolean",
           "default": true,
-          "description": "Open the RAM panel the first time a WinASM65 debug session stops."
+          "description": "Open the Memory panel the first time a WinASM65 debug session stops."
         }
       }
     },
@@ -238,7 +242,7 @@
       },
       {
         "command": "winasm65.showRam",
-        "title": "Show RAM",
+        "title": "Show Memory",
         "category": "WinASM65",
         "icon": "$(circuit-board)"
       }

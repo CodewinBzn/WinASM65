@@ -9,7 +9,9 @@ using System.Threading;
 using WinASM65.Cpu;
 using WinASM65.Monitor;
 using WinASM65.Monitor.Debugging;
+using WinASM65.Monitor.Emulators;
 using WinASM65.Projects;
+using WinASM65.Systems;
 
 namespace WinASM65.Tooling.Dap
 {
@@ -46,6 +48,11 @@ namespace WinASM65.Tooling.Dap
         private IEmulatorProcess _emulator;
         private MonitorSession _monitor;
         private SourceMap _map = SourceMap.Empty;
+
+        // The last successful build, and the machine it runs on: from the project's
+        // Target.System, else from the bridge's HELLO, else from the image's header.
+        private ProjectBuildResult _build;
+        private SystemDefinition _system = new Generic6502System(null);
         private bool _launched;
         private bool _configured;
         private bool _stopOnEntry;
@@ -150,6 +157,9 @@ namespace WinASM65.Tooling.Dap
                     case "writeMemory": WriteMemory(request, args); break;
                     case "evaluate": Evaluate(request, args); break;
                     case "winasm65.symbols": Symbols(request, args); break;
+                    case "winasm65.system": DescribeSystem(request); break;
+                    case "winasm65.memory.read": ReadSpace(request, args); break;
+                    case "winasm65.memory.write": WriteSpace(request, args); break;
                     case "terminate": Terminate(request); break;
                     case "disconnect": Disconnect(request, args); break;
                     default:
@@ -200,16 +210,24 @@ namespace WinASM65.Tooling.Dap
                 return;
             }
 
+            // The project's Emulator section, with what launch.json overrides.
+            EmulatorConfiguration emulator = _environment.ConfiguredEmulator(config) ?? new EmulatorConfiguration();
             string emulatorPath = Str(args, "emulatorPath");
-            if (string.IsNullOrWhiteSpace(emulatorPath))
-                emulatorPath = _environment.ConfiguredEmulator(config);
-            if (string.IsNullOrWhiteSpace(emulatorPath))
+            if (!string.IsNullOrWhiteSpace(emulatorPath))
+                emulator.Path = emulatorPath;
+            string emulatorName = Str(args, "emulator");
+            if (!string.IsNullOrWhiteSpace(emulatorName))
+                emulator.Name = emulatorName.Trim().ToLowerInvariant();
+            string bridge = Str(args, "bridge");
+            if (!string.IsNullOrWhiteSpace(bridge))
+                emulator.Bridge = Path.IsPathRooted(bridge) ? bridge : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(config), bridge));
+            if (string.IsNullOrWhiteSpace(emulator.Path))
             {
                 Fail(request, "no emulator: set \"emulatorPath\" in launch.json or \"Emulator.Path\" in config.json");
                 return;
             }
+            IEmulatorAdapter adapter = EmulatorAdapters.For(emulator);
 
-            string emulatorId = (Str(args, "emulator") ?? EmulatorIds.Mesen2).ToLowerInvariant();
             string rom = Str(args, "rom");
             if (string.IsNullOrWhiteSpace(rom))
                 rom = build.ImagePath;
@@ -218,8 +236,9 @@ namespace WinASM65.Tooling.Dap
                 port = _environment.FreePort();
             int timeout = Int(args, "connectTimeoutMs", BridgeConnector.DefaultTimeoutMs);
 
-            Output("starting " + Path.GetFileName(emulatorPath) + " with " + rom + " on port " + port + "\n", "console");
-            _emulator = _environment.Launch(emulatorPath, rom, emulatorId, port);
+            Output("starting " + adapter.DisplayName + " (" + Path.GetFileName(emulator.Path) + ") with " + rom
+                + " on port " + port + "\n", "console");
+            _emulator = _environment.Launch(emulator, rom, port);
             _launched = true;
 
             IMemoryBackend backend = ConnectWhileAlive(port, timeout);
@@ -227,7 +246,7 @@ namespace WinASM65.Tooling.Dap
             {
                 _emulator.Kill();
                 Fail(request, _emulator.HasExited
-                    ? "the emulator exited before its bridge answered. If Mesen2 was already open, close it: it runs as a single instance and the new launch was handed to the old window."
+                    ? "the emulator exited before its bridge answered." + (adapter.EarlyExitHint != null ? " " + adapter.EarlyExitHint : "")
                     : "no bridge answered on 127.0.0.1:" + port + " within " + timeout / 1000 + "s");
                 return;
             }
@@ -291,13 +310,19 @@ namespace WinASM65.Tooling.Dap
             {
                 string name = backend.EmulatorName + " " + backend.EmulatorVersion;
                 backend.Dispose();
-                Fail(request, name + " cannot be debugged: its bridge does not report when the machine stops."
-                    + " Use Mesen2 (\"emulator\": \"mesen2\").");
+                Fail(request, name + " cannot be debugged: its bridge does not report when the machine stops"
+                    + " (it needs STATUS, PAUSE and the PUSH STOPPED line of the bridge contract, see bridges.html).");
                 return false;
             }
 
             _backend = backend;
-            _monitor = new MonitorSession(backend, new Cpu6502(),
+            BridgeMemoryBackend bridge = backend as BridgeMemoryBackend;
+            _system = SystemRegistry.Resolve(_build != null && _build.Target != null ? _build.Target.SystemId : null,
+                bridge != null ? bridge.BridgeSystem : null, _build != null ? _build.Image : null);
+            if (_build != null)
+                _map = SourceMapBuilder.Build(_build, _system);
+
+            _monitor = new MonitorSession(backend, CpuOf(_build),
                 config != null ? Path.GetDirectoryName(config) : Directory.GetCurrentDirectory());
             events.Stopped += stop => Post(() => OnStopped(stop));
             events.Resumed += () => Post(OnResumed);
@@ -307,8 +332,22 @@ namespace WinASM65.Tooling.Dap
                     Terminated("the bridge closed the connection");
             }), null, 1000, 1000);
 
-            Output("connected to " + backend.EmulatorName + " " + backend.EmulatorVersion + "\n", "console");
+            Output("connected to " + backend.EmulatorName + " " + backend.EmulatorVersion
+                + ", " + _system.DisplayName + "\n", "console");
             return true;
+        }
+
+        /// <summary>The processor the project was built for, the plain 6502 when it says nothing.</summary>
+        private static ICpuInstructionSet CpuOf(ProjectBuildResult build)
+        {
+            try
+            {
+                return CpuFactory.Create(build != null && build.Target != null ? build.Target.CpuName : "6502");
+            }
+            catch (ArgumentException)
+            {
+                return new Cpu6502();
+            }
         }
 
         private ProjectBuildResult BuildProject(string config, bool writeImage)
@@ -330,6 +369,7 @@ namespace WinASM65.Tooling.Dap
             if (!result.Success)
                 return null;
 
+            _build = result;
             _map = SourceMapBuilder.Build(result);
             Output("built " + result.Units.Count + " unit(s), " + _map.Lines.Count + " mapped line(s)\n", "console");
             return result;
@@ -358,15 +398,24 @@ namespace WinASM65.Tooling.Dap
                 return;
             }
 
-            // Launched: run the program from its reset vector, now that every
-            // breakpoint is set, and stop on its first instruction when asked.
-            if (_stopOnEntry)
-            {
-                int reset = ReadWord(0xFFFC);
-                AddTemporary(reset, "entry");
-            }
+            // Launched, now that every breakpoint is set: a cartridge runs from its
+            // reset vector, a loaded program from where it was loaded. Stop on its
+            // first instruction when asked.
             _resumeExpected = true;
-            _backend.Reset();
+            if (_system.Boot == BootKind.ResetVector)
+            {
+                if (_stopOnEntry)
+                    AddTemporary(ReadWord(0xFFFC), "entry");
+                _backend.Reset();
+                return;
+            }
+
+            ushort? entry = _build != null && _build.Target != null
+                ? (_build.Target.RunAddress ?? _build.Target.LoadAddress)
+                : null;
+            if (_stopOnEntry && entry.HasValue)
+                AddTemporary(entry.Value, "entry");
+            _backend.Resume();
         }
 
         // ---------------------------------------------------------- breakpoints
@@ -667,7 +716,7 @@ namespace WinASM65.Tooling.Dap
         {
             Respond(request, new JsonObject
             {
-                ["threads"] = new JsonArray(new JsonObject { ["id"] = ThreadId, ["name"] = "6502" })
+                ["threads"] = new JsonArray(new JsonObject { ["id"] = ThreadId, ["name"] = _system.Cpu.Variant })
             });
         }
 
@@ -922,6 +971,154 @@ namespace WinASM65.Tooling.Dap
                 symbols.Add(new JsonObject { ["name"] = symbol.Key, ["value"] = symbol.Value });
             }
             Respond(request, new JsonObject { ["symbols"] = symbols });
+        }
+
+        /// <summary>
+        /// The machine being debugged, for a memory panel or a graphics editor: its
+        /// memories (the CPU's and the others the bridge offers), the views to show
+        /// first, its colours, and the emulator with what it can do.
+        /// </summary>
+        private void DescribeSystem(JsonObject request)
+        {
+            IVideoMemory video = _backend as IVideoMemory;
+            IReadOnlyList<string> available = video != null ? video.MemorySpaces : new string[0];
+
+            JsonArray spaces = new JsonArray(new JsonObject
+            {
+                ["name"] = SystemDefinition.CpuSpace,
+                ["length"] = AddressSpace,
+                ["writable"] = true,
+                ["description"] = "The " + _system.Cpu.Variant + "'s address space",
+                ["available"] = _backend != null
+            });
+            foreach (WinASM65.Monitor.Abstractions.MemorySpace space in _system.MemorySpaces)
+            {
+                spaces.Add(new JsonObject
+                {
+                    ["name"] = space.Name,
+                    ["length"] = space.Length,
+                    ["writable"] = space.IsWritable,
+                    ["description"] = space.Description,
+                    ["available"] = available.Any(a => string.Equals(a, space.Name, StringComparison.OrdinalIgnoreCase))
+                });
+            }
+
+            JsonArray views = new JsonArray();
+            foreach (MemoryView view in _system.Views)
+            {
+                views.Add(new JsonObject
+                {
+                    ["name"] = view.Name,
+                    ["space"] = view.Space,
+                    ["start"] = view.Start,
+                    ["length"] = view.Length,
+                    ["writable"] = view.IsWritable
+                });
+            }
+
+            JsonArray palette = new JsonArray();
+            foreach (int colour in _system.MasterPalette)
+                palette.Add(colour);
+
+            JsonObject body = new JsonObject
+            {
+                ["id"] = _system.SystemId,
+                ["name"] = _system.DisplayName,
+                ["cpu"] = _system.Cpu.Variant,
+                ["spaces"] = spaces,
+                ["views"] = views,
+                ["palette"] = palette
+            };
+            if (_backend != null)
+            {
+                WinASM65.Monitor.Abstractions.IExecutionAdapter adapter = _backend as WinASM65.Monitor.Abstractions.IExecutionAdapter;
+                body["emulator"] = new JsonObject
+                {
+                    ["name"] = _backend.EmulatorName,
+                    ["version"] = _backend.EmulatorVersion,
+                    ["protocol"] = _backend is BridgeMemoryBackend ? ((BridgeMemoryBackend)_backend).ProtocolVersion : 0,
+                    ["capabilities"] = adapter != null ? adapter.Capabilities.ToString() : string.Empty
+                };
+            }
+            Respond(request, body);
+        }
+
+        /// <summary>Reads a memory by name: the CPU's, or one the system and the bridge offer.</summary>
+        private void ReadSpace(JsonObject request, JsonObject args)
+        {
+            string space = Str(args, "space") ?? SystemDefinition.CpuSpace;
+            int address = Int(args, "address", 0);
+            int count = Int(args, "count", 0);
+            if (count < 0 || count > 0x10000)
+            {
+                Fail(request, "count must be between 0 and 65536");
+                return;
+            }
+
+            byte[] data = new byte[count];
+            int done = 0;
+            while (done < count)
+            {
+                int take = Math.Min(4096, count - done);
+                byte[] chunk = IsCpu(space)
+                    ? _backend.Read(address + done, take)
+                    : Video().ReadSpace(space, address + done, take);
+                Buffer.BlockCopy(chunk, 0, data, done, take);
+                done += take;
+            }
+            Respond(request, new JsonObject
+            {
+                ["space"] = space,
+                ["address"] = address,
+                ["data"] = Convert.ToBase64String(data)
+            });
+        }
+
+        /// <summary>Writes a memory by name; a graphics editor's live preview goes through here.</summary>
+        private void WriteSpace(JsonObject request, JsonObject args)
+        {
+            string space = Str(args, "space") ?? SystemDefinition.CpuSpace;
+            int address = Int(args, "address", 0);
+            byte[] data;
+            try
+            {
+                data = Convert.FromBase64String(Str(args, "data") ?? string.Empty);
+            }
+            catch (FormatException)
+            {
+                Fail(request, "data is not base64");
+                return;
+            }
+
+            int done = 0;
+            while (done < data.Length)
+            {
+                int take = Math.Min(4096, data.Length - done);
+                byte[] chunk = new byte[take];
+                Buffer.BlockCopy(data, done, chunk, 0, take);
+                if (IsCpu(space))
+                    _backend.Write(address + done, chunk);
+                else
+                    Video().WriteSpace(space, address + done, chunk);
+                done += take;
+            }
+            Respond(request, new JsonObject { ["bytesWritten"] = data.Length });
+            if (IsCpu(space))
+                SendEvent("memory", new JsonObject { ["memoryReference"] = MemoryReference(address), ["offset"] = 0, ["count"] = data.Length });
+        }
+
+        private static bool IsCpu(string space)
+        {
+            return string.Equals(space, SystemDefinition.CpuSpace, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private IVideoMemory Video()
+        {
+            IVideoMemory video = _backend as IVideoMemory;
+            if (video == null || video.MemorySpaces.Count == 0)
+                throw new MonitorException(_backend.EmulatorName + " " + _backend.EmulatorVersion
+                    + " offers no memory besides the CPU's");
+            return video;
         }
 
         // ------------------------------------------------------------- shutdown

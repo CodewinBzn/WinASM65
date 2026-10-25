@@ -511,7 +511,7 @@ private IReadOnlyList<string> Cpu()
                 return Ok(MonitorProtocol.ErrPrefix + " EMULATOR expects START");
 
             if (_launcher == null)
-                return Ok(MonitorProtocol.ErrPrefix + " no emulator is configured; start the monitor with --mesen");
+                return Ok(MonitorProtocol.ErrPrefix + " no emulator is configured; give --emulator-path, or an Emulator section in config.json");
 
             _launcher.LaunchEmulator();
             return Ok(MonitorProtocol.OkPrefix + " emulator started");

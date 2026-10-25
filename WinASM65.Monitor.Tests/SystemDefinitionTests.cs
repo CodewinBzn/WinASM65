@@ -70,7 +70,10 @@ namespace WinASM65.Monitor.Tests
             Assert.AreEqual("c64", SystemRegistry.Resolve("c64", "nes", Ines(false)).SystemId);
             Assert.AreEqual("nes", SystemRegistry.Resolve(null, "nes", new byte[0]).SystemId);
             Assert.AreEqual("nes", SystemRegistry.Resolve(null, null, Ines(false)).SystemId);
-            Assert.IsInstanceOfType(SystemRegistry.Resolve(null, null, new byte[0]), typeof(Generic6502System));
+            SystemDefinition unknown = SystemRegistry.Resolve(null, null, new byte[0]);
+            Assert.IsInstanceOfType(unknown, typeof(Generic6502System));
+            Assert.AreEqual(BootKind.ResetVector, unknown.Boot, "a machine nobody named starts from its reset vector, as before");
+            Assert.AreEqual(BootKind.ResetVector, SystemRegistry.For("atari2600").Boot, "a cartridge");
         }
 
         [TestMethod]
