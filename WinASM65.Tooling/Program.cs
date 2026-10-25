@@ -6,6 +6,7 @@ using System.Threading;
 using WinASM65.Projects;
 using WinASM65.Tooling.Dap;
 using WinASM65.Tooling.Lsp;
+using WinASM65.Tooling.Mcp;
 using WinASM65.Tooling.Rpc;
 
 namespace WinASM65.Tooling
@@ -21,6 +22,8 @@ namespace WinASM65.Tooling
                     return RunDebugAdapter();
                 case "--lsp":
                     return RunLanguageServer();
+                case "--mcp":
+                    return RunMcpServer();
                 case "--build":
                     if (args.Length != 2)
                         break;
@@ -30,6 +33,7 @@ namespace WinASM65.Tooling
             Console.Error.WriteLine("WinASM65 tooling for editors");
             Console.Error.WriteLine("  --dap              Debug Adapter Protocol on stdin/stdout");
             Console.Error.WriteLine("  --lsp              Language Server Protocol on stdin/stdout");
+            Console.Error.WriteLine("  --mcp              Model Context Protocol on stdin/stdout, for AI assistants");
             Console.Error.WriteLine("  --build <config>   build a project, one file:line: message per diagnostic");
             return 2;
         }
@@ -98,6 +102,24 @@ namespace WinASM65.Tooling
                 { IsBackground = true, Name = "lsp-reader" };
                 reader.Start();
                 server.Run();
+            }
+            return 0;
+        }
+
+        /// <summary>
+        /// The tools for AI assistants (docs/site/ai.html), one JSON message per line
+        /// on the standard streams, as MCP's stdio transport has it.
+        /// </summary>
+        private static int RunMcpServer()
+        {
+            Stream input = Console.OpenStandardInput();
+            Stream output = Console.OpenStandardOutput();
+            Console.SetOut(Console.Error);
+            McpLineWriter writer = new McpLineWriter(output);
+            using (DebugTools debug = new DebugTools())
+            {
+                System.Collections.Generic.List<McpTool> tools = CodeTools.All().Concat(debug.All()).ToList();
+                new McpServer(tools, writer.Write).Run(new StreamReader(input, new System.Text.UTF8Encoding(false)));
             }
             return 0;
         }
