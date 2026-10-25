@@ -1,0 +1,17 @@
+{
+  // The webview scripts: ES modules for the browser, loaded from out/webview.
+  // src/shared is compiled here a second time, as ES modules, beside them.
+  "compilerOptions": {
+    "module": "es2022",
+    "moduleResolution": "node10",
+    "target": "es2022",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "types": [],
+    "outDir": "out/webview",
+    "rootDir": "src",
+    "sourceMap": true,
+    "strict": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/webview", "src/shared"]
+}

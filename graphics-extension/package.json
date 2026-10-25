@@ -1,0 +1,208 @@
+{
+  "name": "winasm65-graphics",
+  "displayName": "WinASM65 Graphics Designer",
+  "description": "Draw NES graphics for WinASM65 projects: tile sets (.chr), palettes, screens and metatile maps, exported as .asm and binary files the assembler includes.",
+  "version": "0.1.0",
+  "publisher": "codewinbzn",
+  "license": "Zlib",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CodewinBzn/WinASM65"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "6502",
+    "nes",
+    "chr",
+    "tiles",
+    "pixel art",
+    "retro"
+  ],
+  "extensionDependencies": [
+    "codewinbzn.winasm65"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onCustomEditor:winasm65Graphics.palettes",
+    "onCustomEditor:winasm65Graphics.tiles",
+    "onCustomEditor:winasm65Graphics.screen",
+    "onCustomEditor:winasm65Graphics.map",
+    "onCommand:winasm65Graphics.newPalette",
+    "onCommand:winasm65Graphics.newScreen",
+    "onCommand:winasm65Graphics.newMap",
+    "onCommand:winasm65Graphics.newTileSet",
+    "onCommand:winasm65Graphics.exportAsset",
+    "onCommand:winasm65Graphics.exportFolder",
+    "workspaceContains:**/*.pal.json",
+    "workspaceContains:**/*.screen.json",
+    "workspaceContains:**/*.map.json"
+  ],
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "winasm65Graphics.palettes",
+        "displayName": "WinASM65 Palettes",
+        "selector": [
+          {
+            "filenamePattern": "*.pal.json"
+          }
+        ],
+        "priority": "default"
+      },
+      {
+        "viewType": "winasm65Graphics.tiles",
+        "displayName": "WinASM65 Tile Set",
+        "selector": [
+          {
+            "filenamePattern": "*.chr"
+          }
+        ],
+        "priority": "default"
+      },
+      {
+        "viewType": "winasm65Graphics.screen",
+        "displayName": "WinASM65 Screen",
+        "selector": [
+          {
+            "filenamePattern": "*.screen.json"
+          }
+        ],
+        "priority": "default"
+      },
+      {
+        "viewType": "winasm65Graphics.map",
+        "displayName": "WinASM65 Map",
+        "selector": [
+          {
+            "filenamePattern": "*.map.json"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "configuration": {
+      "title": "WinASM65 Graphics",
+      "properties": {
+        "winasm65Graphics.designerPath": {
+          "type": "string",
+          "default": "",
+          "description": "WinASM65.Designer executable (or .dll, run with dotnet). Empty: the copy shipped with the extension."
+        },
+        "winasm65Graphics.exportOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Export an asset (its .asm and binary files) every time it is saved, and report its problems."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "winasm65Graphics.newPalette",
+        "title": "New Palette…",
+        "category": "WinASM65 Graphics"
+      },
+      {
+        "command": "winasm65Graphics.newScreen",
+        "title": "New Screen…",
+        "category": "WinASM65 Graphics"
+      },
+      {
+        "command": "winasm65Graphics.newMap",
+        "title": "New Map…",
+        "category": "WinASM65 Graphics"
+      },
+      {
+        "command": "winasm65Graphics.newTileSet",
+        "title": "New Tile Set…",
+        "category": "WinASM65 Graphics"
+      },
+      {
+        "command": "winasm65Graphics.exportAsset",
+        "title": "Export Asset",
+        "category": "WinASM65 Graphics"
+      },
+      {
+        "command": "winasm65Graphics.exportFolder",
+        "title": "Export All Assets in Folder",
+        "category": "WinASM65 Graphics"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "submenu": "winasm65Graphics.context",
+          "group": "navigation@91"
+        }
+      ],
+      "winasm65Graphics.context": [
+        {
+          "command": "winasm65Graphics.newPalette",
+          "when": "explorerResourceIsFolder",
+          "group": "1_new@1"
+        },
+        {
+          "command": "winasm65Graphics.newTileSet",
+          "when": "explorerResourceIsFolder",
+          "group": "1_new@2"
+        },
+        {
+          "command": "winasm65Graphics.newScreen",
+          "when": "explorerResourceIsFolder",
+          "group": "1_new@3"
+        },
+        {
+          "command": "winasm65Graphics.newMap",
+          "when": "explorerResourceIsFolder",
+          "group": "1_new@4"
+        },
+        {
+          "command": "winasm65Graphics.exportAsset",
+          "when": "!explorerResourceIsFolder && resourceFilename =~ /\\.(pal|screen|map|msprite)\\.json$/",
+          "group": "2_export@1"
+        },
+        {
+          "command": "winasm65Graphics.exportFolder",
+          "when": "explorerResourceIsFolder",
+          "group": "2_export@2"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "winasm65Graphics.exportAsset",
+          "when": "activeCustomEditorId == winasm65Graphics.palettes || activeCustomEditorId == winasm65Graphics.screen || activeCustomEditorId == winasm65Graphics.map",
+          "group": "1_winasm65Graphics"
+        }
+      ]
+    },
+    "submenus": [
+      {
+        "id": "winasm65Graphics.context",
+        "label": "WinASM65 Graphics"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./ && tsc -p ./tsconfig.webview.json",
+    "watch": "tsc -watch -p ./",
+    "watch:webview": "tsc -watch -p ./tsconfig.webview.json",
+    "vscode:prepublish": "npm run compile",
+    "package": "npm run designer && npm run license && vsce package --target win32-x64",
+    "designer": "dotnet publish ../WinASM65.Designer/WinASM65.Designer.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=none -maxcpucount:1 -o bin",
+    "license": "node -e \"require('fs').copyFileSync('../LICENSE.txt', 'LICENSE.txt')\"",
+    "test:unit": "npm run compile && node --test out/test/unit/*.test.js",
+    "test": "npm run compile && node out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^2.4.1",
+    "@vscode/vsce": "^2.24.0",
+    "typescript": "^5.4.0"
+  }
+}
