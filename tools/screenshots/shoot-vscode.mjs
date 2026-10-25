@@ -1,5 +1,5 @@
-// The VS Code screenshots of the documentation: the extension on the NES
-// example (example_nes_game), from editing to a debug session on Mesen2.
+// The VS Code screenshots of the documentation: the extension on the
+// example game (example_star_catcher), from editing to a debug session on Mesen2.
 //   node shoot-vscode.mjs [--mesen C:\path\to\Mesen.exe]
 
 import { execFileSync } from 'node:child_process';
@@ -22,7 +22,7 @@ function powershell(script) {
 
 function findMesen() {
   // The emulator the examples are configured with, when it is installed here.
-  for (const config of ['example_nes_game/config.json']) {
+  for (const config of ['example_nes_game/config.json', 'example_star_catcher/config.json']) {
     try {
       const text = fs.readFileSync(path.join(repo, config), 'utf8');
       const match = /"Path"\s*:\s*"([^"]+Mesen[^"]*\.exe)"/i.exec(text);
@@ -90,7 +90,7 @@ async function hoverAt(page, line, column) {
   await page.waitForTimeout(400);
 }
 
-const workspace = cleanCopy('example_nes_game');
+const workspace = cleanCopy('example_star_catcher');
 const { app, page } = await launch(workspace, {
   'editor.colorDecorators': false,
   'editor.hover.above': false,
@@ -104,18 +104,18 @@ const editorPart = '.part.editor';
 
 try {
   await step('editor', async () => {
-    await openFile(page, 'background.asm', 41);
+    await openFile(page, 'game.asm', 334);
     await page.waitForTimeout(4000); // the language server's first assembly
     await shot(page, 'vscode-editor');
   });
 
   await step('hover on an instruction', async () => {
-    await hoverAt(page, 49, 4);
+    await hoverAt(page, 340, 10);
     await shot(page, 'vscode-hover-instruction', await box(page, editorPart), true);
   });
 
   await step('hover on a name', async () => {
-    await hoverAt(page, 49, 9);
+    await hoverAt(page, 340, 14);
     await shot(page, 'vscode-hover-symbol', await box(page, editorPart), true);
     await page.keyboard.press('Escape');
   });
@@ -140,7 +140,7 @@ try {
 
   await step('diagnostics', async () => {
     await page.keyboard.press('Control+G');
-    await page.keyboard.type('48');
+    await page.keyboard.type('336');
     await page.keyboard.press('Enter');
     await page.keyboard.press('Home');
     await page.keyboard.press('Home');
@@ -167,7 +167,7 @@ try {
 
   if (mesen) {
     await step('debug session', async () => {
-      await openFile(page, 'background.asm', 77); // the first line of NMI
+      await openFile(page, 'game.asm', 134); // the first instruction of NMI
       await page.keyboard.press('F9');
       await page.keyboard.press('F5');
       await page.getByText(/Paused on breakpoint/i).first().waitFor({ timeout: 90000 });

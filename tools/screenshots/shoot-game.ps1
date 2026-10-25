@@ -1,0 +1,57 @@
+# The pictures of the example game (docs/site/img/game-*.png): Star Catcher is
+# built from a clean copy, played by game.lua in Mesen2's test runner, and each
+# 256 x 240 frame is enlarged three times without smoothing.
+#   shoot-game.ps1 -Mesen C:\path\to\Mesen.exe
+param([Parameter(Mandatory = $true)] [string] $Mesen)
+
+$ErrorActionPreference = 'Stop'
+$repo = Resolve-Path (Join-Path $PSScriptRoot '..\..')
+$images = Join-Path $repo 'docs\site\img'
+Add-Type -AssemblyName System.Drawing
+
+dotnet build (Join-Path $repo 'WinASM65\WinASM65.csproj') -c Release -v q -nologo | Out-Null
+$assembler = Join-Path $repo 'WinASM65\bin\Release\net8.0\WinASM65.exe'
+
+$work = Join-Path ([IO.Path]::GetTempPath()) ('winasm65-game-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+New-Item -ItemType Directory $work | Out-Null
+try {
+    git -C $repo archive -o (Join-Path $work 'example.tar') HEAD example_star_catcher
+    Push-Location $work
+    tar -xf example.tar
+    Pop-Location
+    $example = Join-Path $work 'example_star_catcher'
+    Push-Location $example
+    & $assembler -c config.json | Out-Null
+    Pop-Location
+
+    $frames = Join-Path $work 'frames'
+    New-Item -ItemType Directory $frames | Out-Null
+    $script = Join-Path $work 'game.lua'
+    (Get-Content -Raw (Join-Path $PSScriptRoot 'game.lua')).Replace('__OUT__', $frames.Replace('\', '/')) |
+        Set-Content -Encoding ascii $script
+
+    $run = Start-Process $Mesen -ArgumentList "--testRunner `"$script`" `"$(Join-Path $example 'star_catcher.nes')`"" -PassThru -WindowStyle Hidden
+    if (-not $run.WaitForExit(300000)) { $run.Kill(); throw 'Mesen2 did not finish the game in 5 minutes.' }
+
+    foreach ($name in 'game-title', 'game-play', 'game-over') {
+        $source = [System.Drawing.Image]::FromFile((Join-Path $frames "$name.png"))
+        $big = New-Object System.Drawing.Bitmap ($source.Width * 3), ($source.Height * 3)
+        $graphics = [System.Drawing.Graphics]::FromImage($big)
+        $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
+        $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
+        $graphics.DrawImage($source, 0, 0, $big.Width, $big.Height)
+        $graphics.Dispose()
+        $source.Dispose()
+        $out = Join-Path $images "$name.png"
+        $big.Save($out, [System.Drawing.Imaging.ImageFormat]::Png)
+        $big.Dispose()
+        Write-Output "  $out"
+    }
+
+    # The tiles, as make_chr.py previews them.
+    $tiles = Join-Path $images 'game-tiles.png'
+    python (Join-Path $example 'chr\make_chr.py') --png $tiles
+    Write-Output "  $tiles"
+} finally {
+    Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
+}

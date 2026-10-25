@@ -34,11 +34,11 @@ $monitor = Join-Path $repo 'WinASM65.Monitor\bin\Release\net8.0\WinASM65.Monitor
 # A clean copy of the example, as committed.
 $work = Join-Path ([IO.Path]::GetTempPath()) ('winasm65-shots-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory $work | Out-Null
-git -C $repo archive -o (Join-Path $work 'example.tar') HEAD example_nes_game
+git -C $repo archive -o (Join-Path $work 'example.tar') HEAD example_star_catcher
 Push-Location $work
 tar -xf example.tar
 Pop-Location
-$example = Join-Path $work 'example_nes_game'
+$example = Join-Path $work 'example_star_catcher'
 
 # Runs a command line in a new classic console of cols x lines, waits, captures
 # the window, and closes it.
@@ -71,7 +71,7 @@ function Shoot-Console([string] $name, [string[]] $commands, [int] $cols, [int] 
 try {
     # The command line: the help, then a project build with its listing.
     Shoot-Console 'cli-help' @('WinASM65 -h') 150 30 4 $example
-    Shoot-Console 'cli-build' @('WinASM65 -c config.json', 'dir /b engine generated_Nes_Rom') 110 20 6 $example
+    Shoot-Console 'cli-build' @('WinASM65 -c config.json', 'dir /b src star_catcher.nes') 110 20 6 $example
 
     # A source with mistakes: the errors name the file, the line and the rule.
     Set-Content -Encoding ascii (Join-Path $work 'errors.asm') @(
@@ -94,12 +94,12 @@ try {
         Push-Location $example
         & $assembler -c config.json | Out-Null
         Pop-Location
-        Shoot-Console 'monitor-tui' @("WinASM65.Monitor --tui --emulator mesen2 --mesen `"$Mesen`" --rom generated_Nes_Rom/game.nes --source engine/background.asm 2>nul") 170 50 16 $example 'Mesen'
+        Shoot-Console 'monitor-tui' @("WinASM65.Monitor --tui --emulator mesen2 --mesen `"$Mesen`" --rom star_catcher.nes --source src/game.asm 2>nul") 170 50 25 $example 'Mesen'
         Get-CimInstance Win32_Process -Filter "Name='Mesen.exe'" | Where-Object { $_.CommandLine -like "*$work*" } |
             ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
     } else {
         # Without a bridge the monitor waits 15 s for one, then starts alone.
-        Shoot-Console 'monitor-tui' @('WinASM65.Monitor --tui --source engine/background.asm 2>nul') 170 50 22 $example
+        Shoot-Console 'monitor-tui' @('WinASM65.Monitor --tui --source src/game.asm 2>nul') 170 50 22 $example
     }
 } finally {
     Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue

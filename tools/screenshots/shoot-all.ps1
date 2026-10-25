@@ -30,6 +30,13 @@ try {
     }
     & .\shoot-windows.ps1 -Mesen $Mesen
 
+    if ($Mesen) {
+        Write-Output 'The example game'
+        & .\shoot-game.ps1 -Mesen $Mesen
+    } else {
+        Write-Output '  Mesen2 not found: the pictures of the example game are skipped.'
+    }
+
     if ($vscode -ne 0 -or $pages -ne 0) { exit 1 }
 } finally {
     Pop-Location

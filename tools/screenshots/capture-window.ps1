@@ -20,6 +20,7 @@ public static class Win32Capture {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint flags);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hWnd, int attribute, out RECT rect, int size);
 }
 "@
@@ -41,6 +42,13 @@ while ($handle -eq [IntPtr]::Zero -and (Get-Date) -lt $deadline) {
 if ($handle -eq [IntPtr]::Zero) {
     Write-Error "No window found."
     exit 1
+}
+
+if ($FromScreen) {
+    # The top-left corner of the screen: nothing, not even the taskbar, covers it.
+    # 0x0001 | 0x0004 = SWP_NOSIZE | SWP_NOZORDER.
+    [void] [Win32Capture]::SetWindowPos($handle, [IntPtr]::Zero, 0, 0, 0, 0, 0x0005)
+    Start-Sleep -Milliseconds 500
 }
 
 # The visible bounds, without the invisible resize border of Windows 10/11.
