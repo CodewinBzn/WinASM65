@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The graphics library and the designer CLI/server. The assembler is
+    referenced only here, to prove that every generated source assembles to the
+    expected bytes: the library itself never depends on it.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>WinASM65.Graphics.Tests</RootNamespace>
+    <AssemblyName>WinASM65.Graphics.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="MSTest.TestAdapter" Version="3.6.1" />
+    <PackageReference Include="MSTest.TestFramework" Version="3.6.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WinASM65.Graphics\WinASM65.Graphics.csproj" />
+    <ProjectReference Include="..\WinASM65.Designer\WinASM65.Designer.csproj" />
+    <ProjectReference Include="..\WinASM65\WinASM65.csproj" />
+  </ItemGroup>
+
+</Project>
