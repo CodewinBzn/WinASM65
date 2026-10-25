@@ -10,8 +10,24 @@
       "originX": 0,
       "originY": 0,
       "tiles": [
-        { "x": 0, "y": 0, "tile": 1, "palette": 0, "flipH": false, "flipV": false, "behind": false },
-        { "x": 8, "y": 0, "tile": 2, "palette": 0, "flipH": false, "flipV": false, "behind": false }
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 1,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 2,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
       ]
     },
     {
@@ -19,7 +35,15 @@
       "originX": 0,
       "originY": 0,
       "tiles": [
-        { "x": 0, "y": 0, "tile": 3, "palette": 1, "flipH": false, "flipV": false, "behind": false }
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 3,
+          "palette": 1,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
       ]
     },
     {
@@ -27,7 +51,15 @@
       "originX": 0,
       "originY": 0,
       "tiles": [
-        { "x": 0, "y": 0, "tile": 4, "palette": 1, "flipH": false, "flipV": false, "behind": false }
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 4,
+          "palette": 1,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
       ]
     },
     {
@@ -35,7 +67,15 @@
       "originX": 0,
       "originY": 0,
       "tiles": [
-        { "x": 0, "y": 0, "tile": 5, "palette": 2, "flipH": false, "flipV": false, "behind": false }
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 5,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
       ]
     },
     {
@@ -43,7 +83,15 @@
       "originX": 0,
       "originY": 0,
       "tiles": [
-        { "x": 0, "y": 0, "tile": 8, "palette": 3, "flipH": false, "flipV": false, "behind": false }
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 8,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
       ]
     },
     {
@@ -364,6 +412,1085 @@
           "behind": false
         }
       ]
+    },
+    {
+      "name": "diver",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 128,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 129,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 130,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 131,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "diver 2",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 132,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 133,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 130,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 131,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "turret",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 134,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 135,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 136,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 137,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "turret 2",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 138,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 139,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 140,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 141,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "weaver",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 142,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 143,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 144,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 145,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "weaver 2",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 146,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 147,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 148,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 149,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "giant meteor",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 150,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 151,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 152,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 153,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "giant meteor 2",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 154,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 155,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 156,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 157,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "ship back",
+      "originX": 12,
+      "originY": 8,
+      "tiles": [
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 158,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 159,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 160,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 8,
+          "tile": 161,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "rock3d 8",
+      "originX": 4,
+      "originY": 4,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 162,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "rock3d 16",
+      "originX": 8,
+      "originY": 8,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 163,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 164,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 165,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 166,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "rock3d 32",
+      "originX": 16,
+      "originY": 16,
+      "tiles": [
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 167,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 0,
+          "tile": 168,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 169,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 170,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 8,
+          "tile": 171,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 24,
+          "y": 8,
+          "tile": 172,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 16,
+          "tile": 173,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 16,
+          "tile": 174,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 16,
+          "tile": 175,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 24,
+          "y": 16,
+          "tile": 176,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 24,
+          "tile": 177,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 24,
+          "tile": 178,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 24,
+          "tile": 179,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 24,
+          "y": 24,
+          "tile": 177,
+          "palette": 2,
+          "flipH": true,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "saucer3d 8",
+      "originX": 4,
+      "originY": 4,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 180,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "saucer3d 16",
+      "originX": 8,
+      "originY": 8,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 181,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 182,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 183,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 184,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "saucer3d 32",
+      "originX": 16,
+      "originY": 16,
+      "tiles": [
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 185,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 0,
+          "tile": 185,
+          "palette": 3,
+          "flipH": true,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 186,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 187,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 8,
+          "tile": 188,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 24,
+          "y": 8,
+          "tile": 186,
+          "palette": 3,
+          "flipH": true,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 16,
+          "tile": 189,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 16,
+          "tile": 190,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 16,
+          "tile": 191,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 24,
+          "y": 16,
+          "tile": 192,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 24,
+          "tile": 193,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 24,
+          "tile": 193,
+          "palette": 3,
+          "flipH": true,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "fighter3d 8",
+      "originX": 4,
+      "originY": 4,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 194,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "fighter3d 16",
+      "originX": 8,
+      "originY": 8,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 195,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 195,
+          "palette": 0,
+          "flipH": true,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 196,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 197,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "fighter3d 32",
+      "originX": 16,
+      "originY": 16,
+      "tiles": [
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 198,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 0,
+          "tile": 198,
+          "palette": 0,
+          "flipH": true,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 199,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 8,
+          "tile": 200,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 16,
+          "tile": 201,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 16,
+          "tile": 202,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 16,
+          "tile": 203,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 24,
+          "y": 16,
+          "tile": 201,
+          "palette": 0,
+          "flipH": true,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 24,
+          "tile": 198,
+          "palette": 0,
+          "flipH": false,
+          "flipV": true,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 24,
+          "tile": 198,
+          "palette": 0,
+          "flipH": true,
+          "flipV": true,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "pylon3d 8",
+      "originX": 4,
+      "originY": 4,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 204,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "pylon3d 16",
+      "originX": 8,
+      "originY": 8,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 205,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 205,
+          "palette": 0,
+          "flipH": true,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 206,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 206,
+          "palette": 0,
+          "flipH": true,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "pylon3d 32",
+      "originX": 16,
+      "originY": 16,
+      "tiles": [
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 207,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 0,
+          "tile": 207,
+          "palette": 0,
+          "flipH": true,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 208,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 8,
+          "tile": 208,
+          "palette": 0,
+          "flipH": true,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 16,
+          "tile": 209,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 16,
+          "tile": 209,
+          "palette": 0,
+          "flipH": true,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 24,
+          "tile": 210,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 24,
+          "tile": 210,
+          "palette": 0,
+          "flipH": true,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "shot3d",
+      "originX": 4,
+      "originY": 4,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 211,
+          "palette": 1,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "bullet3d",
+      "originX": 4,
+      "originY": 4,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 212,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
     }
   ],
   "animations": [
@@ -371,8 +1498,70 @@
       "name": "twinkle",
       "loop": true,
       "frames": [
-        { "metasprite": "star", "duration": 8 },
-        { "metasprite": "star twinkle", "duration": 8 }
+        {
+          "metasprite": "star",
+          "duration": 8
+        },
+        {
+          "metasprite": "star twinkle",
+          "duration": 8
+        }
+      ]
+    },
+    {
+      "name": "diver",
+      "loop": true,
+      "frames": [
+        {
+          "metasprite": "diver",
+          "duration": 8
+        },
+        {
+          "metasprite": "diver 2",
+          "duration": 8
+        }
+      ]
+    },
+    {
+      "name": "turret",
+      "loop": true,
+      "frames": [
+        {
+          "metasprite": "turret",
+          "duration": 8
+        },
+        {
+          "metasprite": "turret 2",
+          "duration": 8
+        }
+      ]
+    },
+    {
+      "name": "weaver",
+      "loop": true,
+      "frames": [
+        {
+          "metasprite": "weaver",
+          "duration": 8
+        },
+        {
+          "metasprite": "weaver 2",
+          "duration": 8
+        }
+      ]
+    },
+    {
+      "name": "giant meteor",
+      "loop": true,
+      "frames": [
+        {
+          "metasprite": "giant meteor",
+          "duration": 8
+        },
+        {
+          "metasprite": "giant meteor 2",
+          "duration": 8
+        }
       ]
     }
   ]

@@ -35,7 +35,7 @@ test('a tile is two planes of 8 bytes, the leftmost pixel in the high bit', () =
 
 test('decode then encode gives back every byte of a real tile set', () => {
   const chr = new Uint8Array(fs.readFileSync(path.resolve(__dirname, '..', '..', '..', '..', 'example_star_catcher', 'chr', 'tiles.chr')));
-  assert.equal(tileCount(nes, chr), 512);
+  assert.equal(tileCount(nes, chr), 256);
   const again = new Uint8Array(chr.length);
   for (let t = 0; t < tileCount(nes, chr); t++) {
     writeTile(nes, again, t, decodeTile(nes, chr, t));

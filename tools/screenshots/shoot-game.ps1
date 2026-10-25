@@ -38,7 +38,7 @@ try {
     $run = Start-Process $Mesen -ArgumentList "--testRunner `"$script`" `"$(Join-Path $example 'star_catcher.nes')`"" -PassThru -WindowStyle Hidden
     if (-not $run.WaitForExit(300000)) { $run.Kill(); throw 'Mesen2 did not finish the game in 5 minutes.' }
 
-    foreach ($name in 'game-title', 'game-play', 'game-boss', 'game-over') {
+    foreach ($name in 'game-title', 'game-play', 'game-boss', 'game-3d', 'game-over') {
         $source = [System.Drawing.Image]::FromFile((Join-Path $frames "$name.png"))
         $big = New-Object System.Drawing.Bitmap ($source.Width * 3), ($source.Height * 3)
         $graphics = [System.Drawing.Graphics]::FromImage($big)

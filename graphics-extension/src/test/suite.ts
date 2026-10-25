@@ -97,7 +97,7 @@ export async function run(): Promise<void> {
   const chrUri = file('tiles.chr');
   const chr = api.tiles.documentFor(chrUri);
   assert.ok(chr, 'the tile set is open');
-  assert.strictEqual(chr.bytes.length, 8192);
+  assert.strictEqual(chr.bytes.length, 4096);
   await vscode.commands.executeCommand('vscode.openWith', chrUri, 'winasm65Graphics.tiles');
   const edited = chr.bytes.slice();
   edited[0] = 0xff;

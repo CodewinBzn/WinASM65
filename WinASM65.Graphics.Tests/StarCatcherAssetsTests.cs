@@ -29,7 +29,8 @@ namespace WinASM65.Graphics.Tests
         // tried, say) are not the example's.
         private static readonly string[] Assets =
         {
-            "game.pal.json", "objects.msprite.json", "title.screen.json", "over.screen.json", "play.map.json"
+            "game.pal.json", "objects.msprite.json", "title.screen.json", "over.screen.json", "play.map.json",
+            "stage3d.pal.json", "stage3d.screen.json"
         };
 
         [TestMethod]
@@ -54,12 +55,13 @@ namespace WinASM65.Graphics.Tests
                 Directory.CreateDirectory(temp.File("gfx"));
                 Directory.CreateDirectory(temp.File("chr"));
                 File.Copy(Path.Combine(example, "chr", "tiles.chr"), temp.File(Path.Combine("chr", "tiles.chr")));
+                File.Copy(Path.Combine(example, "chr", "floor.chr"), temp.File(Path.Combine("chr", "floor.chr")));
                 foreach (string asset in Assets)
                     File.Copy(Path.Combine(example, "gfx", asset), temp.File(Path.Combine("gfx", asset)));
 
                 ExportResult result = AssetExporter.ExportAll(temp.File("gfx"));
                 Assert.IsFalse(result.HasErrors, TestKit.Describe(result.Diagnostics));
-                Assert.AreEqual(8, result.Written.Count);
+                Assert.AreEqual(12, result.Written.Count);
 
                 foreach (string written in result.Written)
                 {

@@ -35,15 +35,18 @@ MAX_SHOTS   = 3
 SHOT_SPEED  = 5
 FIRE_DELAY  = 8                 ; frames between two shots while A or B is held
 
-MAX_BOMBS   = 4
-BOMB_SPEED  = 2
+MAX_BOMBS   = 12                ; enemy bullets at once
 
-MAX_OBJECTS = 8
+MAX_OBJECTS = 10
 KIND_STAR   = 1                 ; caught for points
 KIND_METEOR = 2                 ; falls straight
 KIND_SAUCER = 3                 ; zigzags and drops bombs, two shots to break
 KIND_HUNTER = 4                 ; dives at the ship
 KIND_BURST  = 5                 ; an explosion, for BURST_FRAMES
+KIND_DIVER  = 6                 ; stalks the ship from above, then dives
+KIND_TURRET = 7                 ; drifts down, fires at the ship
+KIND_WEAVER = 8                 ; swings from side to side, fires fans
+KIND_GIANT  = 9                 ; a giant meteor: breaks into two
 BURST_FRAMES = 12
 FIRST_DELAY = 40                ; frames between two objects on level 1
 MIN_DELAY   = 14
@@ -56,7 +59,12 @@ BOSS_TOP_Y  = 32
 BOSS_MIN_X  = 16
 BOSS_MAX_X  = 208
 BOSS_LIFE   = 24                ; hits on level 1; 8 more on every level
-BOSS_FIRE_DELAY = 48            ; frames between two volleys of three bombs
+BOSS_FIRE_DELAY = 48            ; frames between two fans, in the boss's first phase
+
+WAVE_TOP    = 8                 ; the band of sky that ripples, from this line ...
+WAVE_LINES  = 96                ; ... for this many (a multiple of 3)
+WAIT_COARSE = 2                 ; the NMI's wait for that line, tuned in Mesen2
+WAIT_FINE   = 23
 
 HUD_X       = 16                ; the score, in sprites: the sky scrolls
 HUD_Y       = 8
@@ -69,6 +77,7 @@ LIVES_X     = 208
 ; included at the end.
 
 PPUCTRL_NMI  = %10000000        ; NMI on, all tiles from pattern table 0
+PPUCTRL_BG1  = %00010000        ; the background's tiles from pattern table 1
 PPUMASK_SHOW = %00011110        ; background and sprites, left column included
 
 HUD_SCORE   = NT+2*32+8         ; game over: where the four digits of the score go
@@ -81,6 +90,14 @@ SKY_ROWS    = 15                ; rows of metatiles in a screen
         .memarea $0000
 frame_ready  .res 1             ; set by NMI, cleared by wait_frame
 frame_count  .res 1
+lag_frames   .res 1             ; frames whose work ran past the next NMI
+wave_on      .res 1             ; the sky ripples (vertical levels)
+wave_phase   .res 1
+wave_count   .res 1
+mode3d       .res 1             ; the 3D stage is on
+ctrl_bg      .res 1             ; or-ed into PPUCTRL: the background's pattern table
+floor_phase  .res 1             ; the 3D floor's colours: how far they turned, 0-2
+floor_timer  .res 1
 buttons      .res 1             ; held this frame
 prev_buttons .res 1
 pressed      .res 1             ; went down this frame
@@ -104,24 +121,25 @@ level        .res 1
 level_clock  .res 1             ; units of 64 frames since the level began
 phase        .res 1
 phase_timer  .res 1
-obj_type     .res MAX_OBJECTS   ; 0 when the slot is free
-obj_x        .res MAX_OBJECTS
-obj_y        .res MAX_OBJECTS
-obj_speed    .res MAX_OBJECTS   ; pixels down a frame
-obj_dx       .res MAX_OBJECTS   ; saucers: pixels sideways (signed); bursts: frames left
-obj_hp       .res MAX_OBJECTS   ; shots left to break it
-shot_x       .res MAX_SHOTS
-shot_y       .res MAX_SHOTS     ; 0 when the slot is free
-bomb_x       .res MAX_BOMBS
-bomb_y       .res MAX_BOMBS     ; 0 when the slot is free
-bomb_dx      .res MAX_BOMBS
+tier         .res 1             ; how hard the level's waves are: 1-5
+tmp2         .res 1
+bullet_speed .res 1             ; half pixels a frame, for fire_bullet
+aim_dx       .res 1
+aim_dy       .res 1
+aim_ax       .res 1
+aim_ay       .res 1
+aim_dir      .res 1
+boss_t1      .res 1             ; the boss's life where its second phase begins
+boss_t2      .res 1             ; and its third
+boss_spin    .res 1             ; the spiral's turning direction
+boss_burst   .res 1             ; aimed shots left in a burst
 boss_x       .res 1
 boss_y       .res 1
 boss_dx      .res 1
 boss_hp      .res 1
 boss_flash   .res 1             ; frames left of the hit colours
 boss_fire    .res 1
-new_x        .res 1             ; where drop_bomb and burst_at put a new one
+new_x        .res 1             ; where fire_bullet and burst_at put a new one
 new_y        .res 1
 new_dx       .res 1
 box_ax       .res 1             ; overlap's two boxes
@@ -141,6 +159,40 @@ ms_y         .res 1
 map_row      .res 1
 map_col      .res 1
 map_base     .res 2
+ship_wx      .res 1             ; the 3D stage: where the ship is, in its space
+ship_wy      .res 1
+p_x          .res 1             ; project's point
+p_y          .res 1
+p_z          .res 1
+p_s          .res 1
+p_neg        .res 1
+mul_a        .res 1
+obj_type     .res MAX_OBJECTS   ; 0 when the slot is free
+obj_x        .res MAX_OBJECTS
+obj_y        .res MAX_OBJECTS
+obj_speed    .res MAX_OBJECTS   ; pixels down a frame
+obj_dx       .res MAX_OBJECTS   ; pixels sideways (signed); bursts: frames left
+obj_hp       .res MAX_OBJECTS   ; shots left to break it
+obj_timer    .res MAX_OBJECTS   ; per kind: stalking time, fire delay, swing
+obj_base     .res MAX_OBJECTS   ; the weaver's swing's middle
+shot_x       .res MAX_SHOTS
+shot_y       .res MAX_SHOTS     ; 0 when the slot is free
+shot_h       .res MAX_SHOTS     ; the 3D stage: how far down the shot flies
+
+; The objects' places on the 3D stage and the bullets, in RAM after the stack
+; and the sprite table.
+        .memarea $0300
+obj_sx       .res MAX_OBJECTS   ; the 3D stage: an object's middle on screen,
+obj_sy       .res MAX_OBJECTS
+obj_size     .res MAX_OBJECTS   ; and its picture's size ($FF: off screen)
+bomb_x       .res MAX_BOMBS     ; bullets, in 8.8 fixed point:
+bomb_xf      .res MAX_BOMBS     ;   the pixel and its fraction
+bomb_y       .res MAX_BOMBS     ;   (bomb_y 0: the slot is free)
+bomb_yf      .res MAX_BOMBS
+bomb_vxl     .res MAX_BOMBS     ; velocity, signed
+bomb_vxh     .res MAX_BOMBS
+bomb_vyl     .res MAX_BOMBS
+bomb_vyh     .res MAX_BOMBS
 
 ; ---------------------------------------------------------------------------
 ; Start-up
@@ -211,16 +263,35 @@ NMI:
         lda #>OAM
         sta OAMDMA
 
-        bit PPUSTATUS           ; the scroll: x 0, y scroll_y of nametable scroll_nt
+        lda mode3d              ; the 3D floor: its three colours, turned
+        beq +
+        bit PPUSTATUS
+        lda #>$3F09
+        sta PPUADDR
+        lda #<$3F09
+        sta PPUADDR
+        ldx floor_phase
+        lda FloorColors,x
+        sta PPUDATA
+        lda FloorColors+1,x
+        sta PPUDATA
+        lda FloorColors+2,x
+        sta PPUDATA
+
++       bit PPUSTATUS           ; the scroll: x 0, y scroll_y of nametable scroll_nt
         lda #0
         sta PPUSCROLL
         lda scroll_y
         sta PPUSCROLL
         lda scroll_nt
+        ora ctrl_bg
         ora #PPUCTRL_NMI
         sta PPUCTRL
 
-        lda #1
+        lda wave_on
+        beq +
+        jsr raster_wave
++       lda #1
         sta frame_ready
         pla
         tay
@@ -230,13 +301,75 @@ NMI:
 IRQ:
         rti
 
-; Waits for the next NMI.
+; Waits for the next NMI. Found set already, the NMI came while the last
+; frame's work still ran: a frame was lost, and lag_frames counts it.
 wait_frame:
+        lda frame_ready
+        beq @wait
+        inc lag_frames
+@wait:  lda frame_ready
+        beq @wait
         lda #0
         sta frame_ready
--       lda frame_ready
-        beq -
         inc frame_count
+        rts
+
+; The ripple: called by NMI once the vblank work is done, it waits for line
+; WAVE_TOP, then for each line of the band writes the horizontal scroll of
+; the next one from the sine of Wave. Without a scanline interrupt the time
+; is counted: a line is 113 2/3 CPU cycles, so the loop draws three lines
+; (114 + 114 + 113 cycles) a turn. Only the first write to PPUSCROLL counts
+; in the middle of a frame - the horizontal scroll; the vertical one stays -
+; and reading PPUSTATUS first makes every write a first one. The routine
+; starts a page, so that no branch inside crosses one and costs a cycle.
+        .align 256
+raster_wave:
+        ldy #WAIT_COARSE        ; to the band's first line
+@coarse:
+        ldx #0
+@inner: dex
+        bne @inner
+        dey
+        bne @coarse
+        ldx #WAIT_FINE
+@fine:  dex
+        bne @fine
+
+        lda #WAVE_LINES/3
+        sta wave_count
+        ldx wave_phase
+@lines: bit PPUSTATUS           ; a line: 114 cycles
+        lda Wave,x
+        sta PPUSCROLL
+        inx
+        ldy #19
+@d1:    dey
+        bne @d1
+        nop
+        nop
+        bit PPUSTATUS           ; a line: 114 cycles
+        lda Wave,x
+        sta PPUSCROLL
+        inx
+        ldy #19
+@d2:    dey
+        bne @d2
+        nop
+        nop
+        bit PPUSTATUS           ; a line: 113 cycles, with the loop
+        lda Wave,x
+        sta PPUSCROLL
+        inx
+        ldy #18
+@d3:    dey
+        bne @d3
+        dec wave_count
+        bne @lines
+
+        bit PPUSTATUS           ; the rest of the screen straight
+        lda #0
+        sta PPUSCROLL
+        inc wave_phase
         rts
 
 ; Reads the 8 buttons of joypad 1, and which of them went down this frame.
@@ -321,6 +454,8 @@ enter_play:
         jsr start_level
         lda #STATE_PLAY
         sta state
+        lda #1                  ; the sky ripples
+        sta wave_on
         jsr hide_sprites
         jmp screen_on
 
@@ -328,6 +463,14 @@ enter_play:
 start_level:
         lda #PHASE_WAVES
         sta phase
+        lda level               ; the tier: (level + 1) / 2, up to 5
+        clc
+        adc #1
+        lsr a
+        cmp #6
+        bcc +
+        lda #5
++       sta tier
         lda #0
         sta level_clock
         lda level
@@ -365,7 +508,10 @@ clear_actors:
         rts
 
 update_play:
-        jsr scroll_sky
+        lda mode3d
+        beq +
+        jmp update_3d
++       jsr scroll_sky
         jsr move_ship
         jsr fire
         jsr move_shots
@@ -461,7 +607,10 @@ fire:
         dex
         bpl @find
 @done:  rts                     ; three shots in the air already
-@found: lda ship_x              ; from the ship's nose
+@found: lda mode3d
+        beq +
+        jmp shoot3d
++       lda ship_x              ; from the ship's nose
         clc
         adc #4
         sta shot_x,x
@@ -541,7 +690,11 @@ hit_object:
         ldy obj_type,x
         lda KindPoints,y
         jsr add_points
-        jsr burst_object
+        lda obj_type,x
+        cmp #KIND_GIANT
+        bne +
+        jsr split_rock
++       jsr burst_object
         jmp sound_hit
 @done:  rts
 
@@ -553,68 +706,6 @@ burst_object:
         sta obj_dx,x
         lda #1
         sta obj_speed,x
-        rts
-
-; Every spawn_delay frames an object appears at the top: a star, a meteor,
-; a saucer or a hunter.
-spawn_objects:
-        dec spawn_timer
-        bne @done
-        lda spawn_delay
-        sta spawn_timer
-        ldx #MAX_OBJECTS-1
-@find:  lda obj_type,x
-        beq @found
-        dex
-        bpl @find
-@done:  rts                     ; every slot is busy: skip this one
-
-@found: jsr random
-        and #%11111000
-        cmp #217                ; room for a saucer's 16 pixels
-        bcc +
-        lda #216
-+       cmp #SHIP_MIN_X
-        bcs +
-        lda #SHIP_MIN_X
-+       sta obj_x,x
-        lda #8
-        sta obj_y,x
-        lda #1
-        sta obj_speed,x
-        sta obj_hp,x
-        sta obj_dx,x
-        jsr random
-        cmp #48
-        bcc @star
-        cmp #120
-        bcc @meteor
-        cmp #200
-        bcc @saucer
-        lda #2                  ; a hunter: faster
-        sta obj_speed,x
-        lda #KIND_HUNTER
-        bne @kind
-@saucer:
-        lda #2
-        sta obj_hp,x
-        lda frame_count         ; to the left or to the right
-        and #1
-        bne +
-        lda #$FF
-        sta obj_dx,x
-+       lda #KIND_SAUCER
-        bne @kind
-@meteor:
-        jsr random
-        and #1
-        clc
-        adc #1
-        sta obj_speed,x         ; 1 or 2 pixels a frame
-        lda #KIND_METEOR
-        bne @kind
-@star:  lda #KIND_STAR
-@kind:  sta obj_type,x
         rts
 
 ; Moves every object, and checks it against the ship.
@@ -641,13 +732,13 @@ move_objects:
         lda obj_type,x
         cmp #KIND_BURST
         beq @next
-        cmp #KIND_SAUCER
-        bne +
-        jsr move_saucer
-        jmp @touch
-+       cmp #KIND_HUNTER
-        bne @touch
-        jsr move_hunter
+        asl a
+        tay
+        lda MoveKind,y
+        sta ptr
+        lda MoveKind+1,y
+        sta ptr+1
+        jsr @call
 @touch: jsr object_box
         jsr ship_box
         jsr overlap
@@ -656,6 +747,23 @@ move_objects:
 @next:  dex
         bpl @loop
         rts
+@call:  jmp (ptr)
+
+; A meteor goes down, and sideways when it is a piece of a giant one.
+move_meteor:
+        lda obj_x,x
+        clc
+        adc obj_dx,x
+        sta obj_x,x
+        rts
+
+move_nothing:
+        rts
+
+; Each kind's move, after it went down by its speed.
+MoveKind:
+        .word move_nothing, move_nothing, move_meteor, move_saucer, move_hunter, move_nothing
+        .word move_diver, move_turret, move_weaver, move_nothing
 
 ; Saucer X zigzags between the sides, and now and then drops a bomb.
 move_saucer:
@@ -683,9 +791,11 @@ move_saucer:
         clc
         adc #6
         sta new_y
-        lda #0
-        sta new_dx
-        jmp drop_bomb
+        lda #4                  ; two pixels a frame, straight down
+        sta bullet_speed
+        stx obj_index
+        jsr fire_bullet
+        ldx obj_index
 @done:  rts
 
 ; Hunter X turns towards the ship, one pixel every other frame.
@@ -726,61 +836,6 @@ ship_hit:
         dec lives
         jmp sound_hit
 
-; A bomb from (new_x, new_y), going down and new_dx sideways, if a slot is free.
-drop_bomb:
-        ldy #MAX_BOMBS-1
-@find:  lda bomb_y,y
-        beq @found
-        dey
-        bpl @find
-        rts
-@found: lda new_x
-        sta bomb_x,y
-        lda new_y
-        sta bomb_y,y
-        lda new_dx
-        sta bomb_dx,y
-        rts
-
-; Moves the bombs, and checks each against the ship.
-move_bombs:
-        ldx #MAX_BOMBS-1
-@loop:  lda bomb_y,x
-        beq @next
-        clc
-        adc #BOMB_SPEED
-        cmp #232
-        bcs @gone
-        sta bomb_y,x
-        lda bomb_x,x
-        clc
-        adc bomb_dx,x
-        sta bomb_x,x
-        cmp #248                ; off a side
-        bcs @gone
-        lda hit_timer
-        bne @next
-        lda bomb_x,x            ; the bomb's round middle
-        clc
-        adc #2
-        sta box_bx
-        lda bomb_y,x
-        clc
-        adc #2
-        sta box_by
-        lda #4
-        sta box_bw
-        sta box_bh
-        jsr ship_box
-        jsr overlap
-        bcc @next
-        jsr ship_hit
-@gone:  lda #0
-        sta bomb_y,x
-@next:  dex
-        bpl @loop
-        rts
-
 ; Every 64 frames of waves count; at the level's length, the boss.
 count_time:
         lda frame_count
@@ -819,6 +874,19 @@ start_boss:
         clc
         adc #BOSS_LIFE
         sta boss_hp
+        lsr a                   ; its phases: below 5/8 of its life, then 5/16
+        lsr a
+        sta tmp
+        lsr a
+        lsr a
+        clc
+        adc tmp
+        sta boss_t2
+        asl a
+        sta boss_t1
+        lda #0
+        sta boss_burst
+        sta boss_spin
         rts
 
 ; Carry set when the boss is on screen and can be hit.
@@ -846,7 +914,12 @@ update_boss:
 @move:  lda boss_x              ; then from side to side
         clc
         adc boss_dx
-        sta boss_x
+        ldy boss_hp             ; twice as fast after its first phase
+        cpy boss_t1
+        bcs +
+        clc
+        adc boss_dx
++       sta boss_x
         cmp #BOSS_MIN_X
         bcc @turn
         cmp #BOSS_MAX_X
@@ -856,11 +929,7 @@ update_boss:
         clc
         adc #1
         sta boss_dx
-@fire:  dec boss_fire           ; a volley of three bombs, spread
-        bne @touch
-        lda #BOSS_FIRE_DELAY
-        sta boss_fire
-        lda boss_x
+@fire:  lda boss_x               ; its bullets start under its middle
         clc
         adc #12
         sta new_x
@@ -868,15 +937,53 @@ update_boss:
         clc
         adc #20
         sta new_y
-        lda #$FF
-        sta new_dx
-        jsr drop_bomb
-        lda #0
-        sta new_dx
-        jsr drop_bomb
-        lda #1
-        sta new_dx
-        jsr drop_bomb
+        dec boss_fire
+        lda boss_hp
+        cmp boss_t2
+        bcc @third
+        cmp boss_t1
+        bcc @second
+        lda boss_fire           ; first phase: a fan of five, down
+        bne @touch
+        lda #BOSS_FIRE_DELAY
+        sta boss_fire
+        lda #3
+        sta bullet_speed
+        lda #4
+        jsr shoot_fan5
+        jmp @touch
+@second:
+        lda boss_fire           ; second: every 64 frames, three quick shots
+        and #63                 ; at the ship, 8 frames apart
+        bne +
+        lda #3
+        sta boss_burst
++       lda boss_fire
+        and #7
+        bne @touch
+        lda boss_burst
+        beq @touch
+        dec boss_burst
+        lda #5
+        sta bullet_speed
+        jsr shoot_aimed
+        jmp @touch
+@third: lda #3                  ; third: a turning spiral, and a ring every
+        sta bullet_speed        ; two seconds
+        lda boss_fire
+        and #127
+        bne +
+        lda boss_spin
+        jsr shoot_ring
+        jmp @touch
++       lda boss_fire
+        and #7
+        bne @touch
+        lda boss_spin
+        clc
+        adc #3
+        sta boss_spin
+        jsr fire_bullet
 @touch: lda hit_timer
         bne @done
         jsr boss_box
@@ -938,7 +1045,7 @@ update_clear:
         cmp #LAST_LEVEL
         bcs +
         inc level
-+       jmp start_level
++       jmp enter_3d            ; then the 3D stage
 @done:  rts
 
 ; ---------------------------------------------------------------------------
@@ -970,10 +1077,16 @@ object_box:
         sta box_bh
         ldy #8
         lda obj_type,x
-        cmp #KIND_SAUCER
-        bne +
+        cmp #KIND_DIVER
+        bcc +
+        lda #16                 ; the newer mutants: 16 x 16
+        sta box_bh
         ldy #16
-+       sty box_bw
+        bne ++
++       cmp #KIND_SAUCER
+        bne ++
+        ldy #16
+++      sty box_bw
         rts
 
 ; Box b: the boss's hull.
@@ -1183,6 +1296,14 @@ draw_boss:
         dec boss_flash
         lda #SPR_MS_BOSS_HIT
         jmp draw_metasprite
++       lda boss_hp             ; in its last phase it glows, on and off
+        cmp boss_t2
+        bcs +
+        lda frame_count
+        and #%00010000
+        beq +
+        lda #SPR_MS_BOSS_HIT
+        jmp draw_metasprite
 +       lda #SPR_MS_BOSS
         jmp draw_metasprite
 @done:  rts
@@ -1230,13 +1351,15 @@ draw_message:
 draw_objects:
         lda #MAX_OBJECTS-1
         sta draw_count
-@loop:  lda frame_count
-        and #1
-        beq +
+@loop:  ldx draw_count
+        lda frame_count
+        lsr a
+        bcc +
         lda #MAX_OBJECTS-1      ; odd frames: the other way round
-+       eor draw_count          ; 0 eor n = n, 7 eor n = 7 - n
+        sec
+        sbc draw_count
         tax
-        stx obj_index
++       stx obj_index
         lda obj_type,x
         beq @next
         lda obj_x,x
@@ -1254,6 +1377,16 @@ draw_objects:
         jsr anim_frame
         jmp @draw
 +       lda KindSprite,y
+        cpy #KIND_DIVER
+        bcc @draw
+        sta tmp                 ; the newer mutants: their two frames in turn
+        lda frame_count
+        lsr a
+        lsr a
+        lsr a
+        and #1
+        clc
+        adc tmp
 @draw:  jsr draw_metasprite
 @next:  dec draw_count
         bpl @loop
@@ -1326,7 +1459,8 @@ draw_metasprite:
         inx
         inx
         inx
-        jmp @next
+        bne @next               ; the table is full: the rest is not drawn
+        ldx #$FC
 @done:  stx oam_index
         rts
 
@@ -1383,29 +1517,39 @@ screen_off:
         sta PPUCTRL             ; no NMI while we draw
         sta scroll_y
         sta scroll_nt
+        sta wave_on
+        sta mode3d
+        sta ctrl_bg
         wait_vblank
         lda #0
         sta PPUMASK
-        rts
+        jmp load_palettes
 
 screen_on:
         wait_vblank
         lda #0
         sta PPUSCROLL
         sta PPUSCROLL
-        lda #PPUCTRL_NMI
+        lda ctrl_bg
+        ora #PPUCTRL_NMI
         sta PPUCTRL
         lda #PPUMASK_SHOW
         sta PPUMASK
         rts
 
 load_palettes:
+        lda #<palettes          ; gfx/game.pal.asm
+        sta ptr
+        lda #>palettes
+        sta ptr+1
+; The 32 colours from ptr.
+load_palette_set:
         ppu_addr $3F00
-        ldx #0
-@loop:  lda palettes,x            ; gfx/game.pal.asm
+        ldy #0
+@loop:  lda (ptr),y
         sta PPUDATA
-        inx
-        cpx #32
+        iny
+        cpy #32
         bne @loop
         rts
 
@@ -1618,6 +1762,10 @@ random:
 +       sta rng
         rts
 
+        .include "bullets.asm"
+        .include "mutants.asm"
+        .include "stage3d.asm"
+
 ; ---------------------------------------------------------------------------
 ; Data
 
@@ -1627,13 +1775,8 @@ random:
         .include "../gfx/title.screen.asm"
         .include "../gfx/over.screen.asm"
         .include "../gfx/play.map.asm"
-
-; Per kind of object (0, star, meteor, saucer, hunter, burst): its
-; metasprite and what breaking or catching it scores.
-KindSprite:
-        .byte 0, SPR_MS_STAR, SPR_MS_METEOR, SPR_MS_SAUCER, SPR_MS_HUNTER, SPR_MS_BURST
-KindPoints:
-        .byte 0, 5, 1, 3, 2, 0
+        .include "../gfx/stage3d.screen.asm"
+        .include "../gfx/stage3d.pal.asm"
 
 ; Where the boss's five bursts go, from its top left corner.
 BurstX: .byte 4, 20, 12, 0, 24
@@ -1643,6 +1786,27 @@ BurstY: .byte 2, 4, 10, 14, 12
 SkyLow:       .byte <bg_play_map, <(bg_play_map+BG_PLAY_WIDTH*SKY_ROWS)
 SkyHigh:      .byte >bg_play_map, >(bg_play_map+BG_PLAY_WIDTH*SKY_ROWS)
 SkyNametable: .byte >NT, >NT_LOW
+
+; The ripple's sine: 3 pixels either way over 32 lines, 256 entries so that
+; the index wraps by itself, a page of its own so that no read crosses one.
+        .align 256
+Wave:
+        .byte $00, $01, $01, $02, $02, $02, $03, $03, $03, $03, $03, $02, $02, $02, $01, $01
+        .byte $00, $FF, $FF, $FE, $FE, $FE, $FD, $FD, $FD, $FD, $FD, $FE, $FE, $FE, $FF, $FF
+        .byte $00, $01, $01, $02, $02, $02, $03, $03, $03, $03, $03, $02, $02, $02, $01, $01
+        .byte $00, $FF, $FF, $FE, $FE, $FE, $FD, $FD, $FD, $FD, $FD, $FE, $FE, $FE, $FF, $FF
+        .byte $00, $01, $01, $02, $02, $02, $03, $03, $03, $03, $03, $02, $02, $02, $01, $01
+        .byte $00, $FF, $FF, $FE, $FE, $FE, $FD, $FD, $FD, $FD, $FD, $FE, $FE, $FE, $FF, $FF
+        .byte $00, $01, $01, $02, $02, $02, $03, $03, $03, $03, $03, $02, $02, $02, $01, $01
+        .byte $00, $FF, $FF, $FE, $FE, $FE, $FD, $FD, $FD, $FD, $FD, $FE, $FE, $FE, $FF, $FF
+        .byte $00, $01, $01, $02, $02, $02, $03, $03, $03, $03, $03, $02, $02, $02, $01, $01
+        .byte $00, $FF, $FF, $FE, $FE, $FE, $FD, $FD, $FD, $FD, $FD, $FE, $FE, $FE, $FF, $FF
+        .byte $00, $01, $01, $02, $02, $02, $03, $03, $03, $03, $03, $02, $02, $02, $01, $01
+        .byte $00, $FF, $FF, $FE, $FE, $FE, $FD, $FD, $FD, $FD, $FD, $FE, $FE, $FE, $FF, $FF
+        .byte $00, $01, $01, $02, $02, $02, $03, $03, $03, $03, $03, $02, $02, $02, $01, $01
+        .byte $00, $FF, $FF, $FE, $FE, $FE, $FD, $FD, $FD, $FD, $FD, $FE, $FE, $FE, $FF, $FF
+        .byte $00, $01, $01, $02, $02, $02, $03, $03, $03, $03, $03, $02, $02, $02, $01, $01
+        .byte $00, $FF, $FF, $FE, $FE, $FE, $FD, $FD, $FD, $FD, $FD, $FE, $FE, $FE, $FF, $FF
 
 WarningText:  .asciiz "WARNING"
 LevelText:    .asciiz "LEVEL"

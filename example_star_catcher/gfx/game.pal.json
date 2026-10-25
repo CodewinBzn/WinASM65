@@ -4,13 +4,77 @@
   "name": "game",
   "prefix": "",
   "palettes": [
-    { "name": "text", "colors": [15, 48, 22, 40] },
-    { "name": "background 1", "colors": [15, 48, 22, 40] },
-    { "name": "background 2", "colors": [15, 48, 22, 40] },
-    { "name": "background 3", "colors": [15, 48, 22, 40] },
-    { "name": "ship", "colors": [15, 48, 17, 22] },
-    { "name": "stars", "colors": [15, 40, 56, 48] },
-    { "name": "meteors", "colors": [15, 7, 23, 39] },
-    { "name": "burst", "colors": [15, 39, 55, 48] }
+    {
+      "name": "text",
+      "colors": [
+        15,
+        48,
+        22,
+        40
+      ]
+    },
+    {
+      "name": "violet nebula",
+      "colors": [
+        15,
+        2,
+        19,
+        36
+      ]
+    },
+    {
+      "name": "teal nebula",
+      "colors": [
+        15,
+        12,
+        28,
+        44
+      ]
+    },
+    {
+      "name": "background 3",
+      "colors": [
+        15,
+        48,
+        22,
+        40
+      ]
+    },
+    {
+      "name": "ship",
+      "colors": [
+        15,
+        48,
+        17,
+        22
+      ]
+    },
+    {
+      "name": "stars",
+      "colors": [
+        15,
+        40,
+        56,
+        48
+      ]
+    },
+    {
+      "name": "meteors",
+      "colors": [
+        15,
+        7,
+        23,
+        39
+      ]
+    },
+    {
+      "name": "burst",
+      "colors": [
+        15,
+        39,
+        55,
+        48
+      ]
+    }
   ]
 }

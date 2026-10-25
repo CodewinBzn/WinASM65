@@ -2,8 +2,8 @@
 
 palettes:
         .byte $0F, $30, $16, $28 ; background 0: text
-        .byte $0F, $30, $16, $28 ; background 1: background 1
-        .byte $0F, $30, $16, $28 ; background 2: background 2
+        .byte $0F, $02, $13, $24 ; background 1: violet nebula
+        .byte $0F, $0C, $1C, $2C ; background 2: teal nebula
         .byte $0F, $30, $16, $28 ; background 3: background 3
         .byte $0F, $30, $11, $16 ; sprite 0: ship
         .byte $0F, $28, $38, $30 ; sprite 1: stars
@@ -11,8 +11,8 @@ palettes:
         .byte $0F, $27, $37, $30 ; sprite 3: burst
 
 PAL_TEXT = 0
-PAL_BACKGROUND_1 = 1
-PAL_BACKGROUND_2 = 2
+PAL_VIOLET_NEBULA = 1
+PAL_TEAL_NEBULA = 2
 PAL_BACKGROUND_3 = 3
 PAL_SHIP = 4
 PAL_STARS = 5

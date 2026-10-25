@@ -40,7 +40,7 @@
     <p>A project build has two stages that know nothing about each other. The <strong>Input</strong> stage assembles each unit into its own object file, already placed at its real address by its own <code>.org</code>; names cross from one unit to another through small JSON side files. The <strong>Output</strong> stage then concatenates files, object files and plain binaries alike, padding each one to a declared size, and hands the result to the target's format.</p>
 
     <div class="figure">
-      <svg viewBox="0 0 900 330" role="img" aria-label="Project build of example_star_catcher: header.asm, game.asm and vectors.asm are assembled in declaration order into .o files, game also into a .symb that vectors reads; header.o, game.o, vectors.o and tiles.chr are concatenated with padding into one payload, which the target's format writes as the image">
+      <svg viewBox="0 0 900 330" role="img" aria-label="Project build of example_star_catcher: header.asm, game.asm and vectors.asm are assembled in declaration order into .o files, game also into a .symb that vectors reads; header.o, game.o, vectors.o, tiles.chr and floor.chr are concatenated with padding into one payload, which the target's format writes as the image">
         <defs>
           <marker id="sg-arrow1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
@@ -74,9 +74,10 @@
         <text x="635" y="108" text-anchor="middle" font-size="13">game.o</text>
         <text x="635" y="126" text-anchor="middle" class="muted" font-size="12">pad → $3FFA</text>
         <rect class="box-b" x="735" y="48" width="20" height="130" rx="3"/>
-        <rect class="box-d" x="760" y="48" width="105" height="130" rx="4"/>
-        <text x="812" y="108" text-anchor="middle" font-size="13">tiles.chr</text>
-        <text x="812" y="126" text-anchor="middle" class="muted" font-size="12">8 KB</text>
+        <rect class="box-d" x="760" y="48" width="52" height="130" rx="4"/>
+        <rect class="box-d" x="813" y="48" width="52" height="130" rx="4" fill-opacity="0.6"/>
+        <text x="786" y="118" text-anchor="middle" font-size="11" transform="rotate(-90 786 118)">tiles.chr</text>
+        <text x="839" y="118" text-anchor="middle" font-size="11" transform="rotate(-90 839 118)">floor.chr</text>
         <path class="line" d="M400,168 L480,168" marker-end="url(#sg-arrow1)"/>
         <path class="line" d="M400,112 L480,112" marker-end="url(#sg-arrow1)"/>
         <path class="line" d="M400,56 L480,56" marker-end="url(#sg-arrow1)"/>
@@ -147,7 +148,8 @@
     "Files": [
       { "FileName": "src/game.o", "Size": "$3FFA" },
       { "FileName": "src/vectors.o" },
-      { "FileName": "chr/tiles.chr" }
+      { "FileName": "chr/tiles.chr" },
+      { "FileName": "chr/floor.chr" }
     ]
   },
   "Emulator": {
@@ -366,6 +368,9 @@
 			},
 			{
 				"FileName": "chr/tiles.chr"
+			},
+			{
+				"FileName": "chr/floor.chr"
 			}
 		]
 	},
@@ -489,19 +494,22 @@
     <p>Other failures: a missing file (<code>Input file doesn't exist: …</code>), and a missing <code>ObjectFile</code> (<code>An output object file is required.</code>).</p>
 
     <h3>Why the sizes matter</h3>
-    <p>Each object file holds only the bytes its unit emitted, from its first <code>.org</code> onwards; the gaps between units do not exist on disk. <code>Size</code> recreates them. In the <code>star_catcher.nes</code> image, <code>header.o</code> is the 16-byte header; <code>game.o</code> holds 5,336 bytes of code and data from <code>$C000</code> to <code>$D4D7</code> and is padded to <code>$3FFA</code>, so <code>vectors.o</code> starts at the file offset that maps to <code>$FFFA</code>:</p>
+    <p>Each object file holds only the bytes its unit emitted, from its first <code>.org</code> onwards; the gaps between units do not exist on disk. <code>Size</code> recreates them. In the <code>star_catcher.nes</code> image, <code>header.o</code> is the 16-byte header; <code>game.o</code> holds 10,260 bytes of code and data from <code>$C000</code> to <code>$E813</code> and is padded to <code>$3FFA</code>, so <code>vectors.o</code> starts at the file offset that maps to <code>$FFFA</code>:</p>
 
     <div class="figure">
-      <svg viewBox="0 0 900 170" role="img" aria-label="The star_catcher.nes image: 16-byte header at offset 0, game.o at offset $10 mapping to $C000 to $FFF9, vectors.o at $400A mapping to $FFFA to $FFFF, and 8 KB of tiles from tiles.chr at $4010">
+      <svg viewBox="0 0 900 170" role="img" aria-label="The star_catcher.nes image: 16-byte header at offset 0, game.o at offset $10 mapping to $C000 to $FFF9, vectors.o at $400A mapping to $FFFA to $FFFF, and 8 KB of tiles, tiles.chr at $4010 and floor.chr at $5010">
         <rect class="box-b" x="20" y="40" width="30" height="60" rx="3"/>
         <rect class="box-b" x="50" y="40" width="560" height="60"/>
         <rect class="box-c" x="610" y="40" width="14" height="60"/>
-        <rect class="box-d" x="624" y="40" width="256" height="60" rx="3"/>
+        <rect class="box-d" x="624" y="40" width="128" height="60" rx="3"/>
+        <rect class="box-d" x="752" y="40" width="128" height="60" rx="3" fill-opacity="0.6"/>
         <text x="35" y="75" text-anchor="middle" font-size="11">H</text>
         <text x="330" y="66" text-anchor="middle" font-weight="600">game.o</text>
         <text x="330" y="86" text-anchor="middle" class="muted" font-size="12">$C000–$FFF9, padded to $3FFA</text>
-        <text x="752" y="66" text-anchor="middle" font-weight="600">tiles.chr</text>
-        <text x="752" y="86" text-anchor="middle" class="muted" font-size="12">CHR, 8 KB</text>
+        <text x="688" y="66" text-anchor="middle" font-weight="600">tiles.chr</text>
+        <text x="688" y="86" text-anchor="middle" class="muted" font-size="12">table 0, 4 KB</text>
+        <text x="816" y="66" text-anchor="middle" font-weight="600">floor.chr</text>
+        <text x="816" y="86" text-anchor="middle" class="muted" font-size="12">table 1, 4 KB</text>
         <text x="20" y="122" class="muted" font-size="12">0</text>
         <text x="50" y="122" class="muted" font-size="12">$10</text>
         <text x="500" y="140" class="muted" font-size="12">$400A: vectors.o ($FFFA–$FFFF)</text>

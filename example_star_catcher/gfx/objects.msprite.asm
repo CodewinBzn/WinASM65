@@ -72,10 +72,181 @@ spr_boss_hit:
         .byte $10, $7B, $03, $18
         .byte $80
 
+spr_diver:
+        .byte $00, $80, $00, $00
+        .byte $00, $81, $00, $08
+        .byte $08, $82, $00, $00
+        .byte $08, $83, $00, $08
+        .byte $80
+
+spr_diver_2:
+        .byte $00, $84, $00, $00
+        .byte $00, $85, $00, $08
+        .byte $08, $82, $00, $00
+        .byte $08, $83, $00, $08
+        .byte $80
+
+spr_turret:
+        .byte $00, $86, $02, $00
+        .byte $00, $87, $02, $08
+        .byte $08, $88, $02, $00
+        .byte $08, $89, $02, $08
+        .byte $80
+
+spr_turret_2:
+        .byte $00, $8A, $02, $00
+        .byte $00, $8B, $02, $08
+        .byte $08, $8C, $02, $00
+        .byte $08, $8D, $02, $08
+        .byte $80
+
+spr_weaver:
+        .byte $00, $8E, $03, $00
+        .byte $00, $8F, $03, $08
+        .byte $08, $90, $03, $00
+        .byte $08, $91, $03, $08
+        .byte $80
+
+spr_weaver_2:
+        .byte $00, $92, $03, $00
+        .byte $00, $93, $03, $08
+        .byte $08, $94, $03, $00
+        .byte $08, $95, $03, $08
+        .byte $80
+
+spr_giant_meteor:
+        .byte $00, $96, $02, $00
+        .byte $00, $97, $02, $08
+        .byte $08, $98, $02, $00
+        .byte $08, $99, $02, $08
+        .byte $80
+
+spr_giant_meteor_2:
+        .byte $00, $9A, $02, $00
+        .byte $00, $9B, $02, $08
+        .byte $08, $9C, $02, $00
+        .byte $08, $9D, $02, $08
+        .byte $80
+
+spr_ship_back:
+        .byte $F8, $9E, $00, $FC
+        .byte $00, $9F, $00, $F4
+        .byte $00, $A0, $00, $FC
+        .byte $00, $A1, $00, $04
+        .byte $80
+
+spr_rock3d_8:
+        .byte $FC, $A2, $02, $FC
+        .byte $80
+
+spr_rock3d_16:
+        .byte $F8, $A3, $02, $F8
+        .byte $F8, $A4, $02, $00
+        .byte $00, $A5, $02, $F8
+        .byte $00, $A6, $02, $00
+        .byte $80
+
+spr_rock3d_32:
+        .byte $F0, $A7, $02, $F8
+        .byte $F0, $A8, $02, $00
+        .byte $F8, $A9, $02, $F0
+        .byte $F8, $AA, $02, $F8
+        .byte $F8, $AB, $02, $00
+        .byte $F8, $AC, $02, $08
+        .byte $00, $AD, $02, $F0
+        .byte $00, $AE, $02, $F8
+        .byte $00, $AF, $02, $00
+        .byte $00, $B0, $02, $08
+        .byte $08, $B1, $02, $F0
+        .byte $08, $B2, $02, $F8
+        .byte $08, $B3, $02, $00
+        .byte $08, $B1, $42, $08
+        .byte $80
+
+spr_saucer3d_8:
+        .byte $FC, $B4, $03, $FC
+        .byte $80
+
+spr_saucer3d_16:
+        .byte $F8, $B5, $03, $F8
+        .byte $F8, $B6, $03, $00
+        .byte $00, $B7, $03, $F8
+        .byte $00, $B8, $03, $00
+        .byte $80
+
+spr_saucer3d_32:
+        .byte $F0, $B9, $03, $F8
+        .byte $F0, $B9, $43, $00
+        .byte $F8, $BA, $03, $F0
+        .byte $F8, $BB, $03, $F8
+        .byte $F8, $BC, $03, $00
+        .byte $F8, $BA, $43, $08
+        .byte $00, $BD, $03, $F0
+        .byte $00, $BE, $03, $F8
+        .byte $00, $BF, $03, $00
+        .byte $00, $C0, $03, $08
+        .byte $08, $C1, $03, $F8
+        .byte $08, $C1, $43, $00
+        .byte $80
+
+spr_fighter3d_8:
+        .byte $FC, $C2, $00, $FC
+        .byte $80
+
+spr_fighter3d_16:
+        .byte $F8, $C3, $00, $F8
+        .byte $F8, $C3, $40, $00
+        .byte $00, $C4, $00, $F8
+        .byte $00, $C5, $00, $00
+        .byte $80
+
+spr_fighter3d_32:
+        .byte $F0, $C6, $00, $F8
+        .byte $F0, $C6, $40, $00
+        .byte $F8, $C7, $00, $F8
+        .byte $F8, $C8, $00, $00
+        .byte $00, $C9, $00, $F0
+        .byte $00, $CA, $00, $F8
+        .byte $00, $CB, $00, $00
+        .byte $00, $C9, $40, $08
+        .byte $08, $C6, $80, $F8
+        .byte $08, $C6, $C0, $00
+        .byte $80
+
+spr_pylon3d_8:
+        .byte $FC, $CC, $00, $FC
+        .byte $80
+
+spr_pylon3d_16:
+        .byte $F8, $CD, $00, $F8
+        .byte $F8, $CD, $40, $00
+        .byte $00, $CE, $00, $F8
+        .byte $00, $CE, $40, $00
+        .byte $80
+
+spr_pylon3d_32:
+        .byte $F0, $CF, $00, $F8
+        .byte $F0, $CF, $40, $00
+        .byte $F8, $D0, $00, $F8
+        .byte $F8, $D0, $40, $00
+        .byte $00, $D1, $00, $F8
+        .byte $00, $D1, $40, $00
+        .byte $08, $D2, $00, $F8
+        .byte $08, $D2, $40, $00
+        .byte $80
+
+spr_shot3d:
+        .byte $FC, $D3, $01, $FC
+        .byte $80
+
+spr_bullet3d:
+        .byte $FC, $D4, $03, $FC
+        .byte $80
+
 spr_metasprites_lo:
-        .lobytes spr_ship, spr_star, spr_star_twinkle, spr_meteor, spr_burst, spr_shot, spr_bomb, spr_saucer, spr_hunter, spr_heart, spr_boss, spr_boss_hit
+        .lobytes spr_ship, spr_star, spr_star_twinkle, spr_meteor, spr_burst, spr_shot, spr_bomb, spr_saucer, spr_hunter, spr_heart, spr_boss, spr_boss_hit, spr_diver, spr_diver_2, spr_turret, spr_turret_2, spr_weaver, spr_weaver_2, spr_giant_meteor, spr_giant_meteor_2, spr_ship_back, spr_rock3d_8, spr_rock3d_16, spr_rock3d_32, spr_saucer3d_8, spr_saucer3d_16, spr_saucer3d_32, spr_fighter3d_8, spr_fighter3d_16, spr_fighter3d_32, spr_pylon3d_8, spr_pylon3d_16, spr_pylon3d_32, spr_shot3d, spr_bullet3d
 spr_metasprites_hi:
-        .hibytes spr_ship, spr_star, spr_star_twinkle, spr_meteor, spr_burst, spr_shot, spr_bomb, spr_saucer, spr_hunter, spr_heart, spr_boss, spr_boss_hit
+        .hibytes spr_ship, spr_star, spr_star_twinkle, spr_meteor, spr_burst, spr_shot, spr_bomb, spr_saucer, spr_hunter, spr_heart, spr_boss, spr_boss_hit, spr_diver, spr_diver_2, spr_turret, spr_turret_2, spr_weaver, spr_weaver_2, spr_giant_meteor, spr_giant_meteor_2, spr_ship_back, spr_rock3d_8, spr_rock3d_16, spr_rock3d_32, spr_saucer3d_8, spr_saucer3d_16, spr_saucer3d_32, spr_fighter3d_8, spr_fighter3d_16, spr_fighter3d_32, spr_pylon3d_8, spr_pylon3d_16, spr_pylon3d_32, spr_shot3d, spr_bullet3d
 
 SPR_MS_SHIP = 0
 SPR_MS_STAR = 1
@@ -89,9 +260,52 @@ SPR_MS_HUNTER = 8
 SPR_MS_HEART = 9
 SPR_MS_BOSS = 10
 SPR_MS_BOSS_HIT = 11
-SPR_METASPRITE_COUNT = 12
+SPR_MS_DIVER = 12
+SPR_MS_DIVER_2 = 13
+SPR_MS_TURRET = 14
+SPR_MS_TURRET_2 = 15
+SPR_MS_WEAVER = 16
+SPR_MS_WEAVER_2 = 17
+SPR_MS_GIANT_METEOR = 18
+SPR_MS_GIANT_METEOR_2 = 19
+SPR_MS_SHIP_BACK = 20
+SPR_MS_ROCK3D_8 = 21
+SPR_MS_ROCK3D_16 = 22
+SPR_MS_ROCK3D_32 = 23
+SPR_MS_SAUCER3D_8 = 24
+SPR_MS_SAUCER3D_16 = 25
+SPR_MS_SAUCER3D_32 = 26
+SPR_MS_FIGHTER3D_8 = 27
+SPR_MS_FIGHTER3D_16 = 28
+SPR_MS_FIGHTER3D_32 = 29
+SPR_MS_PYLON3D_8 = 30
+SPR_MS_PYLON3D_16 = 31
+SPR_MS_PYLON3D_32 = 32
+SPR_MS_SHOT3D = 33
+SPR_MS_BULLET3D = 34
+SPR_METASPRITE_COUNT = 35
 
 spr_twinkle_anim:
         .byte 1, 8
         .byte 2, 8
+        .byte $FF, 1
+
+spr_diver_anim:
+        .byte 12, 8
+        .byte 13, 8
+        .byte $FF, 1
+
+spr_turret_anim:
+        .byte 14, 8
+        .byte 15, 8
+        .byte $FF, 1
+
+spr_weaver_anim:
+        .byte 16, 8
+        .byte 17, 8
+        .byte $FF, 1
+
+spr_giant_meteor_anim:
+        .byte 18, 8
+        .byte 19, 8
         .byte $FF, 1
