@@ -386,8 +386,8 @@ Set(table, "BRA", AddressingMode.Relative, 0x80);
     </div>
     <p>The language server builds its instruction hover from both (<code>HoverCard.Instruction</code>): the description gives the title, summary and <code>@flags</code>; the form the line assembled to gives <code>@mode</code>, <code>@cycles</code> and <code>@bytes</code>; the table lists every form of the mnemonic on the project's CPU, with a ◀ on the one used. The assembled form is found by matching the listing row's first byte and length against <code>InstructionDocs.ForCpu</code> and checking the mnemonic is written on the line.</p>
     <figure class="shot">
-      <a href="img/vscode-hover-instruction.png"><img src="img/vscode-hover-instruction.png" alt="Hover card on adc obj_speed,x in game.asm: ADC, Add with Carry, zero page,X form, 4 cycles, 2 bytes 75 27 at $C1BF, flags N V Z C, and a table of all eight ADC forms with opcodes, bytes and cycles, the zero page,X row marked"></a>
-      <figcaption>The hover of <code>adc obj_speed,x</code>, line 338 of <a href="example.html">Star Catcher</a>'s <code>game.asm</code>. The cycle column and the "+p" legend come from <code>CycleTimings</code>; the opcode and byte columns from the opcode table.</figcaption>
+      <a href="img/vscode-hover-instruction.png"><img src="img/vscode-hover-instruction.png" alt="Hover card on adc obj_speed,x in game.asm: ADC, Add with Carry, zero page,X form, 4 cycles, 2 bytes 75 35 at $C349, flags N V Z C, and a table of all eight ADC forms with opcodes, bytes and cycles, the zero page,X row marked"></a>
+      <figcaption>The hover of <code>adc obj_speed,x</code>, line 634 of <a href="example.html">Star Catcher</a>'s <code>game.asm</code>. The cycle column and the "+p" legend come from <code>CycleTimings</code>; the opcode and byte columns from the opcode table.</figcaption>
     </figure>
     <p><code>InstructionDocs.MnemonicsFor(cpu)</code> is also what <code>TextFormat/AssemblyLexer</code> classifies mnemonics against when it colours a line.</p>
 

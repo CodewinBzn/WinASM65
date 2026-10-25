@@ -116,7 +116,7 @@
       "PrgBanks": 1,
       "ChrBanks": 1,
       "Mapper": 0,
-      "Mirroring": "vertical",
+      "Mirroring": "horizontal",
       "Battery": false
     },
     "Hardware": {
@@ -155,7 +155,7 @@
     "Path": "C:\\Emulators\\Mesen2\\Mesen.exe"
   }
 }</code></pre>
-    <p>Most of the <code>Target</code> section repeats what <code>"System": "nes"</code> already implies (CPU, format, hardware symbols, one PRG and one CHR bank, mapper 0, vertical mirroring, NTSC); it is spelled out here to show the keys. The <code>nes</code> system predefines hardware symbols (<code>PPUCTRL</code>, <code>OAMDMA</code>, <code>JOY1</code>…) with the same values as the constants of <code>src/nes.inc</code>; the source's own definitions are accepted over them. <code>Emulator</code> names the emulator to debug with (see <a href="#config-emulator">Emulator</a>).</p>
+    <p>Most of the <code>Target</code> section repeats what <code>"System": "nes"</code> already implies (CPU, format, hardware symbols, one PRG and one CHR bank, mapper 0, NTSC); it is spelled out here to show the keys. <code>Mirroring</code> is the exception: the <code>nes</code> default is vertical, and the game scrolls vertically, which needs horizontal mirroring. The <code>nes</code> system predefines hardware symbols (<code>PPUCTRL</code>, <code>OAMDMA</code>, <code>JOY1</code>…) with the same values as the constants of <code>src/nes.inc</code>; the source's own definitions are accepted over them. <code>Emulator</code> names the emulator to debug with (see <a href="#config-emulator">Emulator</a>).</p>
 
     <h3 id="config-other">Keys for other systems</h3>
     <p>A few <code>Target</code> keys only matter to other formats or machines. Three small configurations, each complete and built successfully with a one-unit <code>main.asm</code> that has no <code>.org</code>. A BBC Micro file with its code header:</p>
@@ -374,7 +374,7 @@
 		"Path": "C:\\Emulators\\Mesen2\\Mesen.exe"
 	}
 }</code></pre>
-    <p><code>header.asm</code> emits the whole 16-byte header from <code>.org $0000</code> (<code>"NES", $1A</code>, one PRG bank, one CHR bank, flags <code>$01</code> and <code>$00</code>, then <code>.dsb 8</code> zeros), so <code>"Size": "$10"</code> adds no padding: it only makes the build fail if the header ever grows. <code>game.asm</code> starts at <code>.org $C000</code>; its 3,682 bytes (the code, the data and the two 1,024-byte screens of <code>gfx/</code>) are padded to <code>$3FFA</code>, so that <code>vectors.asm</code>, at <code>.org $FFFA</code>, lands on the last six bytes of the 16 KB PRG bank. <code>vectors.asm</code> writes the addresses of <code>NMI</code>, <code>RESET</code> and <code>IRQ</code>, which <code>game.asm</code> defines, hence its dependency. <code>chr/tiles.chr</code>, drawn in the <a href="graphics.html">Graphics Designer</a>, is 8 KB of tiles taken as they are. The image is 16 + 16,384 + 8,192 = 24,592 bytes. <code>Emulator</code> is for debugging only: Mesen2 at an example path, to point at your own (or override with the <code>winasm65.emulatorPath</code> setting in VS Code). The <a href="example.html#project">Example game</a> page explains the same file from the game's side.</p>
+    <p><code>header.asm</code> emits the whole 16-byte header from <code>.org $0000</code> (<code>"NES", $1A</code>, one PRG bank, one CHR bank, flags <code>$00</code> and <code>$00</code> (horizontal mirroring), then <code>.dsb 8</code> zeros), so <code>"Size": "$10"</code> adds no padding: it only makes the build fail if the header ever grows. <code>game.asm</code> starts at <code>.org $C000</code>; its 5,336 bytes (the code, the data and the two 1,024-byte screens of <code>gfx/</code>) are padded to <code>$3FFA</code>, so that <code>vectors.asm</code>, at <code>.org $FFFA</code>, lands on the last six bytes of the 16 KB PRG bank. <code>vectors.asm</code> writes the addresses of <code>NMI</code>, <code>RESET</code> and <code>IRQ</code>, which <code>game.asm</code> defines, hence its dependency. <code>chr/tiles.chr</code>, drawn in the <a href="graphics.html">Graphics Designer</a>, is 8 KB of tiles taken as they are. The image is 16 + 16,384 + 8,192 = 24,592 bytes. <code>Emulator</code> is for debugging only: Mesen2 at an example path, to point at your own (or override with the <code>winasm65.emulatorPath</code> setting in VS Code). The <a href="example.html#project">Example game</a> page explains the same file from the game's side.</p>
 
     <h2 id="order">How units are resolved</h2>
     <p>The name of the section, “dependencies”, suggests a dependency graph sorted before the build. There is none. <code>MultiSegmentOrchestrator.AssembleSegments</code> works in two phases, both in the order the <code>Input</code> array lists the units, and <code>Dependencies</code> only says <em>which</em> symbol files a unit is allowed to read in the second phase.</p>
@@ -489,7 +489,7 @@
     <p>Other failures: a missing file (<code>Input file doesn't exist: …</code>), and a missing <code>ObjectFile</code> (<code>An output object file is required.</code>).</p>
 
     <h3>Why the sizes matter</h3>
-    <p>Each object file holds only the bytes its unit emitted, from its first <code>.org</code> onwards; the gaps between units do not exist on disk. <code>Size</code> recreates them. In the <code>star_catcher.nes</code> image, <code>header.o</code> is the 16-byte header; <code>game.o</code> holds 3,682 bytes of code and data from <code>$C000</code> to <code>$CE61</code> and is padded to <code>$3FFA</code>, so <code>vectors.o</code> starts at the file offset that maps to <code>$FFFA</code>:</p>
+    <p>Each object file holds only the bytes its unit emitted, from its first <code>.org</code> onwards; the gaps between units do not exist on disk. <code>Size</code> recreates them. In the <code>star_catcher.nes</code> image, <code>header.o</code> is the 16-byte header; <code>game.o</code> holds 5,336 bytes of code and data from <code>$C000</code> to <code>$D4D7</code> and is padded to <code>$3FFA</code>, so <code>vectors.o</code> starts at the file offset that maps to <code>$FFFA</code>:</p>
 
     <div class="figure">
       <svg viewBox="0 0 900 170" role="img" aria-label="The star_catcher.nes image: 16-byte header at offset 0, game.o at offset $10 mapping to $C000 to $FFF9, vectors.o at $400A mapping to $FFFA to $FFFF, and 8 KB of tiles from tiles.chr at $4010">

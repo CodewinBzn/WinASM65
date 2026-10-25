@@ -132,9 +132,9 @@
 
     <h2 id="build">Build mode</h2>
     <p><code>--build &lt;config.json&gt;</code> builds a project the way the debugger does (<code>ProjectSession.Open(config).Build</code> with <code>WriteImage = true</code>) and prints one line per diagnostic, in the form the extension's <code>$winasm65</code> problem matcher reads:</p>
-<pre><code>C:\…\example_star_catcher\src\game.asm:336: error: LDX does not support indirect indexed (zp),Y addressing
+<pre><code>C:\…\example_star_catcher\src\game.asm:633: error: LDX does not support indirect indexed (zp),Y addressing
 build failed: 1 error(s)</code></pre>
-    <p>That is <a href="example.html">Star Catcher</a> with <code>LDX ($10),Y</code> inserted at line 336 of <code>src/game.asm</code>. Without the error, the last line is <code>built …\example_star_catcher\star_catcher.nes (24592 bytes)</code>, as in the <a href="vscode.html#build">VS Code build task</a>.</p>
+    <p>That is <a href="example.html">Star Catcher</a> with <code>LDX ($10),Y</code> inserted at line 633 of <code>src/game.asm</code>. Without the error, the last line is <code>built …\example_star_catcher\star_catcher.nes (24592 bytes)</code>, as in the <a href="vscode.html#build">VS Code build task</a>.</p>
     <div class="table-wrap">
     <table>
       <thead><tr><th>Outcome</th><th>Last line</th><th>Exit code</th></tr></thead>
@@ -189,7 +189,7 @@ build failed: 1 error(s)</code></pre>
     </div>
 
     <h3 id="sequence">A launch and a breakpoint hit</h3>
-    <p>The exchange when you press F5 on <a href="example.html">Star Catcher</a> with a breakpoint on line 134 of <code>src/game.asm</code>, the first instruction of <code>NMI</code> (a <code>pha</code>) at <code>$C06E</code>, the value of <code>NMI</code> in <code>src/game.symb</code> (49262):</p>
+    <p>The exchange when you press F5 on <a href="example.html">Star Catcher</a> with a breakpoint on line 203 of <code>src/game.asm</code>, the first instruction of <code>NMI</code> (a <code>pha</code>) at <code>$C06E</code>, the value of <code>NMI</code> in <code>src/game.symb</code> (49262):</p>
     <div class="figure">
       <svg viewBox="0 0 900 740" role="img" aria-label="Sequence diagram: VS Code sends initialize and launch; the adapter builds the project, starts Mesen2 with the bridge, connects, pauses the machine and sends initialized; VS Code sets breakpoints, which become BREAK SET commands, then sends configurationDone, which becomes RESET; later the bridge pushes STOPPED, the adapter sends a stopped event, and VS Code asks for the stack trace and variables, which become CPU and READ commands.">
         <defs>
@@ -249,7 +249,7 @@ build failed: 1 error(s)</code></pre>
         <path class="line" d="M450,628 L785,628" marker-end="url(#arrow-s)"/>
         <text x="617" y="622" text-anchor="middle" font-size="13">CPU, READ</text>
         <path class="line" d="M450,662 L115,662" marker-end="url(#arrow-s)"/>
-        <text x="282" y="656" text-anchor="middle" font-size="13">frame NMI, game.asm:134, registers</text>
+        <text x="282" y="656" text-anchor="middle" font-size="13">frame NMI, game.asm:203, registers</text>
 
         <text x="20" y="716" class="muted" font-size="12">Dashed: a message the bridge sends on its own. It arrives on the receiver thread and is queued to the session loop.</text>
       </svg>
@@ -377,7 +377,7 @@ build failed: 1 error(s)</code></pre>
     <h3 id="listing">The <code>winasm65/listing</code> request</h3>
 <pre><code>→ { "textDocument": { "uri": "file:///c%3A/…/example_star_catcher/src/game.asm" } }
 ← { "rows": [ …, { "line": 133, "address": 49262, "bytes": "48", "more": false }, … ] }</code></pre>
-    <p>The row shown is line 134 of <code>game.asm</code> (zero-based 133), the <code>pha</code> at <code>$C06E</code> that opens <code>NMI</code>.</p>
+    <p>The row shown is line 203 of <code>game.asm</code> (zero-based 202), the <code>pha</code> at <code>$C06E</code> that opens <code>NMI</code>.</p>
     <ul>
       <li>One row per source line that emitted bytes: the zero-based <code>line</code>, the <code>address</code> and <code>bytes</code> of its first emission, and <code>more</code> when the line emitted several times (a macro, a repeat).</li>
       <li>A <strong>unit</strong> (or a file outside any project) is listed from its unsaved text, so the column follows the edit.</li>

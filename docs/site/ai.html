@@ -130,12 +130,12 @@
   Build succeeded.
   Image: …\example_star_catcher\star_catcher.nes (24592 bytes)
 
-debug_launch {"config": "…/config.json", "breakpoints": ["src/game.asm:134"], "waitSeconds": 20}
-  Breakpoint game.asm:134 -> set at line 134
-  Stopped in NMI at …\src\game.asm:134, PC 0xC06E
-    134: pha
-  Registers: PC=$C06E, A=$00, X=$00, Y=$59, SP=$FA, PS=$06  nv-bdIZc, cycles=146526
-  Flags: N=0, V=0, B=0, D=0, I=1, Z=1, C=0
+debug_launch {"config": "…/config.json", "breakpoints": ["src/game.asm:203"], "waitSeconds": 20}
+  Breakpoint game.asm:203 -> set at line 203
+  Stopped in NMI at …\src\game.asm:203, PC 0xC06E
+    203: pha
+  Registers: PC=$C06E, A=$00, X=$08, Y=$08, SP=$FA, PS=$07  nv-bdIZC, cycles=146526
+  Flags: N=0, V=0, B=0, D=0, I=1, Z=1, C=1
 
 read_memory {"space": "PAL", "address": "$00", "length": 32}
   PAL $0000-$001F:

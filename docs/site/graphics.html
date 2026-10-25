@@ -64,26 +64,26 @@
 
     <h3 id="tiles">Tile Set</h3>
     <figure class="shot">
-      <a href="img/designer-tiles.png"><img src="img/designer-tiles.png" alt="The Tile Set editor on tiles.chr: the sheet of tiles on the left (the ship, stars, meteor, burst, heart, digits and letters), the ship's two tiles selected as a 2x2 block and drawn big on the right in white, blue and red, the colours of the sprite palette ship of gfx/game.pal.json chosen in the toolbar; tools Pencil, Fill, Line, Rectangle, Picker, Copy, Paste, Flip H, Flip V, Rotate, Clear and Import PNG"></a>
+      <a href="img/designer-tiles.png"><img src="img/designer-tiles.png" alt="The Tile Set editor on tiles.chr: the sheet of tiles on the left (the ship, stars, meteor, burst, heart, digits and letters, then the shot, bomb, saucer, hunter, sprite heart and the boss), the ship's two tiles selected as a 2x2 block and drawn big on the right in white, blue and red, the colours of the sprite palette ship of gfx/game.pal.json chosen in the toolbar; tools Pencil, Fill, Line, Rectangle, Picker, Copy, Paste, Flip H, Flip V, Rotate, Clear and Import PNG"></a>
       <figcaption>The sheet on the left, the selected tile (or 2×2 block) drawn big on the right, with pencil, fill, line, rectangle and picker. Tiles hold colour numbers, not colours: they are shown in any palette of a palette file, here the ship's. <em>Import PNG…</em> appends a picture's tiles.</figcaption>
     </figure>
 
     <h3 id="metasprites">Metasprites and animations</h3>
     <figure class="shot">
-      <a href="img/designer-metasprites.png"><img src="img/designer-metasprites.png" alt="The Metasprites editor on objects.msprite.json: the list ship, star, star twinkle, meteor and burst on the left with the ship selected, its prefix spr_, tile set ../chr/tiles.chr and palettes game.pal.json; the ship's two sprites in the middle with the magenta origin cross; statistics: 2 tiles, max 2 on one scanline (limit 8), size 17x9 px; on the right the tile sheet and the animation twinkle, two frames star and star twinkle of 8 frames each, looping, with Play and onion skin"></a>
+      <a href="img/designer-metasprites.png"><img src="img/designer-metasprites.png" alt="The Metasprites editor on objects.msprite.json: the list of twelve metasprites on the left (ship, star, star twinkle, meteor, burst, shot, bomb, saucer and more below) with the ship selected, its prefix spr_, tile set ../chr/tiles.chr and palettes game.pal.json; the ship's two sprites in the middle with the magenta origin cross; statistics: 2 tiles, max 2 on one scanline (limit 8), size 17x9 px; on the right the tile sheet and the animation twinkle, two frames star and star twinkle of 8 frames each, looping, with Play and onion skin"></a>
       <figcaption>A metasprite is placed tile by tile around an origin (the magenta cross), each tile with its sprite palette and flips. Under the drawing, the most sprites on one scanline against the system's limit (8 on the NES). An animation is a list of metasprites and durations in video frames, played at 60 frames a second with an onion skin.</figcaption>
     </figure>
 
     <h3 id="screens">Screens</h3>
     <figure class="shot">
-      <a href="img/designer-screen.png"><img src="img/designer-screen.png" alt="The Screen editor on title.screen.json: the title screen of Star Catcher, STAR CATCHER, PRESS START, CATCH THE STARS AVOID THE METEORS and MADE WITH WINASM65 among stars, with the 16x16 attribute grid; on the left the name title, prefix scr_, the tile set and palettes, compression none (.nam) and the tile sheet; tools Paint, Rectangle, Pick and Attribute, the four background palettes"></a>
+      <a href="img/designer-screen.png"><img src="img/designer-screen.png" alt="The Screen editor on title.screen.json: the title screen of Star Catcher, STAR CATCHER, PRESS START, CATCH THE STARS, SHOOT THE INVADERS, A OR B TO FIRE and MADE WITH WINASM65 among stars, with the 16x16 attribute grid; on the left the name title, prefix scr_, the tile set and palettes, compression none (.nam) and the tile sheet; tools Paint, Rectangle, Pick and Attribute, the four background palettes"></a>
       <figcaption>Paint tiles from the sheet, fill rectangles, pick, and paint a background palette per 16×16 attribute block. The overscan shading shows the lines a television may hide. <em>Import PNG…</em> makes a screen from a picture.</figcaption>
     </figure>
 
     <h3 id="maps">Maps</h3>
     <figure class="shot">
-      <a href="img/designer-map.png"><img src="img/designer-map.png" alt="The Map editor on play.map.json: a map of 16 by 15 metatiles, one screen, the starry sky of the game; on the left the name play, prefix bg_, the set of 9 metatiles with metatile 0 empty selected, its four corners and its palette, and the tile sheet; tools Paint, Rectangle, Fill, Pick, Resize, + Screen right, + Screen down"></a>
-      <figcaption>A map is made of metatiles: four tiles and a palette, edited on the left. The map grows by whole screens (<em>+ Screen →</em>, <em>+ Screen ↓</em>) for a level that scrolls.</figcaption>
+      <a href="img/designer-map.png"><img src="img/designer-map.png" alt="The Map editor on play.map.json: a map of 16 by 30 metatiles, two screens one above the other with an orange line between them, the starry sky of the game that scrolls; on the left the name play, prefix bg_, the set of 9 metatiles with metatile 0 empty selected, its four corners and its palette, and the tile sheet; tools Paint, Rectangle, Fill, Pick, Resize, + Screen right, + Screen down"></a>
+      <figcaption>A map is made of metatiles: four tiles and a palette, edited on the left. The map grows by whole screens (<em>+ Screen →</em>, <em>+ Screen ↓</em>) for a level that scrolls: Star Catcher's sky is two screens high, and scrolls down in a loop.</figcaption>
     </figure>
 
     <h2 id="export">Export and build</h2>
@@ -107,7 +107,7 @@
 
     <h2 id="hover">Pictures on hover</h2>
     <figure class="shot">
-      <a href="img/designer-hover.png"><img src="img/designer-hover.png" alt="Hover on SPR_MS_SHIP, line 492 of game.asm: the assembler's card (SPR_MS_SHIP = $00, the instruction's 2 cycles and bytes A9 00 at $C2C6), then the designer's: metasprite ship of objects.msprite.json, generated in objects.msprite.asm, 16x8 px shown x8, origin in magenta, and the ship drawn in its colours"></a>
+      <a href="img/designer-hover.png"><img src="img/designer-hover.png" alt="Hover on SPR_MS_SHIP, line 1140 of game.asm: the assembler's card (SPR_MS_SHIP = $00, the instruction's 2 cycles and bytes A9 00 at $C686), then the designer's: metasprite ship of objects.msprite.json, generated in objects.msprite.asm, 16x8 px shown x8, origin in magenta, and the ship drawn in its colours"></a>
       <figcaption>In the code, a label or constant an asset exported shows the picture it was made from, under the language server's card: a metasprite (its origin in magenta), an animation's first frame, the palettes, a screen or a map. An <code>.incbin</code> of a tile set, a screen or palettes, or an <code>.include</code> of an exported source, shows its asset too.</figcaption>
     </figure>
 

@@ -673,7 +673,7 @@ move_saucer:
         adc #1
         sta obj_dx,x
 @bomb:  jsr random
-        cmp #3                  ; about one bomb in 85 frames
+        cmp #3                  ; 1 or 2 of 255 (rng is never 0): a bomb in about 128 frames
         bcs @done
         lda obj_x,x
         clc

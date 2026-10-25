@@ -35,7 +35,7 @@
     </aside>
 
     <figure class="shot">
-      <a href="img/vscode-editor.png"><img src="img/vscode-editor.png" alt="VS Code with example_star_catcher open: the Explorer lists chr, gfx, src (game.asm, header.asm, nes.inc, vectors.asm and their objects), compile.bat, config.json and README.md; the editor shows lines 312 to 353 of game.asm, the end of spawn_objects and move_objects, with mnemonics, labels, anonymous + labels, numbers and comments coloured"></a>
+      <a href="img/vscode-editor.png"><img src="img/vscode-editor.png" alt="VS Code with example_star_catcher open: the Explorer lists chr, gfx, src (game.asm, header.asm, nes.inc, vectors.asm and their objects), compile.bat, config.json and README.md; the editor shows lines 608 to 649 of game.asm, the end of spawn_objects and the start of move_objects, with mnemonics, labels, anonymous + labels, numbers and comments coloured"></a>
       <figcaption>The example game, <a href="example.html">Star Catcher</a> (<code>example_star_catcher</code>), in VS Code. <code>.nas</code> and <code>.asm</code> files open as “6502 Assembly (WinASM65)”, shown at the right of the status bar.</figcaption>
     </figure>
 
@@ -83,11 +83,11 @@ code --install-extension winasm65-win32-x64-0.4.0.vsix --force</code></pre>
     <p>The language server answers hovers with a card laid out like a JSDoc hover. It is computed from the unsaved text, so it is right while you type.</p>
     <div class="grid-2">
       <figure class="shot">
-        <a href="img/vscode-hover-instruction.png"><img src="img/vscode-hover-instruction.png" alt="Hover card on adc obj_speed,x, line 338 of game.asm: ADC — Add with Carry, Adds a byte and the carry to A, @mode zero page,X, @cycles 4 cycles, @bytes 2 — 75 27 at $C1BF, @flags N V Z C, and a table of the eight ADC forms with the zero page,X form marked"></a>
+        <a href="img/vscode-hover-instruction.png"><img src="img/vscode-hover-instruction.png" alt="Hover card on adc obj_speed,x, line 634 of game.asm: ADC — Add with Carry, Adds a byte and the carry to A, @mode zero page,X, @cycles 4 cycles, @bytes 2 — 75 35 at $C349, @flags N V Z C, and a table of the eight ADC forms with the zero page,X form marked"></a>
         <figcaption>On a mnemonic (or anywhere on an instruction line that is not a name): what it does, the form this line assembled to with its cycles, bytes and address, the flags it changes, and every form of the instruction. ◀ marks the one used.</figcaption>
       </figure>
       <figure class="shot">
-        <a href="img/vscode-hover-symbol.png"><img src="img/vscode-hover-symbol.png" alt="Hover card on the name obj_speed: obj_speed = $27, @value $0027 (39), then the line adc obj_speed,x with @cycles 4 cycles and @bytes 2 — 75 27 at $C1BF"></a>
+        <a href="img/vscode-hover-symbol.png"><img src="img/vscode-hover-symbol.png" alt="Hover card on the name obj_speed: obj_speed = $35, @value $0035 (53), then the line adc obj_speed,x with @cycles 4 cycles and @bytes 2 — 75 35 at $C349"></a>
         <figcaption>On a name: its value in hex and decimal, then the line it is read on, with what that line assembled to. <code>obj_speed</code> is a zero-page variable (<code>.res</code> from <code>.memarea $0000</code>), so the instruction took the two-byte zero page,X form.</figcaption>
       </figure>
     </div>
@@ -95,7 +95,7 @@ code --install-extension winasm65-win32-x64-0.4.0.vsix --force</code></pre>
 
     <h2 id="diagnostics">Diagnostics</h2>
     <figure class="shot">
-      <a href="img/vscode-diagnostics.png"><img src="img/vscode-diagnostics.png" alt="Three lines inserted at line 336 of game.asm, unsaved and underlined: LDX ($10),Y, LDA #(1+ and BNE NOWHERE; the Problems panel lists LDX does not support indirect indexed (zp),Y addressing (Ln 336), Malformed expression '(1+' (Ln 337) and Undefined symbol: NOWHERE (Ln 338)"></a>
+      <a href="img/vscode-diagnostics.png"><img src="img/vscode-diagnostics.png" alt="Three lines inserted at line 633 of game.asm, unsaved and underlined: LDX ($10),Y, LDA #(1+ and BNE NOWHERE; the Problems panel lists LDX does not support indirect indexed (zp),Y addressing (Ln 633), Malformed expression '(1+' (Ln 634) and Undefined symbol: NOWHERE (Ln 635)"></a>
       <figcaption>Errors appear as you type, before the file is saved. Each names the rule that was broken.</figcaption>
     </figure>
     <ul>
@@ -113,7 +113,7 @@ code --install-extension winasm65-win32-x64-0.4.0.vsix --force</code></pre>
         <figcaption>Right-click → <strong>WinASM65</strong> → <strong>Show Listing</strong>. The same submenu is in the Explorer and the line-number margin; a button in the editor title bar does the same.</figcaption>
       </figure>
       <figure class="shot">
-        <a href="img/vscode-listing.png"><img src="img/vscode-listing.png" alt="game.asm, lines 328 to 367, with a grey column left of the source: C1B6 A2 05, C1B8 B5 15, C1BA F0 33 and so on, C1BF 75 27 on line 338, blank on the labels move_objects and collide, on comments and on empty lines"></a>
+        <a href="img/vscode-listing.png"><img src="img/vscode-listing.png" alt="game.asm, lines 628 to 666, with a grey column left of the source: C33E D0 06, C340 A9 00, C342 95 1D and so on, C349 75 35 on line 634, blank on the label move_saucer, on comments and on empty lines"></a>
         <figcaption>Each line shows the address and the bytes it assembled to, as in a <code>.lst</code> file. Lines without code get a blank column, so the source stays aligned.</figcaption>
       </figure>
     </div>
@@ -140,12 +140,12 @@ code --install-extension winasm65-win32-x64-0.4.0.vsix --force</code></pre>
 
     <h2 id="debug">Debugging</h2>
     <figure class="shot">
-      <a href="img/vscode-debug.png"><img src="img/vscode-debug.png" alt="VS Code paused on line 134 of game.asm (pha, the first instruction after NMI:). Variables shows Registers (PC = $C06E, A = $00, X = $08, Y = $08, SP = $FA, cycles) and Flags; Call Stack shows NMI game.asm 134:1, paused on breakpoint; the Memory panel is on the right; the debug console shows building, built 3 unit(s), 1252 mapped line(s), starting Mesen2 (Mesen.exe) with star_catcher.nes, connected to Mesen2 2.1.1, Nintendo Entertainment System"></a>
-      <figcaption>Star Catcher paused on a breakpoint on line 134 of <code>game.asm</code>, the first instruction of the NMI handler (<code>$C06E</code>). Left: the Registers and Flags (Zero page follows below them), and a one-frame call stack named after the nearest label. Right: the Memory panel's RAM view, on the title screen: <code>ship_x</code> at <code>$07</code> holds <code>$78</code> (120) and <code>ptr</code> at <code>$13</code> still points at <code>spr_ship</code> (<code>$C50A</code>), the last metasprite drawn. Bottom: the debug console's account of the launch.</figcaption>
+      <a href="img/vscode-debug.png"><img src="img/vscode-debug.png" alt="VS Code paused on line 203 of game.asm (pha, the first instruction after NMI:). Variables shows Registers (PC = $C06E, A = $00, X = $08, Y = $08, SP = $FA, cycles) and Flags; Call Stack shows NMI game.asm 203:1, paused on breakpoint; the Memory panel is on the right; the debug console shows building, built 3 unit(s), 1985 mapped line(s), starting Mesen2 (Mesen.exe) with star_catcher.nes, connected to Mesen2 2.1.1, Nintendo Entertainment System"></a>
+      <figcaption>Star Catcher paused on a breakpoint on line 203 of <code>game.asm</code>, the first instruction of the NMI handler (<code>$C06E</code>). Left: the Registers and Flags (Zero page follows below them), and a one-frame call stack named after the nearest label. Right: the Memory panel's RAM view, on the title screen: <code>ship_x</code> and <code>ship_y</code> at <code>$07</code>–<code>$08</code> hold <code>$78</code> and <code>$C8</code> (120, 200), and <code>ptr</code> at <code>$15</code> still points at <code>spr_ship</code> (<code>$C9E1</code>), the last metasprite drawn. Bottom: the debug console's account of the launch.</figcaption>
     </figure>
     <div class="grid-2">
       <figure class="shot">
-        <a href="img/mesen2.png"><img src="img/mesen2.png" alt="The Mesen2 window, titled Mesen - star_catcher, showing the title screen of Star Catcher: STAR CATCHER, PRESS START, CATCH THE STARS, AVOID THE METEORS, the ship and MADE WITH WINASM65 on a starfield"></a>
+        <a href="img/mesen2.png"><img src="img/mesen2.png" alt="The Mesen2 window, titled Mesen - star_catcher, showing the title screen of Star Catcher: STAR CATCHER, PRESS START, CATCH THE STARS, SHOOT THE INVADERS, A OR B TO FIRE, the ship and MADE WITH WINASM65 on a starfield, with the pause icon at the top left"></a>
         <figcaption>The game runs in Mesen2's own window, with the WinASM65 bridge script loaded.</figcaption>
       </figure>
       <div>
@@ -184,7 +184,7 @@ code --install-extension winasm65-win32-x64-0.4.0.vsix --force</code></pre>
     <h2 id="ram">Memory panel</h2>
     <div class="grid-2">
       <figure class="shot">
-        <a href="img/vscode-ram.png"><img src="img/vscode-ram.png" alt="The Memory panel on its RAM view: Refresh button, Live checkbox, status stopped · SP=$FA · 0 byte(s) changed, a legend, then the zero page (5A 78 at $0006, 0A C5 at $0013) and the stack in hex rows"></a>
+        <a href="img/vscode-ram.png"><img src="img/vscode-ram.png" alt="The Memory panel on its RAM view: Refresh button, Live checkbox, status stopped · SP=$FA · 0 byte(s) changed, a legend, then the zero page (5A 78 C8 at $0006, E1 C9 at $0015) and the stack in hex rows"></a>
         <figcaption>The RAM view, <code>$0000-$07FF</code> of the CPU's memory, in hex and ASCII, the zero page and stack shaded.</figcaption>
       </figure>
       <div>
