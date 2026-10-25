@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WinASM65 documentation</title>
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<div class="layout">
+  <nav class="site-nav" aria-label="Pages"></nav>
+
+  <main>
+    <header class="page">
+      <h1>WinASM65</h1>
+      <p class="lede">A 6502 assembler, linker and debugger for Windows. It assembles for the NES, the Commodore 64, the Apple II, the Atari 8-bit, the BBC Micro and a dozen other systems, and it debugs the result live on the Mesen2 emulator, from a terminal monitor or from VS Code.</p>
+    </header>
+
+    <figure class="shot">
+      <a href="img/vscode-debug.png"><img src="img/vscode-debug.png" alt="VS Code paused on a breakpoint in the Bomberman example, with the registers, the call stack and the RAM panel"></a>
+      <figcaption>The NES Bomberman example paused on a breakpoint in VS Code. The game runs in Mesen2; the RAM panel on the right shows the console's 2 KB of work RAM.</figcaption>
+    </figure>
+
+    <h2 id="what">What it does</h2>
+    <p>WinASM65 started as a single assembler executable and grew into a small tool chain. Each part is a separate project in <code>WinASM65.sln</code>, and each is usable on its own:</p>
+    <div class="grid-3">
+      <a class="card" href="assembler.html"><h4>Assembler</h4><p>Two-pass 6502 assembler: MOS syntax plus the common ca65, asm6 and NESASM forms, macros, local and anonymous labels, five CPUs.</p></a>
+      <a class="card" href="segments.html"><h4>Projects</h4><p>A <code>config.json</code> assembles several units in dependency order and combines them into one image, such as an iNES ROM.</p></a>
+      <a class="card" href="modules.html"><h4>Modules and linker</h4><p>Relocatable <code>.w65</code> modules, <code>.w65a</code> archives, a linker and an offline HTML viewer.</p></a>
+      <a class="card" href="targets.html"><h4>Targets</h4><p>Executable formats and disk images for 15+ systems, from <code>.nes</code> and <code>.prg</code> to GEOS on D64 and tokenized BASIC.</p></a>
+      <a class="card" href="monitor.html"><h4>Monitor</h4><p>A terminal monitor that talks to Mesen2 through a Lua bridge: live RAM, breakpoints, stepping, patching.</p></a>
+      <a class="card" href="vscode.html"><h4>VS Code</h4><p>An extension: syntax colouring, diagnostics, hover cards, listing column, build task, and a full debugger.</p></a>
+    </div>
+
+    <h2 id="solution">The solution</h2>
+    <p>Nine projects: four libraries or programs, their four test projects, and the abstractions the monitor is written against. The arrows are project references: everything depends on the assembler, and nothing in the assembler depends on the debugging side.</p>
+    <div class="figure">
+      <svg viewBox="0 0 900 420" role="img" aria-label="Project references: WinASM65.Tooling and WinASM65.Monitor reference WinASM65.Monitor.Core, which references WinASM65 and WinASM65.Monitor.Abstractions; the VS Code extension starts WinASM65.Tooling">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <!-- front ends -->
+        <rect class="box-d" x="20" y="24" width="200" height="64" rx="8"/>
+        <text x="120" y="50" text-anchor="middle" font-weight="600">vscode-extension</text>
+        <text x="120" y="70" text-anchor="middle" class="muted" font-size="13">TypeScript, thin client</text>
+
+        <rect class="box-c" x="280" y="24" width="260" height="64" rx="8"/>
+        <text x="410" y="50" text-anchor="middle" font-weight="600">WinASM65.Tooling</text>
+        <text x="410" y="70" text-anchor="middle" class="muted" font-size="13">exe: --dap, --lsp, --build</text>
+
+        <rect class="box-c" x="600" y="24" width="270" height="64" rx="8"/>
+        <text x="735" y="50" text-anchor="middle" font-weight="600">WinASM65.Monitor</text>
+        <text x="735" y="70" text-anchor="middle" class="muted" font-size="13">exe: terminal UI (SharpConsoleUI)</text>
+
+        <!-- core -->
+        <rect class="box-b" x="400" y="170" width="300" height="64" rx="8"/>
+        <text x="550" y="196" text-anchor="middle" font-weight="600">WinASM65.Monitor.Core</text>
+        <text x="550" y="216" text-anchor="middle" class="muted" font-size="13">session, bridge, protocol, source map</text>
+
+        <rect class="box-b" x="720" y="300" width="160" height="64" rx="8"/>
+        <text x="800" y="326" text-anchor="middle" font-weight="600">Monitor</text>
+        <text x="800" y="346" text-anchor="middle" font-weight="600">.Abstractions</text>
+
+        <rect class="box-a" x="160" y="300" width="380" height="64" rx="8"/>
+        <text x="350" y="326" text-anchor="middle" font-weight="600">WinASM65</text>
+        <text x="350" y="346" text-anchor="middle" class="muted" font-size="13">exe + library: assembler, linker, targets, CPU core</text>
+
+        <!-- emulator -->
+        <rect class="frame" x="20" y="170" width="200" height="64" rx="8"/>
+        <text x="120" y="196" text-anchor="middle" font-weight="600">Mesen2</text>
+        <text x="120" y="216" text-anchor="middle" class="muted" font-size="13">emulator + Lua bridge</text>
+
+        <path class="line" d="M220,56 L280,56" marker-end="url(#arrow)"/>
+        <text x="250" y="46" text-anchor="middle" class="muted" font-size="12">starts</text>
+        <path class="line" d="M450,88 L520,170" marker-end="url(#arrow)"/>
+        <path class="line" d="M370,88 L350,300" marker-end="url(#arrow)"/>
+        <path class="line" d="M700,88 L600,170" marker-end="url(#arrow)"/>
+        <path class="line" d="M780,88 L800,300" marker-end="url(#arrow)"/>
+        <path class="line" d="M860,88 Q 890 200 520 300" marker-end="url(#arrow)"/>
+        <path class="line" d="M480,234 L420,300" marker-end="url(#arrow)"/>
+        <path class="line" d="M650,234 L760,300" marker-end="url(#arrow)"/>
+        <path class="line" d="M400,202 L220,202" marker-end="url(#arrow)" stroke-dasharray="5 4"/>
+        <text x="310" y="194" text-anchor="middle" class="muted" font-size="12">TCP, line protocol</text>
+
+        <text x="20" y="400" class="muted" font-size="12.5">Solid arrows: project references. Dashed: runtime connection. Each *.Tests project references the project it tests.</text>
+      </svg>
+    </div>
+
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Project</th><th>Kind</th><th>Role</th><th>Page</th></tr></thead>
+      <tbody>
+        <tr><td><code>WinASM65</code></td><td>exe, .NET 8</td><td>The assembler, the multi-segment project builder, the module format and linker, the target formats, the 6502 execution core. The other projects use it as a library.</td><td><a href="assembler.html">Assembler</a></td></tr>
+        <tr><td><code>WinASM65.Monitor.Abstractions</code></td><td>library</td><td>Interfaces the monitor is written against: CPU state, memory regions, execution capabilities.</td><td><a href="monitor.html">Monitor</a></td></tr>
+        <tr><td><code>WinASM65.Monitor.Core</code></td><td>library</td><td>Everything of the monitor that has no UI: the session, the emulator launcher, the bridge client, the protocol, listings and the source map.</td><td><a href="monitor.html">Monitor</a></td></tr>
+        <tr><td><code>WinASM65.Monitor</code></td><td>exe</td><td>The terminal monitor: file tree, source and listing editor, RAM and ROM panes.</td><td><a href="monitor.html">Monitor</a></td></tr>
+        <tr><td><code>WinASM65.Tooling</code></td><td>exe</td><td>One program, three modes: a Debug Adapter (<code>--dap</code>), a Language Server (<code>--lsp</code>) and a build front end (<code>--build</code>).</td><td><a href="tooling.html">Tooling</a></td></tr>
+        <tr><td><code>vscode-extension</code></td><td>TypeScript</td><td>The VS Code extension. It starts <code>WinASM65.Tooling</code> and adds the listing column and the RAM panel.</td><td><a href="vscode.html">VS Code</a></td></tr>
+        <tr><td><code>*.Tests</code></td><td>MSTest</td><td>About 1,100 tests, including golden hashes of whole ROMs.</td><td><a href="testing.html">Tests</a></td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2 id="flow">From source to a paused emulator</h2>
+    <p>The path a source takes when you press F5 in VS Code, and where each step is documented:</p>
+    <div class="figure">
+      <svg viewBox="0 0 900 200" role="img" aria-label="Data flow: sources and config.json are assembled into units, combined into a ROM, loaded in Mesen2; the listing becomes a source map used by the debugger">
+        <defs>
+          <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <rect class="box-a" x="10" y="30" width="140" height="56" rx="8"/>
+        <text x="80" y="54" text-anchor="middle" font-weight="600">.asm + config.json</text>
+        <text x="80" y="73" text-anchor="middle" class="muted" font-size="12">sources</text>
+        <rect class="box-a" x="190" y="30" width="140" height="56" rx="8"/>
+        <text x="260" y="54" text-anchor="middle" font-weight="600">Assembler</text>
+        <text x="260" y="73" text-anchor="middle" class="muted" font-size="12">2 passes per unit</text>
+        <rect class="box-a" x="370" y="30" width="140" height="56" rx="8"/>
+        <text x="440" y="54" text-anchor="middle" font-weight="600">Combiner</text>
+        <text x="440" y="73" text-anchor="middle" class="muted" font-size="12">.o files → .nes</text>
+        <rect class="box-c" x="550" y="30" width="140" height="56" rx="8"/>
+        <text x="620" y="54" text-anchor="middle" font-weight="600">Mesen2</text>
+        <text x="620" y="73" text-anchor="middle" class="muted" font-size="12">+ bridge_mesen2.lua</text>
+        <rect class="box-d" x="730" y="30" width="160" height="56" rx="8"/>
+        <text x="810" y="54" text-anchor="middle" font-weight="600">Debugger</text>
+        <text x="810" y="73" text-anchor="middle" class="muted" font-size="12">DAP or terminal monitor</text>
+        <rect class="box-b" x="280" y="128" width="320" height="50" rx="8"/>
+        <text x="440" y="150" text-anchor="middle" font-weight="600">Listing → source map</text>
+        <text x="440" y="168" text-anchor="middle" class="muted" font-size="12">address ↔ file:line, symbols</text>
+        <path class="line" d="M150,58 L190,58" marker-end="url(#arrow2)"/>
+        <path class="line" d="M330,58 L370,58" marker-end="url(#arrow2)"/>
+        <path class="line" d="M510,58 L550,58" marker-end="url(#arrow2)"/>
+        <path class="line" d="M690,58 L730,58" marker-end="url(#arrow2)"/>
+        <path class="line" d="M260,86 L330,128" marker-end="url(#arrow2)"/>
+        <path class="line" d="M600,152 L810,152 L810,86" marker-end="url(#arrow2)"/>
+      </svg>
+    </div>
+    <ol>
+      <li><strong>Assemble.</strong> The project's units are assembled in dependency order; each produces an object file, a symbol file and an in-memory listing. <a href="assembler.html">Assembly pipeline</a>, <a href="segments.html">Projects and segments</a>.</li>
+      <li><strong>Combine.</strong> The object files and binary files (header, CHR data) are concatenated into the ROM, each padded to its declared size. <a href="segments.html#combine">Combining</a>.</li>
+      <li><strong>Launch.</strong> Mesen2 starts with the ROM and the Lua bridge script; the bridge opens a TCP port. <a href="monitor.html#bridge">The bridge</a>.</li>
+      <li><strong>Map.</strong> The listings become a source map: every emitted byte knows its file and line. Breakpoints set on source lines become addresses. <a href="tooling.html#dap">Debug adapter</a>.</li>
+      <li><strong>Debug.</strong> The bridge reports when execution stops; the adapter turns that into a stack frame, registers and memory. <a href="vscode.html">VS Code extension</a>, <a href="monitor.html">Monitor</a>.</li>
+    </ol>
+
+    <h2 id="tour">A short tour</h2>
+    <div class="grid-2">
+      <figure class="shot">
+        <a href="img/vscode-hover-instruction.png"><img src="img/vscode-hover-instruction.png" alt="Hover card on an LDA instruction"></a>
+        <figcaption>Hovering an instruction: what it does, the form the line assembled to, its cycles and bytes, and every addressing mode. <a href="vscode.html#hover">More</a></figcaption>
+      </figure>
+      <figure class="shot">
+        <a href="img/monitor-tui.png"><img src="img/monitor-tui.png" alt="The terminal monitor connected to Mesen2"></a>
+        <figcaption>The terminal monitor connected to Mesen2: files, the source with its listing, live RAM and ROM. <a href="monitor.html">More</a></figcaption>
+      </figure>
+      <figure class="shot">
+        <a href="img/vscode-diagnostics.png"><img src="img/vscode-diagnostics.png" alt="Diagnostics in the Problems panel"></a>
+        <figcaption>Errors appear as you type, with the rule that was broken. <a href="vscode.html#diagnostics">More</a></figcaption>
+      </figure>
+      <figure class="shot">
+        <a href="img/module-viewer.png"><img src="img/module-viewer.png" alt="The module viewer's report"></a>
+        <figcaption>The module viewer: segments, exports, imports, and which imports nobody satisfies. <a href="modules.html#viewer">More</a></figcaption>
+      </figure>
+    </div>
+
+    <h2 id="reading">Where to start reading</h2>
+    <ul>
+      <li>To <strong>use</strong> WinASM65: <a href="getting-started.html">Getting started</a>, then the <a href="syntax.html">syntax reference</a>.</li>
+      <li>To <strong>change the assembler</strong>: <a href="assembler.html">Assembly pipeline</a> and <a href="cpus.html">CPUs</a>.</li>
+      <li>To <strong>change the debugger</strong>: <a href="monitor.html">Monitor</a>, then <a href="tooling.html">Tooling</a> and <a href="vscode.html">VS Code</a>.</li>
+      <li>To <strong>add a target system</strong>: <a href="targets.html">Targets and formats</a>.</li>
+    </ul>
+
+    <footer>
+      <p>Screenshots are taken from the real programs by <code>tools/screenshots/shoot-all.ps1</code>; run it again after a UI change.</p>
+    </footer>
+  </main>
+
+  <aside class="toc" aria-label="On this page"></aside>
+</div>
+</body>
+</html>
