@@ -1,7 +1,7 @@
 import { PaletteAsset } from '../shared/assets.js';
 import { HostMessage } from '../shared/protocol.js';
 import { GraphicsSystem, hex2 } from '../shared/system.js';
-import { Banner, StatusBar, button, el, post, setInputValue, start, textInput, typing } from './common.js';
+import { Banner, LiveToggle, StatusBar, button, el, post, setInputValue, start, textInput, typing } from './common.js';
 import { contrastOf, cssOf, masterRgb } from './render.js';
 
 /**
@@ -18,6 +18,7 @@ let selected = { palette: 0, color: 1 };
 const app = document.getElementById('app')!;
 const banner = new Banner();
 const status = new StatusBar();
+const live = new LiveToggle();
 const nameInput = textInput('', 'name', value => edit('Rename the palettes', a => { a.name = value; }));
 const prefixInput = textInput('', 'none', value => edit('Change the prefix', a => { a.prefix = value; }));
 const palettesBox = el('div', { className: 'palettes' });
@@ -41,7 +42,9 @@ function build(): void {
     el('span', { className: 'sep' }),
     button('Share colour 0', 'Give every palette the colour 0 of the first background palette (the universal background colour)', shareColourZero),
     el('span', { className: 'sep' }),
-    button('Open as Text', 'Open the .pal.json file in the text editor', () => post({ type: 'openAsText' }))
+    button('Open as Text', 'Open the .pal.json file in the text editor', () => post({ type: 'openAsText' })),
+    el('span', { className: 'sep' }),
+    live.element
   );
   const body = el('div', { className: 'body palette-body' },
     el('div', { className: 'main' },
@@ -195,6 +198,9 @@ start((message: HostMessage) => {
       break;
     case 'notice':
       status.show(message.text, message.level);
+      break;
+    case 'live':
+      live.update(message.state);
       break;
   }
 });

@@ -45,7 +45,19 @@ export type HostMessage =
   /** The palette to show tiles in (tile editor), undefined for greys. */
   | { type: 'displayPalette'; palettes?: PaletteResource }
   /** A one-line message for the status area. */
-  | { type: 'notice'; text: string; level: 'info' | 'error' };
+  | { type: 'notice'; text: string; level: 'info' | 'error' }
+  /** The Live toggle: whether it can be used (a WinASM65 debug session runs), whether it is on, and its tooltip. */
+  | { type: 'live'; state: LiveState };
+
+/** What the Live toggle of an editor shows. */
+export interface LiveState {
+  /** A debug session can take this editor's data. */
+  available: boolean;
+  /** Edits are being written into the running machine. */
+  on: boolean;
+  /** The tooltip: what Live does here, or why it cannot. */
+  title: string;
+}
 
 /** Webview → host. */
 export type WebviewMessage =
@@ -61,4 +73,8 @@ export type WebviewMessage =
   /** Open a file the asset names, in its own editor. */
   | { type: 'openFile'; path: string }
   /** Open the asset as text. */
-  | { type: 'openAsText' };
+  | { type: 'openAsText' }
+  /** Turn the Live preview on or off. */
+  | { type: 'live'; on: boolean }
+  /** Run "Import PNG…" with this editor's folder and tile set preselected. */
+  | { type: 'importPng' };

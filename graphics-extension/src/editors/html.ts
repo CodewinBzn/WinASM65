@@ -191,4 +191,38 @@ section { min-width: 0; }
 .metatile-editor .field { gap: 4px; }
 .metatile-editor .group { flex-wrap: wrap; gap: 4px; }
 .side .canvas-frame { max-width: 100%; }
+.side.right { border-right: none; border-left: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent)); }
+
+/* Live preview toggle */
+.live-toggle.on { color: var(--vscode-button-foreground); background: var(--vscode-debugIcon-startForeground, var(--vscode-button-background)); }
+
+/* Metasprite editor */
+.ms-left { width: 250px; }
+.ms-right { width: 300px; }
+.ms-main { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.list { display: flex; flex-direction: column; gap: 1px; max-height: 260px; overflow: auto; }
+.list-item {
+  display: flex; align-items: center; gap: 8px; padding: 2px 6px; text-align: left; min-height: 30px; width: 100%;
+  background: transparent; color: var(--vscode-foreground); border: 1px solid transparent; border-radius: 2px;
+}
+.list-item:hover { background: var(--vscode-list-hoverBackground, #8882); }
+.list-item.selected, .list-item.selected:hover {
+  background: var(--vscode-list-activeSelectionBackground, #04395e); color: var(--vscode-list-activeSelectionForeground, inherit);
+}
+.list-item .thumb { width: 26px; height: 26px; flex: none; display: flex; align-items: center; justify-content: center; }
+.list-item .thumb canvas { max-width: 26px; max-height: 26px; }
+.list-item .name { overflow: hidden; text-overflow: ellipsis; }
+.list-item .count { margin-left: auto; font-size: 11px; opacity: .75; }
+.list-empty { color: var(--vscode-descriptionForeground); font-size: 12px; padding: 4px 6px; }
+.frames { display: flex; flex-direction: column; gap: 2px; margin: 4px 0; }
+.frame-row { display: flex; gap: 3px; align-items: center; padding: 1px 3px; border-radius: 2px; }
+.frame-row.current { background: var(--vscode-list-inactiveSelectionBackground, #8883); }
+.frame-row .index { width: 1.4em; text-align: right; color: var(--vscode-descriptionForeground); font-size: 11px; cursor: pointer; }
+.frame-row select { flex: 1; min-width: 0; }
+.frame-row input[type="number"] { width: 4.2em; }
+.frame-row button { padding: 0 4px; min-width: 22px; }
+.stats { display: flex; gap: 6px 16px; flex-wrap: wrap; color: var(--vscode-descriptionForeground); font-size: 12px; max-width: 640px; }
+.warn { color: var(--vscode-editorWarning-foreground, #cca700); }
+.preview { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.sheet-scroll { max-height: 36vh; overflow: auto; }
 `;

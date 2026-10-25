@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "system": "nes",
+  "chr": "tiles.chr",
+  "palettes": "live.pal.json",
+  "prefix": "lv_",
+  "metasprites": [
+    {
+      "name": "Ship Idle",
+      "originX": 8,
+      "originY": 8,
+      "tiles": [
+        { "x": 0, "y": 0, "tile": 1, "palette": 0, "flipH": false, "flipV": false, "behind": false },
+        { "x": 8, "y": 0, "tile": 1, "palette": 0, "flipH": true, "flipV": false, "behind": false }
+      ]
+    },
+    {
+      "name": "ship-fly",
+      "originX": 8,
+      "originY": 16,
+      "tiles": [
+        { "x": 0, "y": 0, "tile": 2, "palette": 1, "flipH": false, "flipV": false, "behind": true }
+      ]
+    },
+    { "name": "empty", "originX": 0, "originY": 0, "tiles": [] }
+  ],
+  "animations": [
+    {
+      "name": "fly",
+      "loop": true,
+      "frames": [
+        { "metasprite": "Ship Idle", "duration": 8 },
+        { "metasprite": "ship-fly", "duration": 4 }
+      ]
+    },
+    {
+      "name": "stop",
+      "loop": false,
+      "frames": [
+        { "metasprite": "empty", "duration": 1 }
+      ]
+    }
+  ]
+}

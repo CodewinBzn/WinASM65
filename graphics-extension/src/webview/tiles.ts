@@ -3,7 +3,7 @@ import { decodeTile, floodFill, flipH, flipV, linePoints, rectanglePoints, rotat
 import { HostMessage } from '../shared/protocol.js';
 import { GraphicsSystem, colorsPerTile, hex2 } from '../shared/system.js';
 import {
-  Banner, Choice, StatusBar, button, checkbox, clamp, el, fillSelect, loadState, post, saveState, selectBox, separator, start, typing
+  Banner, Choice, LiveToggle, StatusBar, button, checkbox, clamp, el, fillSelect, loadState, post, saveState, selectBox, separator, start, typing
 } from './common.js';
 import { Rgb, TileCache, TileSheet, ZoomCanvas, contrastOf, cssOf, drawPixels, grid, onPointer, paletteColours, sheetRect } from './render.js';
 
@@ -42,6 +42,7 @@ let stroke: { base: Uint8Array; pixels: Uint8Array; start: { x: number; y: numbe
 const app = document.getElementById('app')!;
 const banner = new Banner();
 const status = new StatusBar();
+const live = new LiveToggle();
 let sheet: TileSheet;
 let editor: ZoomCanvas;
 let tools: Choice<Tool>;
@@ -170,7 +171,9 @@ function build(): void {
     button('Flip H', 'Mirror the selected tiles left to right (H)', () => transform('Flip horizontally', 'h')),
     button('Flip V', 'Mirror the selected tiles top to bottom (V)', () => transform('Flip vertically', 'v')),
     button('Rotate', 'Turn the selected tiles a quarter clockwise (a square selection turns as a whole)', () => transform('Rotate', 'r')),
-    button('Clear', 'Set the selected tiles to colour 0 (Delete)', () => transform('Clear', 'c'))
+    button('Clear', 'Set the selected tiles to colour 0 (Delete)', () => transform('Clear', 'c')), separator(),
+    button('Import PNG…', 'Make tiles, palettes and a screen or a metasprite from a picture, appending the tiles to this tile set', () => post({ type: 'importPng' })),
+    live.element
   );
 
   sheet = new TileSheet(sys, state.sheetZoom);
@@ -548,6 +551,9 @@ start((message: HostMessage) => {
       break;
     case 'notice':
       status.show(message.text, message.level);
+      break;
+    case 'live':
+      live.update(message.state);
       break;
   }
 });

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { Designer } from '../designer';
+import { LivePreview } from '../live';
 import { AssetResources } from '../resources';
 import { EditorKind } from '../shared/protocol';
 
@@ -10,6 +11,7 @@ export interface EditorContext {
   resources: AssetResources;
   log: vscode.OutputChannel;
   registry: EditorRegistry;
+  live: LivePreview;
 }
 
 /**

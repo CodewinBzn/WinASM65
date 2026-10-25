@@ -6,6 +6,7 @@
 // Needs the Playwright of tools/screenshots (npm install there) and the cached
 // VS Code of vscode-extension/.vscode-test (or VSCODE_EXECUTABLE).
 
+import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -111,6 +112,11 @@ async function shot(page, name) {
 const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'winasm65-graphics-samples-'));
 writeSamples(workspace, repo);
 console.log('samples in ' + workspace);
+// The exported sources (the hover reads them) and a picture to import: the title screen, drawn by the designer.
+const designerDll = path.join(repo, 'WinASM65.Designer', 'bin', 'Debug', 'net8.0', 'WinASM65.Designer.dll');
+execFileSync('dotnet', [designerDll, 'export', workspace], { stdio: 'ignore' });
+fs.mkdirSync(path.join(workspace, 'art'));
+execFileSync('dotnet', [designerDll, 'render', path.join(workspace, 'title.screen.json'), '-o', path.join(workspace, 'art', 'title-art.png')], { stdio: 'ignore' });
 const { app, page } = await launch(workspace);
 try {
   // Close the side bar: the editors get the room.
@@ -182,6 +188,85 @@ try {
   await page.mouse.up();
   await page.waitForTimeout(800);
   await shot(page, 'map');
+
+  // The metasprite editor: a tile placed from the sheet, then the row of stars over the scanline limit.
+  await open(page, 'sprites.msprite.json');
+  const sprites = await editorFrame(page, 'Snap');
+  await page.waitForTimeout(1000);
+  await sprites.locator('.list-item', { hasText: 'ship_thrust' }).click();
+  await page.waitForTimeout(300);
+  const tileSheet = sprites.locator('.ms-right canvas').first();
+  const tbox = await tileSheet.boundingBox();
+  const tcell = tbox.width / 16;
+  await tileSheet.click({ position: { x: tcell * 10.5, y: tcell * 0.5 } }); // the heart
+  const drawing = sprites.locator('.ms-main canvas');
+  const dbox = await drawing.boundingBox();
+  const px = dbox.width / 128;
+  await page.mouse.click(dbox.x + px * 84, dbox.y + px * 44);
+  await page.mouse.move(dbox.x + px * 100, dbox.y + px * 100);
+  await page.waitForTimeout(600);
+  await shot(page, 'metasprite');
+  await sprites.locator('.list-item', { hasText: 'star_row' }).click();
+  await sprites.locator('.list-item', { hasText: 'spin' }).click();
+  await sprites.locator('button', { hasText: 'Play' }).click();
+  await page.waitForTimeout(700);
+  await shot(page, 'metasprite-scanline');
+  await sprites.locator('button', { hasText: 'Pause' }).click();
+
+  // Import PNG from the screen editor's toolbar: the picture, the name, the tile set.
+  await open(page, 'title.screen.json');
+  const screenAgain = await editorFrame(page, 'Attribute');
+  await page.waitForTimeout(500);
+  await screenAgain.locator('button', { hasText: 'Import PNG' }).click();
+  await page.waitForSelector('.quick-input-widget:not([style*="display: none"]) .quick-input-list .monaco-list-row');
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: path.join(outDir, 'import-picture.png') });
+  console.log('  ' + path.join(outDir, 'import-picture.png'));
+  await page.keyboard.type('title-art');
+  await page.waitForTimeout(400);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(600);
+  await page.keyboard.press('Control+A');
+  await page.keyboard.type('title_art');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: path.join(outDir, 'import-tiles.png') });
+  console.log('  ' + path.join(outDir, 'import-tiles.png'));
+  await page.keyboard.type('New tile set');
+  await page.waitForTimeout(400);
+  await page.keyboard.press('Enter');
+  await editorFrame(page, 'Attribute');
+  await page.waitForTimeout(2500);
+  await page.screenshot({ path: path.join(outDir, 'import-done.png') });
+  console.log('  ' + path.join(outDir, 'import-done.png'));
+
+  // A picture on hover: the label of an exported metasprite in a source.
+  await open(page, 'main.asm');
+  await page.waitForTimeout(1500);
+  await page.keyboard.press('Control+G');
+  await page.keyboard.type('6');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('End');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('Control+K');
+  await page.keyboard.press('Control+I');
+  await page.waitForSelector('.monaco-hover img', { timeout: 20000 });
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: path.join(outDir, 'hover.png') });
+  console.log('  ' + path.join(outDir, 'hover.png'));
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+G');
+  await page.keyboard.type('23');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('End');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('Control+K');
+  await page.keyboard.press('Control+I');
+  await page.waitForSelector('.monaco-hover img', { timeout: 20000 });
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: path.join(outDir, 'hover-incbin.png') });
+  console.log('  ' + path.join(outDir, 'hover-incbin.png'));
 } finally {
   await app.close();
 }

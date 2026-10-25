@@ -33,15 +33,20 @@
     "onCustomEditor:winasm65Graphics.tiles",
     "onCustomEditor:winasm65Graphics.screen",
     "onCustomEditor:winasm65Graphics.map",
+    "onCustomEditor:winasm65Graphics.metasprites",
     "onCommand:winasm65Graphics.newPalette",
     "onCommand:winasm65Graphics.newScreen",
     "onCommand:winasm65Graphics.newMap",
     "onCommand:winasm65Graphics.newTileSet",
+    "onCommand:winasm65Graphics.newMetasprites",
     "onCommand:winasm65Graphics.exportAsset",
     "onCommand:winasm65Graphics.exportFolder",
+    "onCommand:winasm65Graphics.importPng",
     "workspaceContains:**/*.pal.json",
     "workspaceContains:**/*.screen.json",
-    "workspaceContains:**/*.map.json"
+    "workspaceContains:**/*.map.json",
+    "workspaceContains:**/*.msprite.json",
+    "onLanguage:winasm65"
   ],
   "contributes": {
     "customEditors": [
@@ -84,6 +89,16 @@
           }
         ],
         "priority": "default"
+      },
+      {
+        "viewType": "winasm65Graphics.metasprites",
+        "displayName": "WinASM65 Metasprites",
+        "selector": [
+          {
+            "filenamePattern": "*.msprite.json"
+          }
+        ],
+        "priority": "default"
       }
     ],
     "configuration": {
@@ -98,6 +113,11 @@
           "type": "boolean",
           "default": true,
           "description": "Export an asset (its .asm and binary files) every time it is saved, and report its problems."
+        },
+        "winasm65Graphics.hoverPictures": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a picture when hovering, in a WinASM65 source, a label or constant made by an asset export, or an .incbin/.include of an asset's files."
         }
       }
     },
@@ -123,6 +143,11 @@
         "category": "WinASM65 Graphics"
       },
       {
+        "command": "winasm65Graphics.newMetasprites",
+        "title": "New Metasprites…",
+        "category": "WinASM65 Graphics"
+      },
+      {
         "command": "winasm65Graphics.exportAsset",
         "title": "Export Asset",
         "category": "WinASM65 Graphics"
@@ -130,6 +155,11 @@
       {
         "command": "winasm65Graphics.exportFolder",
         "title": "Export All Assets in Folder",
+        "category": "WinASM65 Graphics"
+      },
+      {
+        "command": "winasm65Graphics.importPng",
+        "title": "Import PNG…",
         "category": "WinASM65 Graphics"
       }
     ],
@@ -162,6 +192,11 @@
           "group": "1_new@4"
         },
         {
+          "command": "winasm65Graphics.newMetasprites",
+          "when": "explorerResourceIsFolder",
+          "group": "1_new@5"
+        },
+        {
           "command": "winasm65Graphics.exportAsset",
           "when": "!explorerResourceIsFolder && resourceFilename =~ /\\.(pal|screen|map|msprite)\\.json$/",
           "group": "2_export@1"
@@ -170,12 +205,17 @@
           "command": "winasm65Graphics.exportFolder",
           "when": "explorerResourceIsFolder",
           "group": "2_export@2"
+        },
+        {
+          "command": "winasm65Graphics.importPng",
+          "when": "resourceExtname == .png",
+          "group": "3_import@1"
         }
       ],
       "editor/title": [
         {
           "command": "winasm65Graphics.exportAsset",
-          "when": "activeCustomEditorId == winasm65Graphics.palettes || activeCustomEditorId == winasm65Graphics.screen || activeCustomEditorId == winasm65Graphics.map",
+          "when": "activeCustomEditorId == winasm65Graphics.palettes || activeCustomEditorId == winasm65Graphics.screen || activeCustomEditorId == winasm65Graphics.map || activeCustomEditorId == winasm65Graphics.metasprites",
           "group": "1_winasm65Graphics"
         }
       ]

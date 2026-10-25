@@ -3,7 +3,9 @@ import * as vscode from 'vscode';
 import { AssetKind } from '../shared/assets';
 import { parseJson } from '../shared/json';
 import { EditorKind, HostMessage, WebviewMessage } from '../shared/protocol';
-import { ResourceLink, relativePath } from '../resources';
+import { GraphicsSystem } from '../shared/system';
+import { LiveBlock, LiveChannel } from '../live';
+import { ResourceLink, relativePath, resolveRelative } from '../resources';
 import { EditorContext } from './context';
 import { editorHtml, webviewOptions } from './html';
 
@@ -15,6 +17,10 @@ export interface JsonEditorSpec {
   script: string;
   /** Whether the asset names a tile set and a palette file the editor needs. */
   usesResources: boolean;
+  /** Live preview: what is written (for the tooltip) and the bytes of an asset; or why there is none. */
+  live?: { what: string; blocks: (asset: unknown, system: GraphicsSystem) => LiveBlock[] } | { unsupported: string };
+  /** Mode the "Import PNG…" button of this editor preselects. */
+  importMode?: 'background' | 'sprites';
 }
 
 /**
@@ -81,6 +87,30 @@ export class JsonAssetEditorProvider implements vscode.CustomTextEditorProvider 
     const post = (message: HostMessage) => void webview.postMessage(message);
     const subscriptions: vscode.Disposable[] = [context.registry.track(panel, uri, spec.kind)];
     let ready = false;
+    let system: GraphicsSystem | undefined;
+
+    // Live preview: the asset's bytes, written into the running machine as it changes.
+    const liveSpec = spec.live;
+    const live = new LiveChannel(
+      context.live,
+      liveSpec && 'what' in liveSpec ? liveSpec.what : undefined,
+      liveSpec && 'unsupported' in liveSpec ? liveSpec.unsupported : undefined,
+      () => {
+        if (!liveSpec || !('blocks' in liveSpec) || !system) return undefined;
+        try {
+          return liveSpec.blocks(parseJson(document.getText()), system);
+        } catch {
+          return undefined; // not JSON just now
+        }
+      },
+      state => post({ type: 'live', state }),
+      (text, level) => post({ type: 'notice', text, level }));
+    subscriptions.push(live);
+    subscriptions.push(vscode.workspace.onDidChangeTextDocument(event => {
+      if (event.document.uri.toString() === key && event.contentChanges.length > 0) {
+        live.changed();
+      }
+    }));
 
     const link = spec.usesResources
       ? new ResourceLink(context.resources, uri, (chr, palettes) => post({ type: 'resources', chr, palettes }))
@@ -138,13 +168,30 @@ export class JsonAssetEditorProvider implements vscode.CustomTextEditorProvider 
             // reported with the asset
           }
           try {
-            const { system, note } = await context.designer.system(systemId);
-            post({ type: 'init', kind: spec.kind, system, fileName: path.basename(uri.fsPath), systemNote: note });
+            const described = await context.designer.system(systemId);
+            system = described.system;
+            post({ type: 'init', kind: spec.kind, system: described.system, fileName: path.basename(uri.fsPath), systemNote: described.note });
           } catch (error) {
             post({ type: 'notice', level: 'error', text: 'Unknown graphics system "' + systemId + '": ' + errorText(error) });
             return;
           }
           sendAsset(true);
+          live.send();
+          break;
+        }
+        case 'live':
+          await live.set(message.on);
+          break;
+        case 'importPng': {
+          let chr: string | undefined;
+          try {
+            const refs = parseJson(document.getText()) as { chr?: unknown };
+            chr = typeof refs.chr === 'string' && refs.chr ? resolveRelative(uri, refs.chr).fsPath : undefined;
+          } catch {
+            // no tile set preselected
+          }
+          await vscode.commands.executeCommand('winasm65Graphics.importPng', undefined,
+            { folder: path.dirname(uri.fsPath), suggestedChr: chr, mode: spec.importMode });
           break;
         }
         case 'edit':

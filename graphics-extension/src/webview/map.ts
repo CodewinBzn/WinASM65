@@ -3,7 +3,7 @@ import { floodFill } from '../shared/chr.js';
 import { HostMessage } from '../shared/protocol.js';
 import { GraphicsSystem, hex2 } from '../shared/system.js';
 import {
-  Banner, Choice, StatusBar, button, checkbox, clamp, el, loadState, post, saveState, selectBox, separator, start, textInput, setInputValue, typing
+  Banner, Choice, LiveToggle, StatusBar, button, checkbox, clamp, el, loadState, post, saveState, selectBox, separator, start, textInput, setInputValue, typing
 } from './common.js';
 import { Rgb, TileSheet, ZoomCanvas, accent, drawPixels, grid, onPointer, outline, paletteButton, paletteColours } from './render.js';
 import { AssetFields, TileSources } from './tiled.js';
@@ -36,6 +36,7 @@ let hoverCell: { x: number; y: number } | undefined;
 const app = document.getElementById('app')!;
 const banner = new Banner();
 const status = new StatusBar();
+const live = new LiveToggle();
 let canvas: ZoomCanvas;
 let setCanvas: ZoomCanvas;
 let metaCanvas: ZoomCanvas;
@@ -109,7 +110,9 @@ function build(): void {
     el('label', {}, 'Size', widthInput, '×', heightInput),
     button('Resize', 'Change the size of the map (cells are kept from the top left; new cells take metatile 0)', resize),
     button('+ Screen →', 'Add one screen of width', () => resizeBy(screen.columns, 0)),
-    button('+ Screen ↓', 'Add one screen of height', () => resizeBy(0, screen.rows))
+    button('+ Screen ↓', 'Add one screen of height', () => resizeBy(0, screen.rows)),
+    separator(),
+    live.element
   );
 
   fields = new AssetFields(['name', 'prefix'], (field, value) => edit('Change ' + field, a => {
@@ -492,6 +495,9 @@ start((message: HostMessage) => {
       break;
     case 'notice':
       status.show(message.text, message.level);
+      break;
+    case 'live':
+      live.update(message.state);
       break;
   }
 });
