@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using WinASM65.Output;
 using WinASM65.Projects;
+using WinASM65.Systems;
 
 namespace WinASM65.Monitor.Debugging
 {
@@ -12,16 +13,24 @@ namespace WinASM65.Monitor.Debugging
     ///
     /// The PRG offset of a line is computed the way the bytes travelled: its offset
     /// in the unit's object file (from the unit's origins), plus where that object
-    /// file sits in the image, minus the iNES header when the image has one.
+    /// file sits in the image, minus the header the machine's images carry (the
+    /// iNES header on the NES).
     /// </summary>
     public static class SourceMapBuilder
     {
+        /// <summary>Builds the map for the machine the project names, or the one its image is for.</summary>
         public static SourceMap Build(ProjectBuildResult result)
+        {
+            return Build(result, null);
+        }
+
+        public static SourceMap Build(ProjectBuildResult result, SystemDefinition system)
         {
             if (result == null)
                 return SourceMap.Empty;
 
-            int header = PrgStart(result.Image);
+            system = system ?? SystemRegistry.Resolve(result.Target != null ? result.Target.SystemId : null, null, result.Image);
+            int header = system.ImageHeaderLength(result.Image);
             List<MappedLine> lines = new List<MappedLine>();
             List<KeyValuePair<int, string>> labels = new List<KeyValuePair<int, string>>();
             List<KeyValuePair<string, long>> symbols = new List<KeyValuePair<string, long>>();
@@ -76,13 +85,11 @@ namespace WinASM65.Monitor.Debugging
             return end == 0 ? null : trimmed.Substring(0, end);
         }
 
-        /// <summary>Where PRG-ROM starts in the image: after an iNES header and trainer, or at 0.</summary>
+        /// <summary>Where the program starts in an image whose machine is recognised by its header, or 0.</summary>
         public static int PrgStart(byte[] image)
         {
-            if (image != null && image.Length >= 16
-                && image[0] == (byte)'N' && image[1] == (byte)'E' && image[2] == (byte)'S' && image[3] == 0x1A)
-                return 16 + ((image[6] & 0x04) != 0 ? 512 : 0);
-            return 0;
+            SystemDefinition system = SystemRegistry.Detect(image);
+            return system != null ? system.ImageHeaderLength(image) : 0;
         }
 
         private static ImagePlacement PlacementOf(ProjectUnitResult unit, IReadOnlyList<ImagePlacement> placements)

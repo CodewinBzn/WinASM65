@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\WinASM65\WinASM65.csproj" />
     <ProjectReference Include="..\WinASM65.Monitor.Abstractions\WinASM65.Monitor.Abstractions.csproj" />
+    <ProjectReference Include="..\WinASM65.Systems\WinASM65.Systems.csproj" />
   </ItemGroup>
 
   <ItemGroup>

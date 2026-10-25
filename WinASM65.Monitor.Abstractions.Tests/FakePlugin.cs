@@ -164,6 +164,11 @@ namespace WinASM65.Monitor.Abstractions.Tests
             get { return new SystemAsset[0]; }
         }
 
+        public IReadOnlyList<MemorySpace> MemorySpaces
+        {
+            get { return new MemorySpace[0]; }
+        }
+
         public string ProviderId
         {
             get { return "fake"; }

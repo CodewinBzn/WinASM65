@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    What each machine is: its memory map, the memories behind its video chip, how a
+    program starts, how a built image maps onto it, the colours it can show.
+
+    The debugger, the monitor and the graphics designer ask these questions instead
+    of answering them with NES constants, so adding a machine is adding a class
+    here. It implements the description contract of WinASM65.Monitor.Abstractions
+    and references nothing else: no assembler, no emulator, no UI.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>WinASM65.Systems</RootNamespace>
+    <AssemblyName>WinASM65.Systems</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WinASM65.Monitor.Abstractions\WinASM65.Monitor.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>
