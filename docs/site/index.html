@@ -26,7 +26,7 @@
     <p>WinASM65 started as a single assembler executable and grew into a small tool chain. Each part is a separate project in <code>WinASM65.sln</code>, and each is usable on its own:</p>
     <div class="grid-3">
       <a class="card" href="assembler.html"><h4>Assembler</h4><p>Two-pass 6502 assembler: MOS syntax plus the common ca65, asm6 and NESASM forms, macros, local and anonymous labels, five CPUs.</p></a>
-      <a class="card" href="segments.html"><h4>Projects</h4><p>A <code>config.json</code> assembles several units in dependency order and combines them into one image, such as an iNES ROM.</p></a>
+      <a class="card" href="segments.html"><h4>Projects</h4><p>A <code>config.json</code> assembles several units, links them through their symbol files, and combines them into one image, such as an iNES ROM.</p></a>
       <a class="card" href="modules.html"><h4>Modules and linker</h4><p>Relocatable <code>.w65</code> modules, <code>.w65a</code> archives, a linker and an offline HTML viewer.</p></a>
       <a class="card" href="targets.html"><h4>Targets</h4><p>Executable formats and disk images for 15+ systems, from <code>.nes</code> and <code>.prg</code> to GEOS on D64 and tokenized BASIC.</p></a>
       <a class="card" href="monitor.html"><h4>Monitor</h4><p>A terminal monitor that talks to Mesen2 through a Lua bridge: live RAM, breakpoints, stepping, patching.</p></a>
@@ -140,7 +140,7 @@
       </svg>
     </div>
     <ol>
-      <li><strong>Assemble.</strong> The project's units are assembled in dependency order; each produces an object file, a symbol file and an in-memory listing. <a href="assembler.html">Assembly pipeline</a>, <a href="segments.html">Projects and segments</a>.</li>
+      <li><strong>Assemble.</strong> Each unit of the project is assembled, then resolved against the symbol files of the units it depends on; each produces an object file, a symbol file and an in-memory listing. <a href="assembler.html">Assembly pipeline</a>, <a href="segments.html">Projects and segments</a>.</li>
       <li><strong>Combine.</strong> The object files and binary files (header, CHR data) are concatenated into the ROM, each padded to its declared size. <a href="segments.html#combine">Combining</a>.</li>
       <li><strong>Launch.</strong> Mesen2 starts with the ROM and the Lua bridge script; the bridge opens a TCP port. <a href="monitor.html#bridge">The bridge</a>.</li>
       <li><strong>Map.</strong> The listings become a source map: every emitted byte knows its file and line. Breakpoints set on source lines become addresses. <a href="tooling.html#dap">Debug adapter</a>.</li>

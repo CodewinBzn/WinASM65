@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Targets and formats</title>
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<div class="layout">
+  <nav class="site-nav" aria-label="Pages"></nav>
+
+  <main>
+    <p class="breadcrumb"><a href="index.html">WinASM65</a> › Assembler</p>
+    <header class="page">
+      <h1>Targets and formats</h1>
+      <p class="lede">A target says which machine a program is for: its CPU, where code goes by default, which hardware registers are predefined, and what file is written around the bytes. This page covers the catalog of systems, how a target is resolved, every output format, GEOS applications on D64 disks, and the BASIC tokenizer for the systems that do not run machine code at all.</p>
+    </header>
+
+    <aside class="sources">
+      <h4>Source files</h4>
+      <ul>
+        <li><a href="../../WinASM65/src/Targets/SystemCatalog.cs"><code>Targets/SystemCatalog.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Targets/TargetResolver.cs"><code>Targets/TargetResolver.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Targets/ResolvedTarget.cs"><code>Targets/ResolvedTarget.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Targets/HardwareOptions.cs"><code>Targets/HardwareOptions.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Targets/HardwareProfile.cs"><code>Targets/HardwareProfile.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Targets/ExecutablePublisher.cs"><code>Targets/ExecutablePublisher.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Targets/IExecutableFormat.cs"><code>Targets/IExecutableFormat.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Targets/ExecutableFile.cs"><code>Targets/ExecutableFile.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Targets/InesFormat.cs"><code>Targets/InesFormat.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Targets/CommodorePrgFormat.cs"><code>Targets/CommodorePrgFormat.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Targets/BbcFormat.cs"><code>Targets/BbcFormat.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Targets/ProDosImage.cs"><code>Targets/ProDosImage.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Targets/AppleDosImage.cs"><code>Targets/AppleDosImage.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Targets/D64Image.cs"><code>Targets/D64Image.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Targets/GeosRelocation.cs"><code>Targets/GeosRelocation.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Targets/GeosStub.cs"><code>Targets/GeosStub.cs</code></a>, <a href="../../WinASM65/src/Targets/geos-stub.asm"><code>geos-stub.asm</code></a></li>
+        <li><a href="../../WinASM65/src/TextFormat/BasicDialect.cs"><code>TextFormat/BasicDialect.cs</code></a></li>
+        <li><a href="../../WinASM65/src/TextFormat/TokenEncoder.cs"><code>TextFormat/TokenEncoder.cs</code></a></li>
+        <li><a href="../../WinASM65/src/TextFormat/TokenDecoder.cs"><code>TextFormat/TokenDecoder.cs</code></a></li>
+        <li><a href="../../WinASM65/src/TextFormat/WaterlooDialect.cs"><code>TextFormat/WaterlooDialect.cs</code></a></li>
+        <li><a href="../../WinASM65/src/TextFormat/BbcBasicDialect.cs"><code>TextFormat/BbcBasicDialect.cs</code></a></li>
+        <li><a href="../../WinASM65/src/TextFormat/RuntimeBlock.cs"><code>TextFormat/RuntimeBlock.cs</code></a>, <a href="../../WinASM65/src/TextFormat/runtime-stub.asm"><code>runtime-stub.asm</code></a></li>
+        <li><a href="../targets.md"><code>docs/targets.md</code></a>, <a href="../targets-text.md"><code>docs/targets-text.md</code></a>, <a href="../geos-d64.md"><code>docs/geos-d64.md</code></a> (French)</li>
+      </ul>
+    </aside>
+
+    <h2 id="families">Three families of target</h2>
+    <p>The systems WinASM65 knows do not all want the same thing, and the code is organised around the difference:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Family</th><th>Systems</th><th>The file is</th><th>Written by</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Flat executable</strong></td><td>NES, Commodore machines, Apple II, Atari 8-bit and 2600, BBC Micro and its second processor, Electron, Oric, Lynx, Commander X16</td><td>6502 code at a fixed address, inside a container (iNES, PRG, XEX…)</td><td><code>ExecutablePublisher</code> and one <code>IExecutableFormat</code> per container</td></tr>
+        <tr><td><strong>Segmented executable</strong></td><td>GEOS on the Commodore 64</td><td>An application file on a D64 disk image, which relocates itself when loaded elsewhere</td><td>The <code>geos</code> verb: the linker, <code>GeosRelocationTable</code>, <code>GeosStub</code>, <code>D64Builder</code></td></tr>
+        <tr><td><strong>Tokenised text</strong></td><td>Applesoft (bare, on DOS 3.2/3.3 or ProDOS), Waterloo Structured BASIC, BBC BASIC</td><td>A BASIC program, as the interpreter stores it</td><td>The <code>basic</code> verb: <code>TokenEncoder</code> and a <code>BasicDialect</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The <code>prodos</code>, <code>dos32</code> and <code>dos33</code> containers appear in two families: as executable formats they put machine code on a disk image as a binary file, and as BASIC containers they put an Applesoft program there.</p>
+
+    <h2 id="resolve">How a target is resolved</h2>
+    <p>Everything a build needs to know about its machine ends up in one object, <code>ResolvedTarget</code>. <code>TargetResolver.Resolve(TargetConf config, string cliSystem, string cliCpu, string cliFormat)</code> builds it from four sources, each overriding the previous one:</p>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 300" role="img" aria-label="Target resolution: the system id from -t or Target.System selects a preset clone from SystemCatalog; the Target section of config.json overrides its fields; -cpu and -format override CPU and format; the resulting ResolvedTarget gives the CPU to CpuFactory, hardware symbols and load address to the assembler, and the format name to ExecutablePublisher">
+        <defs>
+          <marker id="tg-arrow1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <rect class="box-a" x="20" y="30" width="160" height="60" rx="8"/>
+        <text x="100" y="55" text-anchor="middle" font-weight="600">defaults</text>
+        <text x="100" y="75" text-anchor="middle" class="muted" font-size="12">raw, 6502, bin</text>
+        <rect class="box-a" x="210" y="30" width="170" height="60" rx="8"/>
+        <text x="295" y="55" text-anchor="middle" font-weight="600">SystemCatalog</text>
+        <text x="295" y="75" text-anchor="middle" class="muted" font-size="12">-t, else Target.System</text>
+        <rect class="box-a" x="410" y="30" width="170" height="60" rx="8"/>
+        <text x="495" y="55" text-anchor="middle" font-weight="600">Target section</text>
+        <text x="495" y="75" text-anchor="middle" class="muted" font-size="12">field by field</text>
+        <rect class="box-a" x="610" y="30" width="120" height="60" rx="8"/>
+        <text x="670" y="55" text-anchor="middle" font-weight="600">-cpu</text>
+        <text x="670" y="75" text-anchor="middle" class="muted" font-size="12">CpuName</text>
+        <rect class="box-a" x="760" y="30" width="120" height="60" rx="8"/>
+        <text x="820" y="55" text-anchor="middle" font-weight="600">-format</text>
+        <text x="820" y="75" text-anchor="middle" class="muted" font-size="12">FormatName</text>
+        <path class="line" d="M180,60 L210,60" marker-end="url(#tg-arrow1)"/>
+        <path class="line" d="M380,60 L410,60" marker-end="url(#tg-arrow1)"/>
+        <path class="line" d="M580,60 L610,60" marker-end="url(#tg-arrow1)"/>
+        <path class="line" d="M730,60 L760,60" marker-end="url(#tg-arrow1)"/>
+
+        <rect class="box-c" x="330" y="140" width="240" height="56" rx="8"/>
+        <text x="450" y="164" text-anchor="middle" font-weight="600">ResolvedTarget</text>
+        <text x="450" y="183" text-anchor="middle" class="muted" font-size="12">+ OriginAddress after assembly</text>
+        <path class="line" d="M820,90 Q 820 168 570 168" marker-end="url(#tg-arrow1)"/>
+
+        <rect class="box-b" x="20" y="230" width="250" height="56" rx="8"/>
+        <text x="145" y="254" text-anchor="middle" font-weight="600">CpuFactory.Create(CpuName)</text>
+        <text x="145" y="273" text-anchor="middle" class="muted" font-size="12">the instruction set</text>
+        <rect class="box-b" x="325" y="230" width="250" height="56" rx="8"/>
+        <text x="450" y="254" text-anchor="middle" font-weight="600">AssemblerOptions</text>
+        <text x="450" y="273" text-anchor="middle" class="muted" font-size="12">HardwareSymbols, LoadAddress</text>
+        <rect class="box-d" x="630" y="230" width="250" height="56" rx="8"/>
+        <text x="755" y="254" text-anchor="middle" font-weight="600">ExecutablePublisher</text>
+        <text x="755" y="273" text-anchor="middle" class="muted" font-size="12">FormatName → IExecutableFormat</text>
+        <path class="line" d="M380,196 L200,230" marker-end="url(#tg-arrow1)"/>
+        <path class="line" d="M450,196 L450,230" marker-end="url(#tg-arrow1)"/>
+        <path class="line" d="M520,196 L700,230" marker-end="url(#tg-arrow1)"/>
+      </svg>
+    </div>
+
+    <ol>
+      <li><strong>Defaults.</strong> A new <code>ResolvedTarget</code> is <code>raw</code>, CPU <code>6502</code>, format <code>bin</code>, no addresses, one PRG bank, vertical mirroring.</li>
+      <li><strong>Preset.</strong> The system id is <code>-t</code> if given, otherwise <code>Target.System</code>. <code>SystemCatalog.TryGet</code> normalises it (case, <code>-</code> and <code>_</code> ignored) and returns a <em>clone</em> of the catalog entry, so that the following steps never modify the catalog itself. An unknown id throws <code>Unknown system 'zx81'. Use -t list.</code></li>
+      <li><strong>Target section.</strong> Each field that is set replaces the preset's: <code>Cpu</code>, <code>Format</code>, <code>LoadAddress</code>, <code>RunAddress</code>, <code>RomSize</code>, <code>DefineHardwareSymbols</code>, <code>Ines</code>, <code>Hardware</code>, <code>BbcFileType</code>, <code>Title</code>, <code>Author</code>. Addresses go through the assembler's number parser, so <code>"$0801"</code> and <code>"2049"</code> are equal.</li>
+      <li><strong><code>-cpu</code></strong>, then <strong><code>-format</code></strong>, replace the CPU and the format. Command-line flags therefore always beat the file, and one <code>config.json</code> can be built for several systems. <code>LoadAddress</code> and <code>RunAddress</code> have no flag: a value in the file always applies.</li>
+    </ol>
+    <p>The same resolver serves the command line, <code>ProjectSession</code> (whose <code>System</code>, <code>Cpu</code> and <code>Format</code> options play the role of the flags) and the <code>link</code> verb (which only passes <code>-cpu</code> and <code>-format</code>).</p>
+
+    <h3>What a resolved target carries</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Property</th><th>Used by</th></tr></thead>
+      <tbody>
+        <tr><td><code>SystemId</code>, <code>CpuName</code></td><td><code>CpuFactory.Create</code>; an unknown CPU stops the build.</td></tr>
+        <tr><td><code>LoadAddress</code></td><td>The assembler's <code>DefaultOrigin</code>: where code starts when the source has no <code>.org</code>. Also a fallback address for the formats.</td></tr>
+        <tr><td><code>OriginAddress</code></td><td>Set after assembly to the address the code was really assembled at. Formats prefer it to <code>LoadAddress</code>.</td></tr>
+        <tr><td><code>RunAddress</code></td><td>Formats that record an entry point (XEX, Intel HEX, S-record, PRG and BBC as a fallback).</td></tr>
+        <tr><td><code>DefineHardwareSymbols</code>, <code>HardwareSymbols</code></td><td>When true, the table is given to the assembler as predefined symbols.</td></tr>
+        <tr><td><code>RomSize</code></td><td>The <code>rom</code> format.</td></tr>
+        <tr><td><code>InesPrgBanks</code>, <code>InesChrBanks</code>, <code>InesMapper</code>, <code>InesMirroring</code>, <code>InesBattery</code></td><td>The <code>ines</code> format.</td></tr>
+        <tr><td><code>BbcFileType</code>, <code>BbcCpuType</code>, <code>Title</code>, <code>Author</code></td><td>The <code>bbc</code> format.</td></tr>
+        <tr><td><code>Hardware</code></td><td>A <code>HardwareOptions</code>; null for machines that do not vary. The <code>prg</code> format uses it to refuse guessing a load address.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2 id="catalog">The system catalog</h2>
+    <p><code>SystemCatalog</code> holds 37 entries, listed by <code>WinASM65 -t list</code>. Several ids are aliases or variants of one machine; they are grouped here.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Ids</th><th>CPU</th><th>Format</th><th>Load</th><th>Predefined symbols</th></tr></thead>
+      <tbody>
+        <tr><td><code>raw</code></td><td>6502</td><td><code>bin</code></td><td>—</td><td>none (switched off)</td></tr>
+        <tr><td><code>nes</code>, <code>famicom</code>, <code>nes-ntsc</code>, <code>nes-pal</code></td><td>6502</td><td><code>ines</code>, 1 PRG + 1 CHR bank</td><td>—</td><td><code>PPUCTRL</code>…<code>PPUDATA</code>, <code>OAMADDR</code>, <code>OAMDATA</code>, <code>OAMDMA</code>, <code>SQ1_VOL</code>, <code>DMC_FREQ</code>, <code>SND_CHN</code>, <code>JOY1</code>, <code>JOY2</code>; plus <code>FRAME_LINES</code> (262/312), <code>VISIBLE_LINES</code> (224/240), <code>IS_PAL</code></td></tr>
+        <tr><td><code>c64</code>, <code>c64-pal</code>, <code>c64-ntsc</code>, <code>c64c</code></td><td>6502</td><td><code>prg</code></td><td><code>$0801</code></td><td><code>VIC</code>, <code>COLORRAM</code>, <code>SID</code>, <code>CIA1</code>, <code>CIA2</code>, <code>JOY1</code>, <code>JOY2</code>, <code>SCREEN</code>; <code>c64c</code> adds <code>MODEL</code> = 1</td></tr>
+        <tr><td><code>c128</code>, <code>c128-vdc</code>, <code>c128d</code></td><td>6502</td><td><code>prg</code></td><td><code>$1C01</code></td><td>the C64 set plus <code>MMU</code>, <code>VDC</code>, <code>VDCDATA</code>, <code>MODEL</code> = 2</td></tr>
+        <tr><td><code>vic20</code>, <code>vic20-pal</code>, <code>vic20-ntsc</code></td><td>6502</td><td><code>prg</code></td><td><code>$1001</code></td><td><code>VIC</code> ($9000), <code>VIA1</code>, <code>VIA2</code>, <code>COLORRAM</code>, <code>SCREEN</code>, <code>JOY1</code>, <code>JOY2</code></td></tr>
+        <tr><td><code>plus4</code>, <code>c16</code></td><td>6502</td><td><code>prg</code></td><td><code>$1001</code></td><td><code>TED</code> ($FF00), <code>TEDROM</code>, <code>TEDRAM</code>, <code>ACIA</code>, <code>USERPORT</code>, <code>SCREEN</code>, <code>ATTRIBUTES</code>; no VIC-II, no SID</td></tr>
+        <tr><td><code>pet</code>, <code>pet2001</code>, <code>pet2001n</code></td><td>6502</td><td><code>prg</code></td><td><code>$0401</code></td><td><code>PIA1</code>, <code>PIA2</code>, <code>VIA</code>, <code>SCREEN</code></td></tr>
+        <tr><td><code>cbm2-80</code>, <code>cbm2-40</code></td><td>6502</td><td><code>prg</code></td><td>none</td><td><code>CRTC</code> ($D800, or <code>VIC</code> and <code>COLORRAM</code> for <code>cbm2-40</code>), <code>SID</code>, <code>CIA</code>, <code>ACIA</code>, <code>TPIKEY</code>, <code>TPIEEE</code>, <code>VIDEO</code>, <code>CHARROM</code>, <code>EXECBANK</code>, <code>INDBANK</code></td></tr>
+        <tr><td><code>x16</code></td><td>65c02</td><td><code>prg</code></td><td><code>$0801</code></td><td>none defined</td></tr>
+        <tr><td><code>apple2</code> / <code>apple2e</code></td><td>6502 / 65c02</td><td><code>a2bin</code></td><td><code>$0800</code></td><td><code>KBD</code>, <code>KBDSTRB</code>, <code>TXTCLR</code></td></tr>
+        <tr><td><code>atari8</code>, <code>atari800</code></td><td>6502</td><td><code>xex</code></td><td><code>$0600</code></td><td><code>DMACTL</code>, <code>COLBK</code>, <code>CONSOL</code></td></tr>
+        <tr><td><code>atari2600</code>, <code>vcs</code></td><td>6502</td><td><code>rom</code>, 4096 bytes</td><td>—</td><td><code>VSYNC</code>, <code>VBLANK</code>, <code>WSYNC</code>, <code>COLUBK</code>, <code>GRP0</code>, <code>GRP1</code>, <code>INTIM</code>, <code>TIM64T</code></td></tr>
+        <tr><td><code>bbc</code>, <code>bbcmicro</code></td><td>6502</td><td><code>bbc</code> (code header)</td><td><code>$0E00</code></td><td>OS entry points (<code>OSWRCH</code>, <code>OSBYTE</code>, <code>OSWORD</code>, <code>OSFILE</code>…), <code>CRTC</code>, <code>ACIA</code>, <code>VIDULA</code>, <code>PALETTE</code>, <code>ROMSEL</code>, the system and user VIA registers (<code>SYSEOR_*</code>, <code>USROR_*</code>), <code>ADSTART</code>…, <code>TUBESTATUS</code>, <code>TUBEDATA3</code>, <code>FRED</code>, <code>JIM</code></td></tr>
+        <tr><td><code>tube</code>, <code>bbc2p</code> / <code>tube65c02</code></td><td>6502 / 65c02</td><td><code>tube</code></td><td>—</td><td>only the reserved parts of the map: <code>PAGE</code>, <code>HIMEM</code>, <code>LANGUAGE</code>, <code>SPA_OS</code>, <code>ZP_FREE_END</code>, <code>OS_PAGE2</code>, <code>OS_ERRORS</code></td></tr>
+        <tr><td><code>electron</code></td><td>6502</td><td><code>bin</code></td><td><code>$0E00</code></td><td>none defined</td></tr>
+        <tr><td><code>oric</code></td><td>6502</td><td><code>bin</code></td><td><code>$0500</code></td><td>none defined</td></tr>
+        <tr><td><code>lynx</code></td><td>65c02</td><td><code>bin</code></td><td>—</td><td>none (switched off)</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The second processor exists in two CPU variants because the sources disagree: the user guide says 6502, the service manual and surviving boards say 65C02. The catalog offers both rather than picking one.</p>
+
+    <h2 id="hardware">Hardware variants as options</h2>
+    <p>Commodore machines and the NES come in variants: PAL or NTSC, two SID revisions, VIC-II or VDC or TED. Instead of one catalog entry with its own symbol table per combination, a machine is described by a <code>HardwareOptions</code> object with four fields, and <code>HardwareProfile.Build(options)</code> derives the symbol table: one table per family, then the differences applied.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Option</th><th>Values</th><th>What it changes</th></tr></thead>
+      <tbody>
+        <tr><td><code>Model</code></td><td><code>c64</code>, <code>c64c</code>, <code>c128</code>, <code>c128d</code>, <code>vic20</code>, <code>plus4</code>, <code>c16</code>, <code>pet2001</code>, <code>pet2001n</code>, <code>cbm2</code>, <code>nes</code></td><td>The family table.</td></tr>
+        <tr><td><code>VideoStandard</code></td><td><code>pal</code>, <code>ntsc</code></td><td>No address on any Commodore machine. On the NES it adds <code>FRAME_LINES</code>, <code>VISIBLE_LINES</code> and <code>IS_PAL</code>; on TED machines, <code>IS_PAL</code>.</td></tr>
+        <tr><td><code>VideoChip</code></td><td><code>vic</code>, <code>vdc</code>, <code>ted</code>, <code>crtc</code></td><td>Which chip answers at which address (CBM-II: CRTC or VIC-II at <code>$D800</code>; C128: VDC).</td></tr>
+        <tr><td><code>SoundChip</code></td><td><code>6581</code>, <code>8580</code>, <code>ted</code>, <code>vic</code></td><td>A chip revision, recorded but moving no register.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The named variants of the catalog (<code>c64-pal</code>, <code>c128-vdc</code>, <code>nes-pal</code>…) only preselect options; <code>-t list</code> shows them as <code>hw=…</code>, the only trace of the variant in a build, since a PAL and an NTSC build of the same Commodore program give the same bytes.</p>
+    <p>A <code>Target.Hardware</code> section in <code>config.json</code> overrides the preset's options field by field. <code>HardwareRules.Reject</code> then refuses combinations the machine cannot have, and the resolver throws with the reason:</p>
+<pre><code>{ "Target": { "System": "c64", "Hardware": { "VideoChip": "vdc" } } }
+
+the 8563 VDC exists on the C128 and the CBM-II, not on the c64. (Parameter 'config')</code></pre>
+    <p>Other refusals: a video chip on a PET 2001 (its video is discrete logic), a SID on a Plus/4 or C16, a TED outside the Plus/4 and C16, a CRTC outside the CBM-II, an unknown video standard or sound chip.</p>
+    <div class="callout">
+      <p>In the current code the <code>Hardware</code> section is validated and stored on the target, but the symbol table is the one the catalog built for the named system: <code>HardwareProfile.Build</code> is only called by <code>SystemCatalog</code>. A <code>cbm2-80</code> target with <code>"VideoChip": "vic"</code> is accepted, yet <code>VIC</code> stays undefined. To get another variant's symbols, choose the catalog id that preselects it.</p>
+    </div>
+
+    <h2 id="formats">Executable formats</h2>
+    <p>A format is a class implementing <code>IExecutableFormat</code>:</p>
+<pre><code>public interface IExecutableFormat
+{
+    string Name { get; }
+    OperationResult Write(string path, byte[] payload, ResolvedTarget target);
+}</code></pre>
+    <p><code>ExecutablePublisher</code> registers one instance of each in a case-insensitive dictionary keyed by <code>Name</code>, and <code>Publish(path, payload, target)</code> looks up <code>target.FormatName</code> (empty means <code>bin</code>). An unknown name returns a diagnostic listing the accepted names. The formats write through <code>ExecutableFile.WriteBytes</code> / <code>WriteText</code>, which create the output directory if needed.</p>
+
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>Class</th><th>What is written</th><th>Address used</th><th>Refused when</th></tr></thead>
+      <tbody>
+        <tr><td><code>bin</code></td><td><code>RawBinaryFormat</code></td><td>The payload, nothing else.</td><td>—</td><td>—</td></tr>
+        <tr><td><code>ines</code></td><td><code>InesFormat</code></td><td>A payload that already starts with <code>NES\x1A</code> is written unchanged. Otherwise: a 16-byte header, then the payload copied into PRG (16 KB per bank) followed by CHR (8 KB per bank), zero-filled.</td><td>—</td><td>The payload is larger than PRG + CHR.</td></tr>
+        <tr><td><code>prg</code></td><td><code>CommodorePrgFormat</code></td><td>Load address (2 bytes, low first), then the payload.</td><td>origin, else run, else load, else <code>$0801</code></td><td>The machine has hardware options (it is banked, as the CBM-II) and no address is known.</td></tr>
+        <tr><td><code>xex</code></td><td><code>AtariXexFormat</code></td><td><code>$FF $FF</code>, start, end, payload. With a <code>RunAddress</code>, a second segment writes it to <code>$02E0</code>–<code>$02E1</code>.</td><td>origin, else load, else <code>$0600</code></td><td>The segment ends past <code>$FFFF</code>.</td></tr>
+        <tr><td><code>a2bin</code></td><td><code>Apple2BinaryFormat</code></td><td>Load address and length (2 bytes each, low first), then the payload.</td><td>origin, else load, else <code>$0800</code></td><td>—</td></tr>
+        <tr><td><code>rom</code></td><td><code>PaddedRomFormat</code></td><td>The payload padded with zeros to <code>RomSize</code>, or to the next power of two without one.</td><td>—</td><td><code>RomSize</code> is smaller than the payload.</td></tr>
+        <tr><td><code>o65</code></td><td><code>O65Format</code></td><td>A 12-byte header (<code>o65</code>, mode bytes, load address and length high byte first), then the payload.</td><td>origin, else load, else 0</td><td>The payload exceeds 65,535 bytes.</td></tr>
+        <tr><td><code>ihex</code></td><td><code>IntelHexFormat</code></td><td>Text: a type <code>03</code> start-address record, data records of 16 bytes, a type <code>04</code> record when the data crosses a 64 KB boundary, a type <code>01</code> end record.</td><td>origin, else load, else 0; start: run, else load</td><td>—</td></tr>
+        <tr><td><code>srec</code></td><td><code>MotorolaSrecFormat</code></td><td>Text: an <code>S0</code> record, <code>S1</code> data records of 16 bytes with 16-bit addresses, an <code>S9</code> record with the start address.</td><td>same as <code>ihex</code></td><td>—</td></tr>
+        <tr><td><code>bbc</code></td><td><code>BbcFormat</code></td><td>By <code>BbcFileType</code>: <code>code</code> (default), a code header then the code; <code>text</code>, <code>$FF</code> then the payload; <code>flat</code> (also <code>raw</code>, <code>bin</code>), the payload alone.</td><td>origin, else run, else load, else <code>$0E00</code></td><td>—</td></tr>
+        <tr><td><code>tube</code></td><td><code>TubeFormat</code></td><td>The payload alone: the second processor's loader already knows the length and chooses the address.</td><td>—</td><td>The payload exceeds 64 KB.</td></tr>
+        <tr><td><code>prodos</code></td><td><code>ProDosFormat</code></td><td>A 280-block (143 KB) ProDOS volume <code>W65</code> holding one file, <code>PROGRAM</code>, type <code>$06</code>: a ProDOS load file with one segment.</td><td>origin, else load, else <code>$2003</code></td><td>The segment exceeds 65,535 bytes (thrown as an exception, not reported as a diagnostic).</td></tr>
+        <tr><td><code>dos32</code></td><td><code>AppleDosFormat(Dos32)</code></td><td>A 35-track, 13-sector disk image (116,480 bytes) with one binary file <code>PROGRAM</code>: its load address (2 bytes), then the payload.</td><td>origin, else load, else <code>$0803</code></td><td>The file needs more than 122 sectors (thrown as an exception).</td></tr>
+        <tr><td><code>dos33</code></td><td><code>AppleDosFormat(Dos33)</code></td><td>The same on a 16-sector disk (143,360 bytes).</td><td>same</td><td>same</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>“Origin” is <code>ResolvedTarget.OriginAddress</code>, the address the code was really assembled at, so a <code>.org</code> in the source always wins over the target's default. The <code>link</code> verb, which has no source, sets <code>LoadAddress</code> to the linked image's origin instead.</p>
+    <p>Not in the table: <code>w65</code>. <code>-format w65</code> is intercepted by <code>CommandLineApplication</code> before the publisher and writes a relocatable module with <code>W65Format.Write</code> (see <a href="modules.html">Modules</a>). And the D64 image is not a format either: only the <code>geos</code> verb writes one.</p>
+
+    <h3>iNES header</h3>
+    <p>The header is <code>N E S $1A</code>, the PRG bank count (at least 1), the CHR bank count, then two flag bytes. Byte 6 holds the low nibble of the mapper in its high nibble, <code>$02</code> for a battery, and the mirroring: <code>vertical</code> or <code>v</code> sets <code>$01</code>, <code>four</code>, <code>4</code> or <code>fourscreen</code> sets <code>$08</code>, anything else (horizontal) sets neither. Byte 7 holds the high nibble of the mapper. All of it comes from the <code>Ines</code> section:</p>
+<pre><code>{
+	"Target": {
+		"System": "nes",
+		"Ines": {
+			"PrgBanks": 2,
+			"ChrBanks": 1,
+			"Mapper": 0,
+			"Mirroring": "vertical",
+			"Battery": false
+		}
+	}
+}</code></pre>
+    <p>The payload is copied as one block after the header, so it must already be laid out as the PRG banks followed by the CHR data, which is what a <a href="segments.html#combine">combined project image</a> gives.</p>
+
+    <h3>BBC code header</h3>
+    <p>The BBC has no executable header with a length in it. The one self-describing format the machine accepts is the code header, which <code>BbcFormat.BuildHeader</code> writes:</p>
+<pre><code>+0   4C lo hi        JMP to the code, after the header
++3   EA EA EA        filler
++6   type            $60 (file, load address present) | CPU id (2 = 6502)
++7   offset          of the $00 that precedes the "(C)" marker
++8   title, $00      Target.Title, default "1.00"
+     $00 "(C) author" $00     Target.Author, default "WinASM65"
+     load address    4 bytes, low first
+     the code</code></pre>
+    <p>A payload that already starts with a <code>JMP</code> is taken as carrying its own entry: the three bytes of the <code>JMP</code> are removed and its target becomes the load address in the header, so the code is not shifted behind a second entry point.</p>
+
+    <h3>Apple II disk images</h3>
+    <p><code>ProDosImage.cs</code> follows the ProDOS 8 Technical Reference: two reserved blocks, four directory blocks (the volume header is the first entry of block 2), a 32-block bitmap, then data; a file of one block or less is a seedling, a larger one a sapling with an index block; blocks are written with the interleave <code>0, 8, 1, 9, 2, 10, …</code> in each group of sixteen. The load file inside starts with a header record (kind, version, minimum version, entry point as an offset in the file), then a record per segment (number, length, load address, name) followed by data records of at most 512 bytes, where a count of zero means a full block.</p>
+    <p><code>AppleDosImage.cs</code> writes DOS order: the VTOC at track 17 sector 0 (with <code>$02</code> or <code>$04</code> at offset 0 for 3.2 or 3.3, and a free-sector bitmap in which a set bit means free), a catalog chain on track 17 (three sectors on 3.2, sixteen on 3.3, seven 35-byte entries each), and a track/sector list of up to 122 pairs. DOS 3.2 allocates sectors in pairs, DOS 3.3 one at a time. The sector skew is an option and the identity by default, so the image is in logical DOS sector order.</p>
+
+    <h3>Adding a format or a system</h3>
+    <ol>
+      <li>Write a class implementing <code>IExecutableFormat</code>; return a failed <code>OperationResult</code> with a diagnostic rather than throwing or truncating.</li>
+      <li>Register it in the <code>ExecutablePublisher</code> constructor, and add its name to the “Unknown output format” message and to the help text of <code>CommandLineApplication.DisplayHelp</code>.</li>
+      <li>For a new system, add an <code>Add(…)</code> line to <code>SystemCatalog.CreateSystems</code> with its CPU, format, load address and symbol table; a machine with variants goes through <code>HardwareOptions</code> and <code>HardwareProfile</code>.</li>
+      <li>Cover it with a test; the existing formats are pinned by golden-output tests in <code>WinASM65.Tests</code>.</li>
+    </ol>
+
+    <h2 id="geos">GEOS applications on a D64</h2>
+    <p>GEOS loads an application at the address written in its info block, or at an address the caller provides (<code>LOAD2</code> reads it from <code>$886C</code>–<code>$886D</code>), and copies the bytes verbatim: the kernal does no relocation. WinASM65 therefore makes the application relocate itself. The <code>geos</code> verb links <code>.w65</code> modules (or <code>.w65a</code> archives) and writes one application on a fresh D64 image:</p>
+<pre><code>WinASM65 geos main.w65 lib.w65 -o app.d64 -name "MY APP" -disk "WORK" -id 01 -author "Me"</code></pre>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Option</th><th>Default</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>-o</code></td><td><code>out.d64</code></td><td>The disk image.</td></tr>
+        <tr><td><code>-name</code></td><td><code>APPLICATION</code></td><td>File name of the application.</td></tr>
+        <tr><td><code>-disk</code>, <code>-id</code></td><td><code>GEOS DISK</code>, <code>01</code></td><td>Disk name and id in the BAM.</td></tr>
+        <tr><td><code>-author</code>, <code>-description</code></td><td>empty</td><td>Info block texts.</td></tr>
+        <tr><td><code>-start</code></td><td>the image origin</td><td>Entry point of the program, in <strong>decimal</strong> (read with <code>int.TryParse</code>; <code>$0400</code> is not understood and leaves the default).</td></tr>
+        <tr><td><code>-shift</code></td><td>0</td><td>Address shift given to the linker, decimal.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>The application record</h3>
+    <div class="figure">
+      <svg viewBox="0 0 900 220" role="img" aria-label="Record 0 of the application holds the stub, then the relocation table, then the code. The record is loaded at the origin minus the size of stub and table, so the code lands where it was linked. The kernal jumps to the load address, which is the stub; the stub reads the load address from $886C, corrects every table entry by the bias, then jumps to the entry point">
+        <defs>
+          <marker id="tg-arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <text x="20" y="30" font-weight="600">record 0</text>
+        <rect class="box-c" x="110" y="45" width="150" height="56" rx="4"/>
+        <text x="185" y="70" text-anchor="middle" font-weight="600">stub</text>
+        <text x="185" y="88" text-anchor="middle" class="muted" font-size="12">geos-stub.asm</text>
+        <rect class="box-d" x="260" y="45" width="190" height="56" rx="4"/>
+        <text x="355" y="70" text-anchor="middle" font-weight="600">relocation table</text>
+        <text x="355" y="88" text-anchor="middle" class="muted" font-size="12">"R65A", base, count, entry</text>
+        <rect class="box-b" x="450" y="45" width="420" height="56" rx="4"/>
+        <text x="660" y="70" text-anchor="middle" font-weight="600">code, exactly as linked</text>
+        <text x="660" y="88" text-anchor="middle" class="muted" font-size="12">assembled for the image origin</text>
+        <text x="110" y="122" class="muted" font-size="12">load = start address</text>
+        <text x="450" y="122" class="muted" font-size="12">origin</text>
+        <path class="line" d="M185,150 L185,101" marker-end="url(#tg-arrow2)"/>
+        <text x="20" y="168" font-size="13">1. the kernal jumps to the load address: the stub runs first</text>
+        <path class="line" d="M260,140 Q 560 150 660 101" stroke-dasharray="5 4" marker-end="url(#tg-arrow2)"/>
+        <text x="20" y="188" font-size="13">2. it adds (actual load − assembled load) to every address the table lists</text>
+        <text x="20" y="208" font-size="13">3. it jumps to the entry point, moved by the same bias</text>
+      </svg>
+    </div>
+    <p>The steps of <code>RunGeos</code>:</p>
+    <ol>
+      <li>Read the modules (expanding archives) and link them with <code>Linker</code>.</li>
+      <li><code>GeosRelocationTable.Build(image, entry)</code> lists every absolute reference of the linked image. A reference to the <em>high byte</em> of an address (<code>lda #&gt;Table</code>) is refused with an exception that names the site (the verb does not catch it, so it ends the program): the high byte of a moved address depends on the carry out of the low byte, which the table does not carry. Low bytes are fine, because adding a bias modulo 256 commutes with taking the low byte. Relative branches, zero-page operands and immediates that are not addresses are not in the table.</li>
+      <li><code>GeosStub.Assemble(origin, tableLength)</code> assembles <code>geos-stub.asm</code> (an embedded resource) with WinASM65's own assembler, twice: once to measure it, once with the real distances, and checks that both passes have the same length. The stub contains no absolute address of its own: it reads the load address from <code>$886C</code>, reaches the table and the code by fixed offsets from it, uses only relative branches, and uses zero page <code>$70</code>–<code>$7F</code>.</li>
+      <li>The record is loaded <code>stub + table</code> bytes below the origin, so the code lands exactly where it was linked; if that would go below <code>$0000</code>, the verb stops with an error.</li>
+      <li><code>D64Builder</code> writes the disk: one VLIR application with that single record, an info block, the directory entry and the BAM.</li>
+    </ol>
+    <p>The table, at the head of the record after the stub:</p>
+<pre><code>$00-$03  "R65A"
+$04-$05  the address the image was assembled for
+$06-$07  number of entries
+$08-$09  entry point of the program
+$0A-     entries of 3 bytes: address low, address high, width</code></pre>
+    <p>The info block's application area (<code>$89</code>–<code>$9F</code>) carries a summary: <code>"R65A"</code> at <code>$89</code>, the base address at <code>$8D</code>, the table address at <code>$8F</code> and the entry count after it. A kernal that ignores this area loads the file as usual.</p>
+
+    <h3>D64 layout</h3>
+    <p>From <code>docs/geos-d64.md</code> and the header of <code>D64Image.cs</code>, both taken from the GEOS Programmer's Reference Guide. The disk is 35 tracks (21, 19, 18 and 17 sectors per track by zone); only track 18 sector 0 is reserved in advance, and the next free sector is searched with an interleave of 10.</p>
+    <div class="grid-2">
+      <div>
+        <div class="table-wrap">
+        <table>
+          <thead><tr><th colspan="2">Directory entry (32 bytes)</th></tr></thead>
+          <tbody>
+            <tr><td><code>$02</code></td><td>C64 file type (low 3 bits 0, 1 or 2)</td></tr>
+            <tr><td><code>$03-$04</code></td><td>track/sector of the file, or of the VLIR record sector</td></tr>
+            <tr><td><code>$05-$14</code></td><td>name, padded with <code>$A0</code></td></tr>
+            <tr><td><code>$15-$16</code></td><td>track/sector of the info block</td></tr>
+            <tr><td><code>$17</code></td><td>structure: <code>$00</code> sequential, <code>$01</code> VLIR</td></tr>
+            <tr><td><code>$18</code></td><td>GEOS type, <code>$06</code> application</td></tr>
+            <tr><td><code>$19-$1D</code></td><td>date and time (year − 1900)</td></tr>
+            <tr><td><code>$1E-$1F</code></td><td>size in sectors</td></tr>
+          </tbody>
+        </table>
+        </div>
+      </div>
+      <div>
+        <div class="table-wrap">
+        <table>
+          <thead><tr><th colspan="2">Info block (one sector)</th></tr></thead>
+          <tbody>
+            <tr><td><code>$02-$43</code></td><td>icon: <code>$03</code>, <code>$15</code>, <code>$BF</code>, 63 bytes of bitmap</td></tr>
+            <tr><td><code>$44-$46</code></td><td>C64 type, GEOS type, structure</td></tr>
+            <tr><td><code>$47-$4C</code></td><td>load, end and start addresses</td></tr>
+            <tr><td><code>$4D-$60</code></td><td>class text</td></tr>
+            <tr><td><code>$61-$74</code></td><td>author</td></tr>
+            <tr><td><code>$89-$9F</code></td><td>application area (relocation summary)</td></tr>
+            <tr><td><code>$A0-$FF</code></td><td>description</td></tr>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+    <p>The BAM (track 18 sector 0) carries the disk name at <code>$90</code>, the id at <code>$A2</code>, and the signature <code>GEOS format V1.0</code> at <code>$AD</code>, which is how GEOS recognises a GEOS disk. The tests check the image field by field and check that applying the table gives the same bytes as linking at the new address; they do not run GEOS.</p>
+
+    <h2 id="text">Text targets and the BASIC tokenizer</h2>
+    <p>Applesoft under DOS or ProDOS, Waterloo Structured BASIC and BBC BASIC do not load a binary: they run an interpreter that reads a program of <em>tokens</em>, where each keyword is one byte. The <code>basic</code> verb writes that file from a plain-text program:</p>
+<pre><code>WinASM65 basic -f game.bas -o game.bin                      # the program as it sits in memory
+WinASM65 basic -f game.bas -o game.po  -format prodos       # on a ProDOS volume
+WinASM65 basic -f game.bas -o game.dsk -format dos33        # on a DOS 3.3 disk image
+WinASM65 basic -f game.bas -o game.bin -dialect waterloo
+WinASM65 basic -f game.bas -o game.bin -dialect bbc -list game.lst</code></pre>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 200" role="img" aria-label="The basic verb: BasicSource.Read turns text into numbered lines, TokenEncoder with a BasicDialect turns them into the tokenised program, TryWrap puts it in a container (bin, prodos, dos32, dos33). With -list, TokenDecoder reads the program back and BasicSource.Render writes it as text">
+        <defs>
+          <marker id="tg-arrow3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <rect class="box-a" x="20" y="30" width="120" height="56" rx="8"/>
+        <text x="80" y="55" text-anchor="middle" font-weight="600">.bas text</text>
+        <text x="80" y="74" text-anchor="middle" class="muted" font-size="12">-f</text>
+        <rect class="box-b" x="180" y="30" width="160" height="56" rx="8"/>
+        <text x="260" y="55" text-anchor="middle" font-weight="600">BasicSource.Read</text>
+        <text x="260" y="74" text-anchor="middle" class="muted" font-size="12">numbered lines</text>
+        <rect class="box-b" x="380" y="30" width="180" height="56" rx="8"/>
+        <text x="470" y="55" text-anchor="middle" font-weight="600">TokenEncoder</text>
+        <text x="470" y="74" text-anchor="middle" class="muted" font-size="12">+ BasicDialect (-dialect)</text>
+        <rect class="box-c" x="600" y="30" width="130" height="56" rx="8"/>
+        <text x="665" y="55" text-anchor="middle" font-weight="600">TryWrap</text>
+        <text x="665" y="74" text-anchor="middle" class="muted" font-size="12">-format</text>
+        <rect class="box-d" x="770" y="30" width="110" height="56" rx="8"/>
+        <text x="825" y="62" text-anchor="middle" font-weight="600">-o file</text>
+        <path class="line" d="M140,58 L180,58" marker-end="url(#tg-arrow3)"/>
+        <path class="line" d="M340,58 L380,58" marker-end="url(#tg-arrow3)"/>
+        <path class="line" d="M560,58 L600,58" marker-end="url(#tg-arrow3)"/>
+        <path class="line" d="M730,58 L770,58" marker-end="url(#tg-arrow3)"/>
+        <rect class="box-b" x="380" y="126" width="180" height="56" rx="8"/>
+        <text x="470" y="151" text-anchor="middle" font-weight="600">TokenDecoder</text>
+        <text x="470" y="170" text-anchor="middle" class="muted" font-size="12">reads the program back</text>
+        <rect class="box-d" x="600" y="126" width="200" height="56" rx="8"/>
+        <text x="700" y="151" text-anchor="middle" font-weight="600">BasicSource.Render</text>
+        <text x="700" y="170" text-anchor="middle" class="muted" font-size="12">-list file</text>
+        <path class="line" d="M470,86 L470,126" marker-end="url(#tg-arrow3)"/>
+        <path class="line" d="M560,154 L600,154" marker-end="url(#tg-arrow3)"/>
+        <text x="20" y="150" class="muted" font-size="12.5">-list decodes the program,</text>
+        <text x="20" y="168" class="muted" font-size="12.5">not the container around it.</text>
+      </svg>
+    </div>
+
+    <h3>Reading the source</h3>
+    <p><code>BasicSource.Read</code> cuts lines on carriage return and line feed only (<code>$0B</code>, <code>$0C</code> are legitimate inside strings), drops blank lines, and keeps the text after the line number verbatim. A program with no line numbers at all is numbered 10, 20, 30…; a program where only some lines are numbered is an error. A number that goes backwards is reported and the lines stay in file order, because the interpreter runs them in stored order.</p>
+
+    <h3>Dialects</h3>
+    <p>A <code>BasicDialect</code> is a token table plus a few rules (where the program starts, the highest line number, whether strings carry a length, how a line reference is written, how a line record is framed). One encoder and one decoder serve every dialect. <code>BasicDialects.ByName</code> maps the names a person types:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th><code>-dialect</code></th><th>Dialect</th><th>Line record</th><th>Tokens</th><th>Strings</th></tr></thead>
+      <tbody>
+        <tr><td><code>applesoft</code> (default), <code>apple2</code></td><td>Applesoft, program at <code>$0801</code>, lines up to 63999</td><td>next-line address (2 bytes), line number (2 bytes), tokens, <code>$00</code>; the program ends with two zero bytes</td><td><code>$80</code>–<code>$EA</code> from the ROM table; <code>$EB</code>–<code>$FF</code> refused. A line opening with <code>$96</code> carries raw bytes.</td><td>written as a length byte and the characters</td></tr>
+        <tr><td><code>waterloo</code>, <code>cbm-basic-v2</code></td><td>Waterloo Structured BASIC on Commodore BASIC V2, at <code>$0801</code>, lines up to 63999, records up to 255 bytes</td><td>same chain of linked records</td><td>BASIC V2 <code>$80</code>–<code>$CB</code> (without the host's <code>IF</code>), plus the cartridge's <code>IF CALL LOOP ENDLOOP UNTIL WHILE ELSEIF ELSE ENDIF PROC ENDPROC QUIT</code> as <code>$FF $FF</code> + <code>$F3</code>–<code>$FE</code></td><td>with their quotes</td></tr>
+        <tr><td><code>bbc</code>, <code>bbc-basic-v</code></td><td>BBC BASIC V, lines up to 65279 (<code>$FEFF</code>), records up to 251 bytes</td><td><code>$0D</code>, line number (high byte first), record length, tokens; the program ends with <code>$0D $FF</code></td><td>from <code>$7F</code>; <code>$C6</code>, <code>$C7</code>, <code>$C8</code> are escapes followed by a second byte</td><td>with their quotes, a doubled quote standing for one</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>BBC BASIC stores a line number after <code>GOTO</code>, <code>GOSUB</code>, <code>THEN</code>, <code>ELSE</code>, <code>RESTORE</code> or <code>ON</code> as <code>$8D</code> and three bytes: the top two bits of each byte of the number are combined and exclusive-ORed with <code>$54</code>, and the remaining six bits of each byte are stored with bit 6 set, so no byte of a reference can be mistaken for a token. The Apple II version of Waterloo BASIC is not implemented: no source consulted describes its file layout.</p>
+    <p>The same two-line program in each dialect, as written by the Debug build:</p>
+<pre><code>10 PRINT "HELLO"
+20 GOTO 10
+
+applesoft  0D 08 0A 00 BA 05 48 45 4C 4C 4F 00 15 08 14 00 AB 31 30 00 00 00
+waterloo   0E 08 0A 00 99 22 48 45 4C 4C 4F 22 00 16 08 14 00 89 31 30 00 00 00
+bbc        0D 00 0A 0C F1 22 48 45 4C 4C 4F 22 0D 00 14 09 E5 8D 54 4A 40 0D FF</code></pre>
+
+    <h3>Containers</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th><code>-format</code></th><th>Result</th><th>Dialects</th></tr></thead>
+      <tbody>
+        <tr><td><code>bin</code> (default)</td><td>The program alone, as it sits in memory.</td><td>all</td></tr>
+        <tr><td><code>prodos</code></td><td>A ProDOS volume holding the program as a one-segment load file at the dialect's program base.</td><td>Applesoft only</td></tr>
+        <tr><td><code>dos32</code>, <code>dos33</code></td><td>A DOS disk image with one Applesoft (type A) file: its length in two bytes, then the program.</td><td>Applesoft only</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>A container for another dialect is refused rather than written: <code>The container 'prodos' holds an Applesoft program, and this one is BBC BASIC V.</code></p>
+
+    <h3>The round trip</h3>
+    <p><code>-list</code> decodes the program that was just written with <code>TokenDecoder</code>, a reader written from the format rather than from the encoder, and renders it as text. The listing is byte-exact rather than pretty: a byte that is not a token comes back as <code>\xNN</code>, and anything that would read back as syntax is escaped, so the listing re-encodes to the same file:</p>
+<pre><code>10 PRINT \x05 \x48 \x45 \x4C \x4C \x4F
+20 GOTO 1 0</code></pre>
+
+    <h3>The runtime stub for shared routines</h3>
+    <p>A tokenised program has no fixed address, so a machine-code routine shared between two such programs cannot be linked into either. <code>RuntimeBlock.Build(LinkedImage, RuntimeBlockOptions, diagnostics)</code> packages a linked routine as a payload that carries no absolute address:</p>
+<pre><code>the stub        runtime-stub.asm, assembled at StubAddress (default $2000)
+header, 10 B    destination, shift, entry offset, block length, site count
+coded block     runs of three or more equal bytes coded as runs, the rest copied
+site table      3 bytes per site: offset low, offset high, width</code></pre>
+    <p>At run time the program does <code>JSR</code> to the stub, which expands the block at <code>BlockAddress</code> (default <code>$4000</code>), adds the shift to every listed site, calls the routine and returns. A one-byte absolute reference is refused, since a byte cannot hold an address that moved. Like the GEOS stub, it is assembled twice so that the header lands exactly after the code. This is a library API used by the tests (<code>RuntimeStubTests</code> runs the stub on the repository's own 6502 core, <code>Execution/Cpu6502Core.cs</code>); no command-line verb calls it yet.</p>
+
+    <div class="callout">
+      <p><code>TextFormat/AssemblyLexer.cs</code> shares the namespace but not the subject: it is the token classifier the monitor's source editor uses to colour assembly source.</p>
+    </div>
+
+    <footer>
+      <p>Tables on this page were read from the classes named in each row, and the example outputs produced with the Debug build. <code>docs/targets.md</code>, <code>docs/targets-text.md</code> and <code>docs/geos-d64.md</code> (in French) record the research behind each format.</p>
+    </footer>
+  </main>
+
+  <aside class="toc" aria-label="On this page"></aside>
+</div>
+</body>
+</html>
