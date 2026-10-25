@@ -180,6 +180,14 @@ namespace WinASM65.Projects
         /// </summary>
         public IReadOnlyList<ImagePlacement> Placements { get; private set; }
 
+        /// <summary>
+        /// The target the image was built for: its system, CPU, format and load
+        /// address. Null when the build stopped before the target was known. Its
+        /// <see cref="ResolvedTarget.SystemId"/> is null for a project that names no
+        /// system, which a debugger then has to work out another way.
+        /// </summary>
+        public ResolvedTarget Target { get; private set; }
+
         public ProjectBuildResult(bool success, byte[] image, string imagePath,
             IReadOnlyList<Diagnostic> diagnostics, IReadOnlyList<ProjectUnitResult> units)
             : this(success, image, imagePath, diagnostics, units, null)
@@ -189,7 +197,15 @@ namespace WinASM65.Projects
         public ProjectBuildResult(bool success, byte[] image, string imagePath,
             IReadOnlyList<Diagnostic> diagnostics, IReadOnlyList<ProjectUnitResult> units,
             IReadOnlyList<ImagePlacement> placements)
+            : this(success, image, imagePath, diagnostics, units, placements, null)
         {
+        }
+
+        public ProjectBuildResult(bool success, byte[] image, string imagePath,
+            IReadOnlyList<Diagnostic> diagnostics, IReadOnlyList<ProjectUnitResult> units,
+            IReadOnlyList<ImagePlacement> placements, ResolvedTarget target)
+        {
+            Target = target;
             Placements = placements ?? new List<ImagePlacement>();
             Success = success;
             Image = image ?? new byte[0];
@@ -450,7 +466,7 @@ namespace WinASM65.Projects
 
             Remember(units);
             return new ProjectBuildResult(true, payload, imagePath, diagnostics, units,
-                options.CaptureListing ? Placements() : null);
+                options.CaptureListing ? Placements() : null, target);
         }
 
         // --------------------------------------------------------------- listing
