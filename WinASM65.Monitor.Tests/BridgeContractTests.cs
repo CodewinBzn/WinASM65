@@ -180,6 +180,39 @@ namespace WinASM65.Monitor.Tests
             Assert.AreEqual("bridge_mesen2.lua", new Mesen2Adapter().BuiltInBridge);
         }
 
+        [TestMethod]
+        public void TheEmulatorIsGivenTheRomByItsFullPath()
+        {
+            // The emulator runs in its own folder, where "game.nes" (the monitor's
+            // --rom game.nes, say) names nothing.
+            using (TemporaryDirectory dir = new TemporaryDirectory())
+            {
+                File.WriteAllBytes(System.IO.Path.Combine(dir.Path, "game.nes"), new byte[16]);
+                string previous = Directory.GetCurrentDirectory();
+                Directory.SetCurrentDirectory(dir.Path);
+                try
+                {
+                    EmulatorConfiguration emulator = new EmulatorConfiguration
+                    {
+                        Name = "stand-in",
+                        Path = System.IO.Path.Combine(Environment.SystemDirectory, "cmd.exe"),
+                        Arguments = "/c exit {rom}"
+                    };
+                    using (Process process = BridgeLauncher.Launch(emulator, "game.nes", 1, TextWriter.Null))
+                    {
+                        Assert.IsNotNull(process);
+                        process.WaitForExit(5000);
+                        CollectionAssert.AreEqual(new[] { "/c", "exit", System.IO.Path.Combine(dir.Path, "game.nes") },
+                            process.StartInfo.ArgumentList.ToArray());
+                    }
+                }
+                finally
+                {
+                    Directory.SetCurrentDirectory(previous);
+                }
+            }
+        }
+
         private sealed class TemporaryDirectory : IDisposable
         {
             public string Path { get; private set; }

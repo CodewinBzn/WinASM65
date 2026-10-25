@@ -54,6 +54,8 @@ namespace WinASM65.Monitor
                 log.WriteLine("ROM not found: " + romPath);
                 return null;
             }
+            // The emulator runs in its own folder: a path relative to ours would not be found there.
+            romPath = Path.GetFullPath(romPath);
 
             IEmulatorAdapter adapter = EmulatorAdapters.For(emulator);
             string bridgeScript = BridgeScriptOf(emulator, adapter, log);
