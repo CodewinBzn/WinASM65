@@ -1199,7 +1199,12 @@ namespace WinASM65.Core
         /// </summary>
         private void DispatchDirective(string written, string argument)
         {
-            if (!_directiveDispatcher.TryDispatch(written.ToLowerInvariant(), argument, this))
+            if (_directiveDispatcher.TryDispatch(written.ToLowerInvariant(), argument, this))
+                return;
+            // ".loop" alone on its line is how other assemblers write a local label.
+            if (string.IsNullOrWhiteSpace(argument))
+                _diagnostics.ReportError(CurrentLocation, string.Format(ErrorCodes.UNKNOWN_DIRECTIVE_LABEL, written, written.TrimStart('.')));
+            else
                 _diagnostics.ReportError(CurrentLocation, string.Format(ErrorCodes.UNKNOWN_DIRECTIVE, written));
         }
 
@@ -1369,6 +1374,7 @@ namespace WinASM65.Core
                 {
                     _listingService.PrintLine(LineType.RES, memArea);
                     _scopeManager.CurrentScope.MemArea = (ushort)(memArea + (size & 0xFFFF));
+                    _scopeManager.ResolveSymbols(_evaluator, PatchResolvedExpression);
                 }
                 else
                 {
@@ -1430,8 +1436,9 @@ namespace WinASM65.Core
                     // and the second definition won. The label on its own line has
                     // always reported it; the two spellings are one concept.
                     string err;
-                    if (!AddSourceSymbol(DefineName(label, true), _emitter.CurrentAddress, out err)
-                        && !string.IsNullOrEmpty(err))
+                    if (AddSourceSymbol(DefineName(label, true), _emitter.CurrentAddress, out err))
+                        _scopeManager.ResolveSymbols(_evaluator, PatchResolvedExpression);
+                    else if (!string.IsNullOrEmpty(err))
                         _diagnostics.ReportError(CurrentLocation, err);
                 }
             }
