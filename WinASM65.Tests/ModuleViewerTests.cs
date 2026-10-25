@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinASM65.Core;
 using WinASM65.Modules;
@@ -202,6 +204,17 @@ namespace WinASM65.Tests
             StringAssert.Contains(html, "MissingThing", "et il est nomme");
             StringAssert.Contains(html, "unused", "l'export que personne ne cite est marque");
             StringAssert.Contains(html, "UnusedHelper", "et il est nomme");
+
+            // Chaque ligne a autant de cellules que son tableau a de colonnes :
+            // une cellule oubliee decale toutes les valeurs sous le mauvais titre.
+            foreach (string table in html.Split(new[] { "<table" }, StringSplitOptions.None).Skip(1))
+            {
+                string body = table.Substring(0, table.IndexOf("</table>", StringComparison.Ordinal));
+                string[] rows = body.Split(new[] { "<tr>" }, StringSplitOptions.RemoveEmptyEntries).Skip(1).ToArray();
+                int columns = Regex.Matches(rows[0], "<th>").Count;
+                foreach (string row in rows.Skip(1))
+                    Assert.AreEqual(columns, Regex.Matches(row, "<td").Count, "cellules de la ligne " + row);
+            }
         }
 
         [TestMethod]

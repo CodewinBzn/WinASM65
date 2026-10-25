@@ -332,7 +332,8 @@ namespace WinASM65.Modules
             {
                 ModuleSegment segment = image.Segments[i];
                 html.Append("<tr><td>" + i + "</td><td>" + Escape(segment.Name) + "</td><td>"
-                    + segment.Kind + "</td><td>" + segment.Alignment + "</td><td>$"
+                    + segment.Kind + "</td><td>" + (segment.Kind == SegmentKind.Bss ? "-" : segment.Bank.ToString())
+                    + "</td><td>" + segment.Alignment + "</td><td>$"
                     + segment.OriginAddress.ToString("X4") + "</td><td>" + segment.Data.Length
                     + "</td></tr>\n");
             }
