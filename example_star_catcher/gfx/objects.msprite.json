@@ -45,6 +45,325 @@
       "tiles": [
         { "x": 0, "y": 0, "tile": 8, "palette": 3, "flipH": false, "flipV": false, "behind": false }
       ]
+    },
+    {
+      "name": "shot",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 96,
+          "palette": 1,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "bomb",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 97,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "saucer",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 98,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 99,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "hunter",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 100,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "heart",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 101,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "boss",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 112,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 113,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 0,
+          "tile": 114,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 24,
+          "y": 0,
+          "tile": 115,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 116,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 117,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 8,
+          "tile": 118,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 24,
+          "y": 8,
+          "tile": 119,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 16,
+          "tile": 120,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 16,
+          "tile": 121,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 16,
+          "tile": 122,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 24,
+          "y": 16,
+          "tile": 123,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "boss hit",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 112,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 113,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 0,
+          "tile": 114,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 24,
+          "y": 0,
+          "tile": 115,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 116,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 117,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 8,
+          "tile": 118,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 24,
+          "y": 8,
+          "tile": 119,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 16,
+          "tile": 120,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 16,
+          "tile": 121,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 16,
+          "y": 16,
+          "tile": 122,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 24,
+          "y": 16,
+          "tile": 123,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
     }
   ],
   "animations": [

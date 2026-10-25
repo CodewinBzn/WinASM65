@@ -27,13 +27,18 @@ try {
     $frames = Join-Path $work 'frames'
     New-Item -ItemType Directory $frames | Out-Null
     $script = Join-Path $work 'game.lua'
-    (Get-Content -Raw (Join-Path $PSScriptRoot 'game.lua')).Replace('__OUT__', $frames.Replace('\', '/')) |
-        Set-Content -Encoding ascii $script
+    # The variables' addresses, from the build's symbols (names are case-insensitive).
+    $symbols = @{}
+    (Get-Content -Raw (Join-Path $example 'src\game.symb') | ConvertFrom-Json).PSObject.Properties |
+        ForEach-Object { $symbols[$_.Name.ToLowerInvariant()] = $_.Value }
+    $lua = (Get-Content -Raw (Join-Path $PSScriptRoot 'game.lua')).Replace('__OUT__', $frames.Replace('\', '/'))
+    $lua = [regex]::Replace($lua, '__SYM_(\w+)__', { param($m) [string]$symbols[$m.Groups[1].Value.ToLowerInvariant()] })
+    $lua | Set-Content -Encoding ascii $script
 
     $run = Start-Process $Mesen -ArgumentList "--testRunner `"$script`" `"$(Join-Path $example 'star_catcher.nes')`"" -PassThru -WindowStyle Hidden
     if (-not $run.WaitForExit(300000)) { $run.Kill(); throw 'Mesen2 did not finish the game in 5 minutes.' }
 
-    foreach ($name in 'game-title', 'game-play', 'game-over') {
+    foreach ($name in 'game-title', 'game-play', 'game-boss', 'game-over') {
         $source = [System.Drawing.Image]::FromFile((Join-Path $frames "$name.png"))
         $big = New-Object System.Drawing.Bitmap ($source.Width * 3), ($source.Height * 3)
         $graphics = [System.Drawing.Graphics]::FromImage($big)

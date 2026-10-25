@@ -21,17 +21,75 @@ spr_burst:
         .byte $00, $08, $03, $00
         .byte $80
 
+spr_shot:
+        .byte $00, $60, $01, $00
+        .byte $80
+
+spr_bomb:
+        .byte $00, $61, $03, $00
+        .byte $80
+
+spr_saucer:
+        .byte $00, $62, $03, $00
+        .byte $00, $63, $03, $08
+        .byte $80
+
+spr_hunter:
+        .byte $00, $64, $02, $00
+        .byte $80
+
+spr_heart:
+        .byte $00, $65, $00, $00
+        .byte $80
+
+spr_boss:
+        .byte $00, $70, $02, $00
+        .byte $00, $71, $02, $08
+        .byte $00, $72, $02, $10
+        .byte $00, $73, $02, $18
+        .byte $08, $74, $02, $00
+        .byte $08, $75, $02, $08
+        .byte $08, $76, $02, $10
+        .byte $08, $77, $02, $18
+        .byte $10, $78, $02, $00
+        .byte $10, $79, $02, $08
+        .byte $10, $7A, $02, $10
+        .byte $10, $7B, $02, $18
+        .byte $80
+
+spr_boss_hit:
+        .byte $00, $70, $03, $00
+        .byte $00, $71, $03, $08
+        .byte $00, $72, $03, $10
+        .byte $00, $73, $03, $18
+        .byte $08, $74, $03, $00
+        .byte $08, $75, $03, $08
+        .byte $08, $76, $03, $10
+        .byte $08, $77, $03, $18
+        .byte $10, $78, $03, $00
+        .byte $10, $79, $03, $08
+        .byte $10, $7A, $03, $10
+        .byte $10, $7B, $03, $18
+        .byte $80
+
 spr_metasprites_lo:
-        .lobytes spr_ship, spr_star, spr_star_twinkle, spr_meteor, spr_burst
+        .lobytes spr_ship, spr_star, spr_star_twinkle, spr_meteor, spr_burst, spr_shot, spr_bomb, spr_saucer, spr_hunter, spr_heart, spr_boss, spr_boss_hit
 spr_metasprites_hi:
-        .hibytes spr_ship, spr_star, spr_star_twinkle, spr_meteor, spr_burst
+        .hibytes spr_ship, spr_star, spr_star_twinkle, spr_meteor, spr_burst, spr_shot, spr_bomb, spr_saucer, spr_hunter, spr_heart, spr_boss, spr_boss_hit
 
 SPR_MS_SHIP = 0
 SPR_MS_STAR = 1
 SPR_MS_STAR_TWINKLE = 2
 SPR_MS_METEOR = 3
 SPR_MS_BURST = 4
-SPR_METASPRITE_COUNT = 5
+SPR_MS_SHOT = 5
+SPR_MS_BOMB = 6
+SPR_MS_SAUCER = 7
+SPR_MS_HUNTER = 8
+SPR_MS_HEART = 9
+SPR_MS_BOSS = 10
+SPR_MS_BOSS_HIT = 11
+SPR_METASPRITE_COUNT = 12
 
 spr_twinkle_anim:
         .byte 1, 8

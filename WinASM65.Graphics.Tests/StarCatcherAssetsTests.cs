@@ -25,14 +25,21 @@ namespace WinASM65.Graphics.Tests
             return Path.Combine(dir.FullName, "example_star_catcher");
         }
 
+        // The assets the game includes; others in the folder (a palette being
+        // tried, say) are not the example's.
+        private static readonly string[] Assets =
+        {
+            "game.pal.json", "objects.msprite.json", "title.screen.json", "over.screen.json", "play.map.json"
+        };
+
         [TestMethod]
         public void EveryAssetIsValid()
         {
             string gfx = Path.Combine(Example(), "gfx");
-            string[] assets = Directory.GetFiles(gfx).Where(f => AssetKinds.Of(f) != AssetKind.Unknown).ToArray();
-            Assert.AreEqual(5, assets.Length, "palettes, metasprites, two screens and a map");
-            foreach (string asset in assets)
+            foreach (string name in Assets)
             {
+                string asset = Path.Combine(gfx, name);
+                Assert.AreNotEqual(AssetKind.Unknown, AssetKinds.Of(asset), name);
                 AssetDocument document = AssetDocument.Load(asset);
                 Assert.IsFalse(document.Diagnostics.Any(), Path.GetFileName(asset) + ": " + TestKit.Describe(document.Diagnostics));
             }
@@ -47,8 +54,8 @@ namespace WinASM65.Graphics.Tests
                 Directory.CreateDirectory(temp.File("gfx"));
                 Directory.CreateDirectory(temp.File("chr"));
                 File.Copy(Path.Combine(example, "chr", "tiles.chr"), temp.File(Path.Combine("chr", "tiles.chr")));
-                foreach (string asset in Directory.GetFiles(Path.Combine(example, "gfx"), "*.json"))
-                    File.Copy(asset, temp.File(Path.Combine("gfx", Path.GetFileName(asset))));
+                foreach (string asset in Assets)
+                    File.Copy(Path.Combine(example, "gfx", asset), temp.File(Path.Combine("gfx", asset)));
 
                 ExportResult result = AssetExporter.ExportAll(temp.File("gfx"));
                 Assert.IsFalse(result.HasErrors, TestKit.Describe(result.Diagnostics));
