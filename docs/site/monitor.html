@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monitor · WinASM65</title>
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<div class="layout">
+  <nav class="site-nav" aria-label="Pages"></nav>
+
+  <main>
+    <p class="breadcrumb"><a href="index.html">WinASM65</a> › Debugging</p>
+    <header class="page">
+      <h1>The monitor</h1>
+      <p class="lede">A terminal program that drives a running emulator. It reads and writes the machine's memory, sets breakpoints, steps, assembles and places code, and shows the source with what each line assembled to. It talks to Mesen2 (or MesenCE) through a small Lua script, the bridge, over a local TCP socket. This page explains how it is built, for someone about to change it.</p>
+    </header>
+
+    <aside class="sources">
+      <h4>Source files</h4>
+      <ul>
+        <li><a href="../../WinASM65.Monitor/Program.cs"><code>WinASM65.Monitor/Program.cs</code></a></li>
+        <li><a href="../../WinASM65.Monitor/Shell/ShellWindow.cs"><code>WinASM65.Monitor/Shell/ShellWindow.cs</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/MonitorSession.cs"><code>WinASM65.Monitor.Core/MonitorSession.cs</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/IMemoryBackend.cs"><code>WinASM65.Monitor.Core/IMemoryBackend.cs</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/BridgeMemoryBackend.cs"><code>WinASM65.Monitor.Core/BridgeMemoryBackend.cs</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/BridgeConnector.cs"><code>WinASM65.Monitor.Core/BridgeConnector.cs</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/BridgeLauncher.cs"><code>WinASM65.Monitor.Core/BridgeLauncher.cs</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/Protocol/MonitorProtocol.cs"><code>WinASM65.Monitor.Core/Protocol/MonitorProtocol.cs</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/Protocol/ProtocolClient.cs"><code>WinASM65.Monitor.Core/Protocol/ProtocolClient.cs</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/Bridge/bridge_mesen2.lua"><code>WinASM65.Monitor.Core/Bridge/bridge_mesen2.lua</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/Bridge/bridge.lua"><code>WinASM65.Monitor.Core/Bridge/bridge.lua</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/ExecutionCapabilities.cs"><code>WinASM65.Monitor.Core/ExecutionCapabilities.cs</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Abstractions/IExecutionAdapter.cs"><code>WinASM65.Monitor.Abstractions/IExecutionAdapter.cs</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/Debugging/SourceMap.cs"><code>WinASM65.Monitor.Core/Debugging/SourceMap.cs</code></a></li>
+      </ul>
+    </aside>
+
+    <figure class="shot">
+      <a href="img/monitor-tui.png"><img src="img/monitor-tui.png" alt="The terminal monitor connected to Mesen2 2.1.1: status line, file tree, source and listing, RAM and ROM panes"></a>
+      <figcaption>The monitor on the Bomberman example, started with <code>--emulator mesen2</code>. The status line reads: host <code>Mesen2 2.1.1</code>, <code>connected</code>, <code>RAM: Live</code> (the bridge is pushing RAM changes), <code>RUNNING</code>, <code>caps: full control</code>, then the program counter, the registers, the cycle count and the breakpoint count. Below: the file tree, the source with its listing gutter (address, bytes, cycles), and the RAM ($0000–$3FFF) and ROM ($8000–$FFFF) panes.</figcaption>
+    </figure>
+
+    <h2 id="projects">Three projects</h2>
+    <p>The monitor is split so that more than one front end can drive the same machine. The terminal monitor is one front end; the VS Code debug adapter and language server in <code>WinASM65.Tooling</code> are the others (see <a href="tooling.html">Tooling</a>).</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Project</th><th>Kind</th><th>What it holds</th><th>References</th></tr></thead>
+      <tbody>
+        <tr><td><code>WinASM65.Monitor.Abstractions</code></td><td>library</td><td>The host ↔ plugin contract: <code>IExecutionAdapter</code>, the <code>ExecutionCapability</code> flags, <code>CpuState</code>, <code>MemoryRegion</code> / <code>RegionAddress</code>, and the not-yet-used <code>ISystemProfile</code>, <code>IVideoProvider</code> and <code>IAssistantProvider</code>. No behaviour.</td><td>Nothing, on purpose. A test (<code>ContractReferenceTests</code>) fails if a reference is added.</td></tr>
+        <tr><td><code>WinASM65.Monitor.Core</code></td><td>library</td><td>Everything without a UI: <code>MonitorSession</code>, the backends, the protocol, the launchers, the Lua bridges, units, project builds, listings and the source map. It may not reference a UI library or write to stdout, because the tooling uses stdout as its protocol channel.</td><td><code>WinASM65</code>, <code>Monitor.Abstractions</code></td></tr>
+        <tr><td><code>WinASM65.Monitor</code></td><td>exe</td><td><code>Program.cs</code> (options, start-up, the line prompt) and <code>Shell/</code>, the terminal UI.</td><td><code>WinASM65</code>, <code>Monitor.Core</code>, <code>Monitor.Abstractions</code>, the <code>SharpConsoleUI</code> 2.6.16 package</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The namespace of <code>Monitor.Core</code> is still <code>WinASM65.Monitor</code>: the split moved files, not meanings. <code>Monitor.Core</code> grants <code>InternalsVisibleTo</code> to the monitor, the tooling and both of their test projects. The Lua scripts in <code>Monitor.Core/Bridge/</code> are copied to the output of every executable that references the library, so any front end can start Mesen itself.</p>
+
+    <div class="callout">
+      <p><strong>Which UI toolkit?</strong> <code>docs/console-ui-evaluation.md</code> concludes "stay on Terminal.Gui". The code did the opposite: the shell now runs on <strong>SharpConsoleUI</strong> (<code>ConsoleWindowSystem</code>, <code>Window</code>, <code>MarkupControl</code>, <code>NetConsoleDriver</code>), and no project references Terminal.Gui any more; only a few comments still mention it. The package is pinned at 2.6.16 because later releases ship only a <code>net10.0</code> asset and the solution targets <code>net8.0</code> (see the comment in <code>WinASM65.Monitor.csproj</code>).</p>
+    </div>
+
+    <h2 id="architecture">Architecture</h2>
+    <p>One rule shapes the whole design: <strong>every action is a command line into <code>MonitorSession</code></strong>. The terminal UI, the line prompt and the tests all go through <code>MonitorSession.Execute(string)</code>, which returns lines of text and never touches the console. A key in the TUI cannot do something a typed command cannot. And <strong>the session talks to an emulator only through <code>IMemoryBackend</code></strong>, so the monitor can be tested without one.</p>
+    <div class="figure">
+      <svg viewBox="0 0 960 470" role="img" aria-label="Components: the terminal shell calls MonitorSession, which uses UnitLibrary and ProjectBuilder (built on the assembler) and BridgeMemoryBackend; the backend's ProtocolClient talks over TCP to bridge_mesen2.lua inside Mesen2, which calls the emulator's Lua API">
+        <defs>
+          <marker id="arrow-c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <!-- process frames -->
+        <rect class="frame" x="15" y="28" width="580" height="420" rx="10"/>
+        <text x="25" y="20" class="muted" font-size="12.5">WinASM65.Monitor.exe</text>
+        <rect class="frame" x="700" y="28" width="245" height="420" rx="10"/>
+        <text x="710" y="20" class="muted" font-size="12.5">Mesen.exe (Mesen2 2.1.1)</text>
+
+        <!-- row 1 -->
+        <rect class="box-d" x="35" y="45" width="230" height="58" rx="8"/>
+        <text x="150" y="70" text-anchor="middle" font-weight="600">Terminal shell</text>
+        <text x="150" y="89" text-anchor="middle" class="muted" font-size="12">ShellWindow, panes, or the REPL</text>
+        <rect class="box-a" x="310" y="45" width="265" height="58" rx="8"/>
+        <text x="442" y="70" text-anchor="middle" font-weight="600">IListingSource</text>
+        <text x="442" y="89" text-anchor="middle" class="muted" font-size="12">Assembler / Project listing source</text>
+        <path class="line" d="M265,74 L310,74" marker-end="url(#arrow-c)"/>
+
+        <!-- row 2 -->
+        <rect class="box-b" x="35" y="150" width="230" height="58" rx="8"/>
+        <text x="150" y="175" text-anchor="middle" font-weight="600">MonitorSession</text>
+        <text x="150" y="194" text-anchor="middle" class="muted" font-size="12">Execute(line) → lines</text>
+        <path class="line" d="M150,103 L150,150" marker-end="url(#arrow-c)"/>
+        <text x="158" y="131" class="muted" font-size="12">command lines</text>
+
+        <!-- row 3 -->
+        <rect class="box-a" x="35" y="255" width="230" height="58" rx="8"/>
+        <text x="150" y="280" text-anchor="middle" font-weight="600">UnitLibrary, ProjectBuilder</text>
+        <text x="150" y="299" text-anchor="middle" class="muted" font-size="12">ASSEMBLE, LOAD, BUILD</text>
+        <rect class="box-b" x="310" y="255" width="265" height="58" rx="8"/>
+        <text x="442" y="280" text-anchor="middle" font-weight="600">BridgeMemoryBackend</text>
+        <text x="442" y="299" text-anchor="middle" class="muted" font-size="12">IMemoryBackend + IExecutionAdapter</text>
+        <path class="line" d="M150,208 L150,255" marker-end="url(#arrow-c)"/>
+        <path class="line" d="M265,179 L442,179 L442,255" marker-end="url(#arrow-c)"/>
+        <path class="line" d="M265,284 L310,284" marker-end="url(#arrow-c)"/>
+        <text x="287" y="276" text-anchor="middle" class="muted" font-size="11">LOAD</text>
+
+        <!-- row 4 -->
+        <rect class="box-a" x="35" y="360" width="230" height="58" rx="8"/>
+        <text x="150" y="385" text-anchor="middle" font-weight="600">WinASM65</text>
+        <text x="150" y="404" text-anchor="middle" class="muted" font-size="12">assembler, linker, project session</text>
+        <rect class="box-b" x="310" y="360" width="265" height="58" rx="8"/>
+        <text x="442" y="385" text-anchor="middle" font-weight="600">ProtocolClient</text>
+        <text x="442" y="404" text-anchor="middle" class="muted" font-size="12">sender + receiver thread</text>
+        <path class="line" d="M150,313 L150,360" marker-end="url(#arrow-c)"/>
+        <path class="line" d="M442,313 L442,360" marker-end="url(#arrow-c)"/>
+
+        <!-- emulator side -->
+        <rect class="box-c" x="720" y="150" width="205" height="58" rx="8"/>
+        <text x="822" y="175" text-anchor="middle" font-weight="600">Mesen2 core</text>
+        <text x="822" y="194" text-anchor="middle" class="muted" font-size="12">emu.* Lua API</text>
+        <rect class="box-c" x="720" y="360" width="205" height="58" rx="8"/>
+        <text x="822" y="385" text-anchor="middle" font-weight="600">bridge_mesen2.lua</text>
+        <text x="822" y="404" text-anchor="middle" class="muted" font-size="12">listens on 127.0.0.1</text>
+        <path class="line" d="M780,360 L780,208" marker-end="url(#arrow-c)"/>
+        <text x="772" y="270" text-anchor="end" class="muted" font-size="11">read, write,</text>
+        <text x="772" y="284" text-anchor="end" class="muted" font-size="11">step, resume</text>
+        <path class="line" d="M865,208 L865,360" marker-end="url(#arrow-c)"/>
+        <text x="873" y="270" class="muted" font-size="11">frame tick,</text>
+        <text x="873" y="284" class="muted" font-size="11">exec / write,</text>
+        <text x="873" y="298" class="muted" font-size="11">codeBreak</text>
+
+        <!-- TCP -->
+        <path class="line" d="M575,380 L720,380" marker-end="url(#arrow-c)" stroke-dasharray="5 4"/>
+        <text x="647" y="372" text-anchor="middle" class="muted" font-size="11.5">commands</text>
+        <path class="line" d="M720,402 L575,402" marker-end="url(#arrow-c)" stroke-dasharray="5 4"/>
+        <text x="647" y="420" text-anchor="middle" class="muted" font-size="11.5">replies, PUSH</text>
+        <text x="647" y="440" text-anchor="middle" class="muted" font-size="11.5">TCP :45678</text>
+      </svg>
+    </div>
+    <p>The same session is used by the line prompt (<code>Program.RunRepl</code>), which prints whatever <code>Execute</code> returns. <code>WinASM65.Tooling</code>'s debug adapter uses the same backend and source map, but drives the backend directly rather than through <code>MonitorSession</code>.</p>
+
+    <h2 id="session">MonitorSession</h2>
+    <p><code>MonitorSession</code> owns a backend, a <code>Disassembler</code> for the session's CPU, a <code>UnitLibrary</code>, a <code>ProjectBuilder</code> and, optionally, an <code>EmulatorLauncher</code>. <code>Execute</code> never throws for a bad command: a failure becomes an <code>ERR …</code> line, because a monitor that dies on a typo cannot be used to find out what the typo was. Verbs are case-insensitive.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Command</th><th>What the session does</th><th>Reaches the bridge as</th></tr></thead>
+      <tbody>
+        <tr><td><code>PING</code></td><td>Name and version the backend learned at the handshake.</td><td>nothing (cached)</td></tr>
+        <tr><td><code>READ &lt;addr&gt; &lt;len&gt;</code></td><td>Memory as hex.</td><td><code>READ</code>, in 256-byte chunks</td></tr>
+        <tr><td><code>WRITE &lt;addr&gt; &lt;hex&gt;</code></td><td>Writes bytes; spaces between bytes are allowed.</td><td><code>WRITE</code>, in 256-byte chunks</td></tr>
+        <tr><td><code>DISASM &lt;addr&gt; &lt;count&gt;</code></td><td>Disassembles from <em>one</em> memory read, so the CPU cannot run between bytes.</td><td><code>READ</code></td></tr>
+        <tr><td><code>PAUSE</code> · <code>RESUME</code> · <code>STEP</code> · <code>RESET</code></td><td>Execution control.</td><td>the same verb</td></tr>
+        <tr><td><code>BREAK SET|REMOVE &lt;read|write|exec&gt; &lt;addr&gt;</code><br><code>BREAK LIST</code> · <code>BREAK CLEAR</code></td><td>Breakpoints. <code>LIST</code> answers locally ("the bridge owns its breakpoints"). <code>REMOVE</code> needs a backend that implements <code>IBreakpointRemoval</code>.</td><td><code>BREAK SET|REMOVE|CLEAR</code></td></tr>
+        <tr><td><code>STATE SAVE</code> · <code>STATE LOAD &lt;hex&gt;</code></td><td>Captures and restores the whole machine.</td><td>the same</td></tr>
+        <tr><td><code>CPU</code></td><td>Registers and cycle count, and says so when the machine has not advanced.</td><td><code>CPU</code></td></tr>
+        <tr><td><code>ROM</code> · <code>ROM LOAD &lt;image&gt;</code></td><td>Cartridge description; replace the cartridge. With a launcher, <code>ROM LOAD</code> restarts the emulator on the new image and reconnects instead (Mesen2 has no Lua call to swap a cartridge).</td><td><code>ROM</code>, <code>ROM LOAD</code></td></tr>
+        <tr><td><code>ASSEMBLE &lt;source&gt;</code></td><td>Assembles once and keeps the unit (<a href="#units">below</a>).</td><td>nothing</td></tr>
+        <tr><td><code>LOAD &lt;unit&gt; &lt;addr&gt;</code></td><td>Relinks the unit at the address, writes it, reads it back.</td><td><code>WRITE</code> then <code>READ</code></td></tr>
+        <tr><td><code>UNITS</code></td><td>What has been assembled.</td><td>nothing</td></tr>
+        <tr><td><code>BUILD &lt;config.json&gt;</code></td><td>Builds a whole project and writes its image.</td><td>nothing</td></tr>
+        <tr><td><code>CONNECT</code></td><td>Reconnects the backend (<code>IReconnectable</code>).</td><td>new socket, <code>PING</code>, <code>STATUS</code></td></tr>
+        <tr><td><code>EMULATOR START</code></td><td>Launches the configured emulator.</td><td>nothing</td></tr>
+        <tr><td><code>HELP</code> / <code>?</code> · <code>QUIT</code> / <code>EXIT</code></td><td>The list; leave.</td><td>nothing</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>An address is written <code>$1234</code>, <code>0x1234</code>, <code>d1234</code> (decimal) or <code>1234</code> (a bare value is hexadecimal). A prefix always wins: <code>$8000</code> is never read as decimal (<code>MonitorProtocol.TryParseAddress</code>).</p>
+
+    <h2 id="backends">Backends</h2>
+    <p><code>IMemoryBackend</code> (in <code>Monitor.Core</code>) is the only contract between the monitor and an emulator: name and version, <code>IsRunning</code>, <code>IsConnected</code>, <code>RamRefreshMode</code>, <code>Read</code>/<code>Write</code>, <code>Pause</code>/<code>Resume</code>/<code>Step</code>/<code>Reset</code>, <code>AddBreakpoint</code>/<code>ClearBreakpoints</code>, <code>SaveState</code>/<code>LoadState</code>, and a <code>RamChanged</code> event. Anything a backend may or may not have is a separate, optional interface, tested with <code>as</code>:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Interface</th><th>Meaning</th><th><code>BridgeMemoryBackend</code></th><th><code>DummyBridgeBackend</code></th></tr></thead>
+      <tbody>
+        <tr><td><code>IMemoryBackend</code></td><td>memory, execution control, snapshots</td><td>yes</td><td>yes (does nothing)</td></tr>
+        <tr><td><code>ICpuStateSource</code></td><td>registers and cycle count (<code>CpuSnapshot</code>)</td><td>yes (<code>CPU</code>)</td><td>no</td></tr>
+        <tr><td><code>IRomInfoSource</code> · <code>IRomTransferTarget</code></td><td>describe / replace the cartridge</td><td>yes (<code>ROM</code>, <code>ROM LOAD</code>)</td><td>no</td></tr>
+        <tr><td><code>IExecutionEvents</code></td><td><code>Stopped</code> / <code>Resumed</code> events, <code>IsStopped</code>, <code>LastStop</code></td><td>yes (from <code>PUSH</code> lines)</td><td>no</td></tr>
+        <tr><td><code>IBreakpointRemoval</code></td><td>remove one breakpoint</td><td>yes</td><td>no</td></tr>
+        <tr><td><code>IReconnectable</code></td><td>drop the socket and connect again</td><td>yes</td><td>yes (does nothing)</td></tr>
+        <tr><td><code>IExecutionAdapter</code> (Abstractions)</td><td>the plugin contract: <code>Capabilities</code>, <code>Regions</code>, region-addressed read/write</td><td>yes, implemented explicitly</td><td>no</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>BridgeMemoryBackend</h3>
+    <ul>
+      <li><strong>Handshake.</strong> The constructor sends <code>PING</code> and takes the first two words of the answer as name and version (<code>OK Mesen2 2.1.1</code>), then looks the pair up in <code>ExecutionCapabilities</code>. It then sends <code>STATUS</code>; a bridge that answers <code>ERR</code> (MesenCE) is recorded as one that does not report run state.</li>
+      <li><strong>Chunking.</strong> Reads and writes go out in 256-byte requests. MesenCE kills a script that stays too long in one pass, and the bridge loops byte by byte.</li>
+      <li><strong>A RAM cache.</strong> A private 64 KiB copy, updated from <code>PUSH RAM</code> lines and from the monitor's own writes, so a pushed change can be shown without re-reading.</li>
+      <li><strong>A polling fallback.</strong> A background thread reads $0000–$07FF every 250 ms and raises <code>RamChanged</code> with the difference, but stays quiet within 500 ms of a push and while the machine is stopped. <code>RamRefreshMode</code> reports <code>RAM: Live</code> when pushes are arriving, <code>RAM: Polling</code> otherwise, and <code>RAM: Stopped</code> when polling is off. The debug adapter and the tests turn polling off.</li>
+      <li><strong>Errors keep the bridge's words.</strong> An <code>ERR</code> reply becomes a <code>MonitorException</code> whose message is the verb plus the bridge's reason, e.g. <code>PAUSE: PAUSE unavailable: MesenCE 2.2.1 does not expose emu.pause</code>.</li>
+      <li><strong>Reconnect.</strong> <code>Reconnect()</code> disposes the client, retries for up to 15 s, re-subscribes to pushes, and repeats the handshake.</li>
+    </ul>
+
+    <h3>DummyBridgeBackend</h3>
+    <p>When no bridge answers, the monitor still starts, on <code>DummyBridgeBackend</code>: name <code>Dummy 0.0</code>, reads return zeros, writes and execution commands are ignored, <code>IsConnected</code> is false. It does not implement <code>IExecutionAdapter</code>, so its capability set is <code>None</code> and the status line says <code>caps: nothing measured</code>.</p>
+
+    <h2 id="startup">Starting the monitor</h2>
+    <pre><code>WinASM65.Monitor --emulator mesen2 --mesen C:\Mesen2\Mesen.exe --rom bomber.nes --source BMAN_BANK1.NAS
+WinASM65.Monitor --port 45678          # attach to a bridge that is already listening
+WinASM65.Monitor --repl &lt; commands.txt # line mode</code></pre>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Option</th><th>Meaning</th><th>Default</th></tr></thead>
+      <tbody>
+        <tr><td><code>--port &lt;n&gt;</code></td><td>Bridge port.</td><td><code>45678</code></td></tr>
+        <tr><td><code>--mesen &lt;exe&gt;</code></td><td>Launch this emulator with the bridge. Requires <code>--rom</code>.</td><td>attach only</td></tr>
+        <tr><td><code>--rom &lt;file&gt;</code></td><td>ROM to load.</td><td>—</td></tr>
+        <tr><td><code>--emulator &lt;id&gt;</code></td><td><code>mesence</code> (memory only) or <code>mesen2</code> (full control). Anything else exits with code 2.</td><td><code>mesence</code></td></tr>
+        <tr><td><code>--theme &lt;file&gt;</code></td><td>Palette file.</td><td><code>theme.json</code> beside the executable, else built-in</td></tr>
+        <tr><td><code>--source &lt;file&gt;</code></td><td>Source to open in the editor, relative to the working directory.</td><td>none</td></tr>
+        <tr><td><code>--tui</code> / <code>--repl</code></td><td>Force the terminal UI or the line prompt.</td><td>TUI unless stdin or stdout is redirected</td></tr>
+        <tr><td><code>--help</code>, <code>-h</code></td><td>Usage.</td><td>—</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>What <code>Program.Main</code> does, in order:</p>
+    <ol>
+      <li>Sets the console to UTF-8 (SharpConsoleUI draws box characters directly) and parses the options.</li>
+      <li>With <code>--mesen</code>, starts the emulator through <code>EmulatorLauncher</code>; exit code 3 if it cannot. Without it, <code>EmulatorLauncher.FromProjectConfiguration</code> reads an optional <code>"Emulator": { "Path": … }</code> from <code>config.json</code> in the working directory. That generic launcher passes the ROM (<code>Output.ObjectFile</code>) as the only argument and loads no bridge.</li>
+      <li><code>BridgeConnector.TryConnect(port)</code> retries the connection every 250 ms for up to <strong>15 s</strong> (<code>DefaultTimeoutMs = 15000</code>). If nothing answers, it writes the reason to stderr, "… Starting without a bridge.", and the monitor continues on a <code>DummyBridgeBackend</code>.</li>
+      <li>Builds one <code>Cpu6502</code>, shared by the session and the listing source so they agree on mnemonics, lengths and cycles, then a <code>MonitorSession</code> rooted in the working directory.</li>
+      <li>Runs <code>ShellRunner.Run</code> (TUI) or <code>RunRepl</code>. On every way out, the emulator it started is killed and waited for, so Mesen never outlives the monitor.</li>
+    </ol>
+
+    <h3>Mesen2 or MesenCE</h3>
+    <p><code>BridgeLauncher.LaunchEmulator</code> is shared by the monitor and the debug adapter. The two emulators need different invocations:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th></th><th>Mesen2 (<code>mesen2</code>)</th><th>MesenCE (<code>mesence</code>)</th></tr></thead>
+      <tbody>
+        <tr><td>Script</td><td><code>Bridge/bridge_mesen2.lua</code></td><td><code>Bridge/bridge.lua</code></td></tr>
+        <tr><td>Command line</td><td><code>Mesen.exe &lt;rom&gt; &lt;script&gt;</code>: the normal window, which loads the ROM and then starts the script</td><td><code>Mesen.exe --testrunner &lt;rom&gt; &lt;script&gt;</code>: headless</td></tr>
+        <tr><td>Port</td><td>From the <code>MACHINE_PORT</code> environment variable (the launcher always sets it), default 45678</td><td>Fixed at 45678 in the script</td></tr>
+        <tr><td>Host settings</td><td><code>settings.json</code> beside <code>Mesen.exe</code> must contain <code>Debug.ScriptWindow.AllowIoOsAccess: true</code>, <code>AllowNetworkAccess: true</code> and a positive <code>ScriptTimeout</code>. The launcher writes the file (timeout 60) if it is missing, and refuses to start, naming the problem, if it exists but is wrong.</td><td>—</td></tr>
+        <tr><td>Script loop</td><td>Event callbacks (non-blocking; <a href="#mesen2">below</a>)</td><td>A blocking <code>receive</code> loop that serves one client and calls <code>emu.stop(0)</code> when it disconnects</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The script is looked up beside the executable (<code>Bridge/</code>), then in <code>WinASM65.Monitor.Core/Bridge/</code> up the source tree. In the TUI, <code>R</code> (or "Reconnect to bridge" in the tree's menu) opens a Windows file dialog to pick another <code>.lua</code>, restarts the emulator with it and reconnects.</p>
+
+    <h2 id="bridge">The bridge and its protocol</h2>
+    <p>The bridge is a Lua script running inside the emulator. It opens a TCP server on <code>127.0.0.1</code>, accepts a single client, and turns each text line into calls on the emulator's <code>emu.*</code> API. All the logic stays on the .NET side, so the protocol can be typed by hand over telnet. The constants live in <code>Protocol/MonitorProtocol.cs</code>.</p>
+
+    <h3>Lines</h3>
+    <ul>
+      <li>Every request is one ASCII line. Every reply is one line that starts with <code>OK</code> or <code>ERR &lt;reason&gt;</code>. Nothing fails silently.</li>
+      <li>The bridge may also send <strong>unsolicited lines</strong> that start with <code>PUSH</code>. They are never the reply to a request.</li>
+      <li>Requests are answered in order and carry no id, so the client allows only one request in flight (<code>ProtocolClient.Send</code> holds a lock).</li>
+    </ul>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Request</th><th>Reply</th><th>Mesen2 bridge</th><th>MesenCE bridge</th></tr></thead>
+      <tbody>
+        <tr><td><code>PING</code></td><td><code>OK &lt;name&gt; &lt;version&gt; …</code></td><td><code>OK Mesen2 2.1.1</code></td><td><code>OK MesenCE 2.2.1 nesDebug</code></td></tr>
+        <tr><td><code>STATUS</code></td><td><code>OK running</code> or <code>OK stopped &lt;stop&gt;</code></td><td>yes</td><td><code>ERR unknown command</code></td></tr>
+        <tr><td><code>READ $addr len</code></td><td><code>OK &lt;hex&gt;</code>; len ≤ 4096</td><td>yes</td><td>yes</td></tr>
+        <tr><td><code>WRITE $addr hex</code></td><td><code>OK</code>, after reading the bytes back; <code>ERR write not observable at $…</code> otherwise (PRG ROM drops writes)</td><td>yes</td><td>yes</td></tr>
+        <tr><td><code>CPU</code></td><td><code>OK pc=$C01A a=… x=… y=… sp=… ps=… cycles=…</code></td><td>yes</td><td>refused by the host (<code>emu.getCpuState</code> does not exist)</td></tr>
+        <tr><td><code>ROM</code> · <code>ROM LOAD path</code></td><td>cartridge fields as <code>key=value</code>; load a new image</td><td><code>ROM</code> yes; <code>ROM LOAD</code> only if the host has <code>emu.loadRom</code></td><td><code>ROM</code> yes</td></tr>
+        <tr><td><code>PAUSE</code> · <code>RESUME</code> · <code>STEP</code> · <code>RESET</code></td><td><code>OK</code></td><td>yes</td><td><code>ERR … unavailable: &lt;measured reason&gt;</code></td></tr>
+        <tr><td><code>BREAK SET|REMOVE kind $addr</code>, <code>BREAK LIST</code>, <code>BREAK CLEAR</code></td><td><code>OK</code>; <code>LIST</code> gives <code>exec $C01A, …</code> or <code>none</code></td><td>yes</td><td><code>ERR BREAK unavailable: …</code></td></tr>
+        <tr><td><code>STATE SAVE</code> · <code>STATE LOAD hex</code></td><td><code>OK &lt;hex&gt;</code> · <code>OK</code>; ≤ 128 KiB</td><td>yes</td><td>yes</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Push line</th><th>Sent when</th><th>Handled by <code>BridgeMemoryBackend</code></th></tr></thead>
+      <tbody>
+        <tr><td><code>PUSH RAM $0010:3C $0011:80 …</code></td><td>Once per frame while running, with every CPU write since the last one (latest value per address, at most 4096 entries; the rest goes next frame). Also just before a <code>STOPPED</code>.</td><td>Updates the cache, raises <code>RamChanged</code>. A malformed line is dropped whole.</td></tr>
+        <tr><td><code>PUSH STOPPED reason=breakpoint pc=$C123 prg=$04123</code></td><td>The machine stopped. <code>reason</code> is <code>breakpoint</code>, <code>step</code>, <code>pause</code> or <code>unknown</code>; <code>prg</code> is the PRG-ROM offset of the PC (it tells two banks at the same address apart), or <code>-</code>.</td><td><code>MarkStopped</code> → <code>Stopped(StopInfo)</code></td></tr>
+        <tr><td><code>PUSH RESUMED</code></td><td>The machine runs again after a stop (not after a step, which is followed by its own <code>STOPPED</code>).</td><td><code>MarkRunning</code> → <code>Resumed</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Two threads on the .NET side</h3>
+    <p><code>ProtocolClient</code> owns the socket. A background thread (<code>monitor-receiver</code>) reads every line: lines starting with <code>PUSH</code> go to the <code>PushReceived</code> event, everything else into a reply queue. <code>Send</code> writes the request and waits on the queue. Without this split, a push arriving between a request and its reply would be taken for the reply. Connecting times out after 5 s; a read blocks for at most 30 s.</p>
+
+    <h3>Bounds</h3>
+    <p>The bridge is a synchronous script inside the emulator, so an unbounded request would freeze the emulator. The bounds are part of the contract and are tested.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Constant</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td><code>MaxReadLength</code> / <code>MaxWriteLength</code></td><td>4096 bytes per request (the backend sends 256)</td></tr>
+        <tr><td><code>MaxDisasmCount</code></td><td>256 instructions</td></tr>
+        <tr><td><code>MaxStateLength</code></td><td>128 KiB</td></tr>
+        <tr><td><code>MaxLoadLength</code></td><td>16 KiB per <code>LOAD</code></td></tr>
+        <tr><td><code>MaxPushPayload</code></td><td>4096 changes per <code>PUSH RAM</code> line</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2 id="mesen2">Breakpoints and stepping on Mesen2</h2>
+    <p>Mesen2's <code>emu.breakExecution</code>, <code>emu.resume</code> and <code>emu.step</code> only work inside an event callback, never from the script body. <code>bridge_mesen2.lua</code> is therefore built entirely from callbacks registered in <code>start()</code>:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Callback</th><th>Role</th></tr></thead>
+      <tbody>
+        <tr><td><code>on_tick</code> on <code>eventType.inputPolled</code></td><td>Once per frame while the machine runs: accept the client, send <code>PUSH RAM</code>, read a command. If there is one, <code>emu.breakExecution()</code>, answer it and up to 63 more queued ones, then resume (or pause, step or reset if asked).</td></tr>
+        <tr><td><code>serve_stopped</code> on <code>eventType.codeBreak</code></td><td>Fires after a breakpoint or a step. Pushes <code>STOPPED</code>, then serves commands in a blocking loop (<code>serve_blocked</code>, 0.5 s receive timeout) until <code>RESUME</code>, <code>STEP</code> or <code>RESET</code>. No frame callback fires while the machine is stopped, so this is the only place a stopped machine can be served.</td></tr>
+        <tr><td><code>on_reset</code> on <code>eventType.reset</code></td><td>Marks the reset as done. Breakpoints are ignored from the moment a reset is requested until this fires, so the old program cannot hit one on its way out.</td></tr>
+        <tr><td>Memory callback, <code>callbackType.write</code> over $0000–$FFFF</td><td>Records every CPU write into the dirty set that becomes <code>PUSH RAM</code>.</td></tr>
+        <tr><td>Memory callback per breakpoint</td><td><code>exec</code>: records the stop and halts. <code>read</code>/<code>write</code>: only log the access; they do not stop the machine.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <ul>
+      <li><strong>Stopping before the instruction.</strong> <code>emu.breakExecution</code> stops at the end of the current instruction, so the instruction under the breakpoint would already have run. The exec callback calls <code>emu.step(1, cpuCycleStep)</code> instead, which stops right after the opcode fetch: PC, registers and memory are as they were before the instruction.</li>
+      <li><strong>Stepping.</strong> A step needs a running machine. <code>STEP</code> is answered <code>OK</code>, then <code>step_once</code> resumes and calls <code>emu.step(1, stepType.step)</code>; the next <code>codeBreak</code> pushes <code>STOPPED reason=step</code>.</li>
+      <li><strong>A breakpoint at the current PC</strong> does not fire until the CPU comes back to it: Mesen2 treats the instruction as already reached.</li>
+      <li><strong>The client leaves.</strong> If the monitor disconnects while the machine is stopped, the bridge calls <code>emu.stop(0)</code>.</li>
+    </ul>
+    <p>A breakpoint hit, from the debugger's request to the resume. The front end here is the VS Code debug adapter (<code>DebugSession</code>), which is what subscribes to <code>Stopped</code>; the TUI does not.</p>
+    <div class="figure">
+      <svg viewBox="0 0 960 730" role="img" aria-label="Sequence of a breakpoint hit: the front end asks the backend to set a breakpoint, the backend sends BREAK SET, the bridge registers an exec callback; when the program reaches the address the bridge stops the CPU, pushes STOPPED, serves CPU and READ requests while stopped, and resumes on RESUME">
+        <defs>
+          <marker id="arrow-s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <!-- headers -->
+        <rect class="box-d" x="20" y="16" width="160" height="50" rx="8"/>
+        <text x="100" y="38" text-anchor="middle" font-weight="600">Front end</text>
+        <text x="100" y="56" text-anchor="middle" class="muted" font-size="12">DAP DebugSession</text>
+        <rect class="box-b" x="230" y="16" width="180" height="50" rx="8"/>
+        <text x="320" y="38" text-anchor="middle" font-weight="600">BridgeMemoryBackend</text>
+        <text x="320" y="56" text-anchor="middle" class="muted" font-size="12">+ ProtocolClient</text>
+        <rect class="box-c" x="530" y="16" width="180" height="50" rx="8"/>
+        <text x="620" y="38" text-anchor="middle" font-weight="600">bridge_mesen2.lua</text>
+        <text x="620" y="56" text-anchor="middle" class="muted" font-size="12">in Mesen2</text>
+        <rect class="box-c" x="790" y="16" width="160" height="50" rx="8"/>
+        <text x="870" y="38" text-anchor="middle" font-weight="600">Mesen2 CPU</text>
+        <text x="870" y="56" text-anchor="middle" class="muted" font-size="12">emulated 6502</text>
+        <!-- lifelines -->
+        <line class="life" x1="100" y1="66" x2="100" y2="710"/>
+        <line class="life" x1="320" y1="66" x2="320" y2="710"/>
+        <line class="life" x1="620" y1="66" x2="620" y2="710"/>
+        <line class="life" x1="870" y1="66" x2="870" y2="710"/>
+        <!-- stopped: serve_blocked -->
+        <rect class="box-c" x="614" y="335" width="12" height="315" rx="2"/>
+
+        <path class="line" d="M100,110 L318,110" marker-end="url(#arrow-s)"/>
+        <text x="210" y="103" text-anchor="middle" font-size="12">AddBreakpoint($C01A, exec)</text>
+        <path class="line" d="M320,145 L618,145" marker-end="url(#arrow-s)"/>
+        <text x="470" y="138" text-anchor="middle" font-size="12">BREAK SET exec $C01A</text>
+        <path class="line" d="M620,180 L868,180" marker-end="url(#arrow-s)"/>
+        <text x="745" y="173" text-anchor="middle" font-size="12">emu.addMemoryCallback(exec)</text>
+        <path class="line" d="M620,215 L322,215" marker-end="url(#arrow-s)"/>
+        <text x="470" y="208" text-anchor="middle" font-size="12">OK</text>
+
+        <rect class="box-a" x="790" y="236" width="160" height="24" rx="5"/>
+        <text x="870" y="252" text-anchor="middle" font-size="12">opcode fetch at $C01A</text>
+
+        <path class="line" d="M870,295 L622,295" marker-end="url(#arrow-s)"/>
+        <text x="745" y="274" text-anchor="middle" font-size="12">exec callback fires:</text>
+        <text x="745" y="288" text-anchor="middle" font-size="12">emu.step(1, cpuCycleStep)</text>
+        <path class="line" d="M870,335 L628,335" marker-end="url(#arrow-s)"/>
+        <text x="745" y="314" text-anchor="middle" font-size="12">codeBreak event:</text>
+        <text x="745" y="328" text-anchor="middle" font-size="12">serve_stopped()</text>
+
+        <path class="line" d="M614,370 L322,370" marker-end="url(#arrow-s)"/>
+        <text x="470" y="363" text-anchor="middle" font-size="12">PUSH RAM $addr:byte … (pending writes)</text>
+        <path class="line" d="M614,405 L322,405" marker-end="url(#arrow-s)"/>
+        <text x="470" y="398" text-anchor="middle" font-size="12">PUSH STOPPED reason=breakpoint pc=$C01A prg=…</text>
+        <path class="line" d="M320,440 L102,440" marker-end="url(#arrow-s)"/>
+        <text x="210" y="433" text-anchor="middle" font-size="12">Stopped(StopInfo)</text>
+        <text x="210" y="456" text-anchor="middle" class="muted" font-size="11">on the receiver thread</text>
+
+        <path class="line" d="M100,485 L318,485" marker-end="url(#arrow-s)"/>
+        <text x="210" y="478" text-anchor="middle" font-size="12">ReadCpuState(), Read(…)</text>
+        <path class="line" d="M320,515 L612,515" marker-end="url(#arrow-s)"/>
+        <text x="470" y="508" text-anchor="middle" font-size="12">CPU, READ $addr len</text>
+        <path class="line" d="M614,545 L322,545" marker-end="url(#arrow-s)"/>
+        <text x="470" y="538" text-anchor="middle" font-size="12">OK pc=$C01A a=… cycles=… · OK &lt;hex&gt;</text>
+
+        <path class="line" d="M100,580 L318,580" marker-end="url(#arrow-s)"/>
+        <text x="210" y="573" text-anchor="middle" font-size="12">Resume()</text>
+        <path class="line" d="M320,610 L612,610" marker-end="url(#arrow-s)"/>
+        <text x="470" y="603" text-anchor="middle" font-size="12">RESUME</text>
+        <path class="line" d="M614,645 L322,645" marker-end="url(#arrow-s)"/>
+        <text x="470" y="638" text-anchor="middle" font-size="12">OK, then PUSH RESUMED</text>
+        <path class="line" d="M626,685 L868,685" marker-end="url(#arrow-s)"/>
+        <text x="745" y="678" text-anchor="middle" font-size="12">emu.resume()</text>
+
+        <text x="634" y="480" class="muted" font-size="11">serve_blocked</text>
+        <text x="634" y="494" class="muted" font-size="11">loop</text>
+      </svg>
+    </div>
+    <p>Setting the breakpoint happens while the machine runs: <code>on_tick</code> breaks execution, answers <code>BREAK SET</code>, and resumes within the same frame. The adapter then maps <code>pc</code> and <code>prg</code> back to a source line with the <a href="#listings">source map</a>; if another bank at the same CPU address is executing, it resumes without reporting the stop.</p>
+
+    <h2 id="capabilities">Capabilities</h2>
+    <p>What a host can do is <strong>declared, never probed</strong>. <code>ExecutionCapability</code> (Abstractions) is a flag set: <code>MemoryRead</code>, <code>MemoryWrite</code>, <code>CpuState</code>, <code>Pause</code>, <code>Resume</code>, <code>Reset</code>, <code>StepInstruction</code>, <code>BreakpointExecution</code>, <code>WatchpointRead</code>, <code>WatchpointWrite</code>, <code>StateSaveLoad</code>, with the composites <code>Memory</code> and <code>FullControl</code>. <code>ExecutionCapabilities.For(name, version)</code> answers from a table of builds that were measured; any other name or version gets <code>None</code>.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Host (exact build)</th><th>Capabilities</th><th>Status line</th><th>Source of the measurement</th></tr></thead>
+      <tbody>
+        <tr><td>Mesen2 2.1.1</td><td><code>FullControl</code></td><td><code>caps: full control</code></td><td><code>bridge_mesen2.lua</code></td></tr>
+        <tr><td>MesenCE 2.2.1</td><td><code>Memory | StateSaveLoad</code></td><td><code>caps: memory + snapshots</code>, <code>cannot run, step or break</code></td><td><code>bridge.lua</code></td></tr>
+        <tr><td>MAME 0.289</td><td><code>Memory | CpuState</code></td><td>—</td><td><code>MameCapabilityTests</code> with <code>probe_mame.lua</code>. There is no MAME adapter; the row is data only.</td></tr>
+        <tr><td>anything else, <code>Dummy</code></td><td><code>None</code></td><td><code>caps: nothing measured</code></td><td>—</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>MesenCE's bridge refuses <code>PAUSE</code>, <code>RESUME</code>, <code>STEP</code>, <code>BREAK</code> and <code>RESET</code> by name, with what was measured on 2.2.1: <code>emu.pause</code> does not exist; <code>emu.resume</code> and <code>emu.step</code> refuse calls outside a callback; <code>emu.addMemoryCallback</code> refuses every function; <code>emu.reset</code> is reserved for manual validation. The shell uses the same flags: F7, F8, F9 and F10 each name the capability they need (<code>ShellKey.Requires</code>), the help screen marks keys the machine cannot honour, and pressing one shows a refusal from <code>ShellCapabilities</code> instead of sending a command.</p>
+    <p>The other probe scripts in <code>Bridge/</code> are not bridges: <code>probe_mame.lua</code> reports what MAME's Lua can do as <code>MPROBE key=value</code> lines for <code>MameCapabilityTests</code>, and <code>spike_m0.lua</code> is the original MesenCE 2.2.1 capability spike.</p>
+
+    <h2 id="listings">Listings and the source map</h2>
+    <p>The editor's gutter (address, bytes, cycles) comes from the assembler's own listing, through a narrow seam, <code>IListingSource</code> (<code>Monitor.Core/Shell/ListingSource.cs</code>). The panes know only its types: <code>ListingRow</code>, <code>EditorRow</code>, and <code>ListingToken</code>, a run of text tagged with a <code>ThemeRole</code> name rather than a colour.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Type</th><th>Role</th></tr></thead>
+      <tbody>
+        <tr><td><code>AssemblerListingSource</code></td><td>Lists one file with the library's <code>SourceListingService</code>. Assembles again on every call (nothing is cached). Cycles come from the documented instruction form whose opcode is the row's first byte; a data byte gets none. An assembly error yields the reason and no rows.</td></tr>
+        <tr><td><code>ProjectListingSource</code></td><td>Lists a file of a project that has just been built, using <code>ProjectSession.ProjectSymbols</code>, so names defined in another unit are not reported as undefined.</td></tr>
+        <tr><td><code>ProjectConfigLocator</code></td><td>Decides which <code>config.json</code> governs the open source: the nearest one, searching upwards to the session directory, that declares the file as an input. An unreadable configuration still counts as governing, so <code>BUILD</code> can report it.</td></tr>
+        <tr><td><code>ListingSourceFactory</code></td><td>Creates the listing source for a given CPU and directory.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The source map (<code>Monitor.Core/Debugging/</code>) goes the other way, from addresses to lines. <code>SourceMapBuilder.Build</code> takes a project build run with <code>CaptureListing</code> and produces <code>MappedLine</code>s: CPU address, length, PRG offset, file and line. The PRG offset is computed the way the bytes travelled: offset in the unit's object file, plus where that file sits in the image, minus the iNES header. <code>SourceMap</code> answers <code>AtLine</code>, <code>AtAddress</code>, <code>Resolve(pc, prgOffset)</code> (with an <code>ambiguous</code> flag when banks share an address), <code>NearestLabel</code> and <code>TryNearestEmittingLine</code>. In the current code it is used by the debug adapter (<code>WinASM65.Tooling/Dap/DebugSession.cs</code>), not by the TUI.</p>
+
+    <h2 id="units">Units and project builds</h2>
+    <p>A monitor's distinctive job: assemble a routine once and place it anywhere without assembling it again.</p>
+    <ul>
+      <li><strong><code>RelocatableUnit</code></strong> keeps the relocatable modules an assembly produced. <code>FromSource</code> assembles a file and refuses one with no <code>.export</code> and no <code>.import</code>, since it produces no module. <code>PlaceAt(address)</code> runs the WinASM65 linker with <code>AddressShift = address − NaturalOrigin</code> and checks that the image landed where it was asked to. A unit with several blocks moves as a whole: blocks at $8000/$9000 placed at $3000 land at $3000/$4000.</li>
+      <li><strong><code>UnitLibrary</code></strong> holds the units by name and implements <code>ASSEMBLE</code>, <code>LOAD</code> and <code>UNITS</code>. <code>LOAD</code> refuses units over 16 KiB, writes the block, <strong>reads it back and compares byte by byte</strong>, and answers <code>OK $3000 24 byte(s), 3 site(s)</code> or names the first mismatch. The read-back is the only proof the code is really at the address named.</li>
+      <li><strong><code>ProjectBuilder</code></strong> implements <code>BUILD</code>: it opens a <code>ProjectSession</code> on the configuration (resolved against the session directory), builds, and turns every failure, including missing files and bad JSON, into <code>ERR</code> lines. It keeps the last session and result so the shell can list project files and find the built image.</li>
+    </ul>
+    <p>See <a href="modules.html">Modules, linker, viewer</a> for the module format and <a href="segments.html">Projects and segments</a> for <code>config.json</code>.</p>
+
+    <h2 id="shell">The terminal shell</h2>
+    <p><code>WinASM65.Monitor/Shell/</code> is the only code that knows SharpConsoleUI. <code>ShellRunner.Run</code> creates a <code>ConsoleWindowSystem</code> on a <code>NetConsoleDriver</code> (tests pass a headless driver and a bounded number of iterations), builds the <code>ShellWindow</code>, and on exit stops the emulator it started.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Area</th><th>Files</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td>Window</td><td><code>ShellWindow</code></td><td>Six SharpConsoleUI windows (status, tree, editor, RAM, ROM, refusal), the key table, the context menus, every action as a command line.</td></tr>
+        <tr><td>Status line</td><td><code>ShellStatus</code>, <code>ShellPanes</code> (<code>StatusLine</code>)</td><td>Segments with priorities; whole segments are dropped when the line is too narrow, lowest priority first.</td></tr>
+        <tr><td>Layout</td><td><code>ShellLayout</code></td><td>A pure function of the terminal size, with no UI types, so it can be tested at exact widths.</td></tr>
+        <tr><td>Files</td><td><code>FileTreePane</code>, <code>FileTreeModel</code></td><td>Sections <em>sources</em>, <em>project files</em>, <em>ROM images</em>, <em>units</em>; activating a source opens it; right-click opens a menu.</td></tr>
+        <tr><td>Editor</td><td><code>SourceEditorTabs</code>, <code>SourceEditorPane</code>, <code>SourceDocument</code>, <code>ListingFormatter</code>, <code>AssemblerSyntaxHighlighter</code>, <code>JsonSyntaxHighlighter</code></td><td>One tab per file; an editable source with a read-only gutter of address, bytes and cycles. Saving keeps the file's encoding and line endings.</td></tr>
+        <tr><td>Memory</td><td><code>RamPane</code>, <code>RamDump</code>, <code>RamEditing</code>, <code>RomPane</code></td><td>RAM $0000–$3FFF with the zero page and stack marked, refreshed from <code>RamChanged</code>; ROM $8000–$FFFF. <code>RamEditing</code> holds write-and-verify logic for in-place edits of $0000–$3FFF; only the tests call it so far.</td></tr>
+        <tr><td>Commands</td><td><code>EditorCommands</code>, <code>StateCommands</code></td><td>Build the exact lines the keys send, e.g. <code>BREAK SET exec $C01A</code>, so tests can assert them.</td></tr>
+        <tr><td>Capabilities</td><td><code>ShellKey</code>, <code>ShellCapabilities</code>, <code>Shortcut</code></td><td>Which key needs which capability, and the refusal wording.</td></tr>
+        <tr><td>Theme</td><td><code>ShellTheme</code>, <code>ShellColorScheme</code>, <code>theme.json</code>, <code>ThemeRole</code> (Core)</td><td>A colour per role plus a 16-colour fallback. A broken file never replaces a working palette, and an unknown role is reported.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Layout</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Terminal width</th><th><code>ShellLayoutMode</code></th><th>Panes</th></tr></thead>
+      <tbody>
+        <tr><td>≥ 120</td><td><code>Full</code></td><td>file tree (24) + editor + right pane (40)</td></tr>
+        <tr><td>100–119</td><td><code>CollapsedTree</code></td><td>tree drawer (3) + editor + right pane (34)</td></tr>
+        <tr><td>80–99</td><td><code>Overlay</code></td><td>the side panes become toggled overlays</td></tr>
+        <tr><td>60–79</td><td><code>FullWidth</code></td><td>editor and listing only</td></tr>
+        <tr><td>&lt; 60, or fewer than 6 rows</td><td><code>Refuse</code></td><td>a message instead of a broken layout</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Keys</h3>
+    <p>The key table is <code>ShellWindow.Keys</code>; F1 prints it, marking the keys the attached machine cannot honour. Every key issues a command into the session:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Key</th><th>Action</th><th>Command sent</th><th>Needs</th></tr></thead>
+      <tbody>
+        <tr><td>F1</td><td>Help (the key list)</td><td>—</td><td>—</td></tr>
+        <tr><td>F2</td><td>Show / hide the file tree</td><td>—</td><td>—</td></tr>
+        <tr><td>F3</td><td>Focus the editor</td><td>—</td><td>—</td></tr>
+        <tr><td>F4</td><td>Show / hide the RAM pane</td><td>—</td><td>—</td></tr>
+        <tr><td>F5</td><td>Save all, then build the governing project, restart or reload the emulator on the new ROM and reset it. A file no <code>config.json</code> governs is assembled on its own.</td><td><code>BUILD …</code> / <code>ASSEMBLE …</code>, <code>RESET</code></td><td>—</td></tr>
+        <tr><td>F6</td><td>Save all open sources</td><td>—</td><td>—</td></tr>
+        <tr><td>F7</td><td>Save the machine state into a slot (default <code>0</code>)</td><td><code>STATE SAVE</code></td><td><code>StateSaveLoad</code></td></tr>
+        <tr><td>F8</td><td>Toggle an exec breakpoint on the editor line's address</td><td><code>BREAK SET|REMOVE exec $addr</code></td><td><code>BreakpointExecution</code></td></tr>
+        <tr><td>F9</td><td>Run</td><td><code>RESUME</code></td><td><code>Resume</code></td></tr>
+        <tr><td>F10</td><td>Step one instruction</td><td><code>STEP</code></td><td><code>StepInstruction</code></td></tr>
+        <tr><td>R</td><td>Pick a bridge script, restart the emulator with it, reconnect</td><td><code>CONNECT</code></td><td>a launcher</td></tr>
+        <tr><td>Ctrl+S</td><td>Save the active source</td><td>—</td><td>—</td></tr>
+        <tr><td>Ctrl+Q</td><td>Quit</td><td>—</td><td>—</td></tr>
+        <tr><td>F12 <span class="tag">not bound</span></td><td>Video pane (planned)</td><td>—</td><td>—</td></tr>
+        <tr><td>Ctrl+A <span class="tag">not bound</span></td><td>Assistant (planned)</td><td>—</td><td>—</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="callout">
+      <p><strong>Note for maintainers.</strong> <code>BindKeys()</code> builds a list of <code>Shortcut</code> objects (key name + action), and the tests check that list (<code>HasShortcut("F5")</code>). In the current source nothing routes a SharpConsoleUI key event to that list, and <code>case "F12"</code> (<code>ToggleRomPane</code>) can never run because F12 is marked unbound. Check the key dispatch before relying on the table above.</p>
+    </div>
+    <p>The same actions are available from the context menus: on a source, <em>Assemble source</em>, <em>Build project</em>, <em>Build + Transfer</em>; on a ROM, <em>Transfer this ROM</em>; on the tree, <em>New source file</em>, <em>Refresh file tree</em>, <em>Launch emulator</em>, <em>Reconnect to bridge</em>.</p>
+
+    <h2 id="limits">Known limits</h2>
+    <ul>
+      <li>Read and write watchpoints on Mesen2 only log the access; they do not stop the machine.</li>
+      <li>The MesenCE bridge listens on the fixed port 45678, whatever <code>--port</code> says.</li>
+      <li>A monitor that started on <code>DummyBridgeBackend</code> stays on it: <code>CONNECT</code> calls the dummy's <code>Reconnect</code>, which does nothing.</li>
+      <li>The header comment of <code>bridge_mesen2.lua</code> still describes a headless <code>--testRunner</code> launch; <code>BridgeLauncher</code> now opens the normal Mesen2 window (<a href="img/mesen2.png">screenshot</a>).</li>
+      <li><code>docs/monitor.md</code> (French) predates Mesen2 support and the project split: it describes MesenCE only, and its test counts are out of date.</li>
+      <li>The plugin contract is defined and tested (<code>PluginContractLoadingTests</code>), but the monitor does not load plugins yet.</li>
+    </ul>
+
+    <figure class="shot">
+      <a href="img/mesen2.png"><img src="img/mesen2.png" alt="The Mesen2 window running Bomberman"></a>
+      <figcaption>Mesen2 2.1.1 as <code>BridgeLauncher</code> starts it: its normal window, with the ROM loaded and <code>bridge_mesen2.lua</code> running.</figcaption>
+    </figure>
+
+
+    <footer>
+      <p>Screenshots are taken from the real programs by <code>tools/screenshots/shoot-all.ps1</code>; run it again after a UI change.</p>
+    </footer>
+  </main>
+
+  <aside class="toc" aria-label="On this page"></aside>
+</div>
+</body>
+</html>
