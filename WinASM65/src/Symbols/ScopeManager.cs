@@ -213,14 +213,20 @@ namespace WinASM65.Symbols
             }
         }
 
+        /// <summary>
+        /// Resolves what waited for the symbols the current scope now defines. In a
+        /// { } block that is the block itself: a label further down the block meets
+        /// the references above it before the block closes and forgets its labels.
+        /// What stays pending moves to the parent when the block closes.
+        /// </summary>
         public void ResolveSymbols(IExpressionEvaluator evaluator, Action<UnresolvedExpr, Value> patchCallback)
         {
-            Dictionary<string, UnresolvedSymbol> unsolvedSymbols = GlobalScope.UnsolvedSymbols;
+            Dictionary<string, UnresolvedSymbol> unsolvedSymbols = CurrentScope.UnsolvedSymbols;
             List<string> resolvedNames = new List<string>();
 
             foreach (string symbName in unsolvedSymbols.Keys)
             {
-                if (!GlobalScope.SymbolTable.ContainsKey(symbName))
+                if (!CurrentScope.SymbolTable.ContainsKey(symbName))
                     continue;
 
                 UnresolvedSymbol unresSymb = unsolvedSymbols[symbName];

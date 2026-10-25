@@ -31,6 +31,40 @@ namespace WinASM65.Tests
         }
 
         [TestMethod]
+        public void ABlockLabelWorksForward()
+        {
+            // A branch over code to a label further down the same { } block used
+            // to stay unresolved, and the branch was assembled with offset 0.
+            AreBytes("D0 01 EA 60", Bytes(".org $8000\nMain:\n{\n bne skip\n nop\nskip:\n rts\n}"));
+        }
+
+        [TestMethod]
+        public void ALocalLabelWorksForwardInABlock()
+        {
+            AreBytes("D0 01 EA 60", Bytes(".org $8000\nMain:\n{\nloop:\n bne @done\n nop\n@done:\n rts\n}"));
+        }
+
+        [TestMethod]
+        public void EachBlockHasItsOwnLabels()
+        {
+            AreBytes("D0 00 60 D0 00 60", Bytes(".org $8000\nMain:\n{\n bne next\nnext: rts\n}\n{\n bne next\nnext: rts\n}"));
+        }
+
+        [TestMethod]
+        public void ABlockLabelIsNotSeenAfterTheBlock()
+        {
+            StringAssert.Contains(Errors(".org $8000\nMain:\n{\ninside: rts\n}\n jmp inside"), "Undefined symbol: inside");
+        }
+
+        [TestMethod]
+        public void ADotLabelGetsTheLocalSpelling()
+        {
+            // Other assemblers write a local label ".loop"; here it is "@loop:".
+            StringAssert.Contains(Errors(".org $8000\nMain:\n.loop\n bne .loop"),
+                "Unknown directive '.loop'. A local label is written @loop:");
+        }
+
+        [TestMethod]
         public void ALocalBeforeAnyGlobalIsReported()
         {
             StringAssert.Contains(Errors(".org $8000\n@orphan: rts"), "Local label '@orphan' has no global label before it");
