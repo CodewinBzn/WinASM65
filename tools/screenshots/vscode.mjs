@@ -95,8 +95,11 @@ export async function openFile(page, name, line) {
   await page.keyboard.press('Control+P');
   await page.waitForSelector('.quick-input-widget:not([style*="display: none"]) input');
   await page.keyboard.type(name);
-  await page.waitForTimeout(600);
-  await page.keyboard.press('Enter');
+  // The file search finishes after the first keystrokes: open the row it lists.
+  const row = page.locator('.quick-input-list .monaco-list-row', { hasText: name }).first();
+  await row.waitFor({ timeout: 20000 });
+  await page.waitForTimeout(300);
+  await row.click();
   await page.waitForSelector('.monaco-editor .view-lines');
   if (line) {
     await page.keyboard.press('Control+G');

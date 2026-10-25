@@ -169,6 +169,10 @@ try {
       await page.keyboard.press('F5');
       await page.getByText(/Paused on breakpoint/i).first().waitFor({ timeout: 90000 });
       await page.waitForTimeout(4000); // variables and the RAM panel
+      for (const scope of ['Registers', 'Flags']) {
+        await page.locator('.debug-variables .monaco-list-row', { hasText: scope }).first().click();
+        await page.waitForTimeout(800);
+      }
       await shot(page, 'vscode-debug');
 
       const ram = page.locator('.editor-group-container', { has: page.locator('.tab', { hasText: 'RAM' }) }).first();
