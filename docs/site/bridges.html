@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emulator bridges</title>
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<div class="layout">
+  <nav class="site-nav" aria-label="Pages"></nav>
+
+  <main>
+    <p class="breadcrumb"><a href="index.html">WinASM65</a> › Debugging</p>
+    <header class="page">
+      <h1>Emulator bridges</h1>
+      <p class="lede">How WinASM65 talks to an emulator, whatever the emulator and whatever the machine: a small script inside the emulator (the bridge) answers a line protocol on a TCP port, and an adapter knows how to start that emulator with it. This page is the contract a bridge implements and the way a project chooses its emulator.</p>
+    </header>
+
+    <aside class="sources">
+      <h4>Source files</h4>
+      <ul>
+        <li><a href="../../WinASM65.Monitor.Core/Bridge/bridge_mesen2.lua"><code>Bridge/bridge_mesen2.lua</code></a> (Mesen2, contract 2)</li>
+        <li><a href="../../WinASM65.Monitor.Core/Bridge/bridge.lua"><code>Bridge/bridge.lua</code></a> (MesenCE, contract 1)</li>
+        <li><a href="../../WinASM65.Monitor.Core/Protocol/BridgeHello.cs"><code>Protocol/BridgeHello.cs</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/Protocol/MonitorProtocol.cs"><code>Protocol/MonitorProtocol.cs</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/BridgeMemoryBackend.cs"><code>BridgeMemoryBackend.cs</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/Emulators/EmulatorConfiguration.cs"><code>Emulators/EmulatorConfiguration.cs</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/Emulators/EmulatorAdapters.cs"><code>Emulators/EmulatorAdapters.cs</code></a></li>
+        <li><a href="../../WinASM65.Systems/SystemDefinition.cs"><code>WinASM65.Systems</code></a></li>
+        <li><a href="../../tools/mesen2-bridge-check.py"><code>tools/mesen2-bridge-check.py</code></a></li>
+      </ul>
+    </aside>
+
+    <h2 id="overview">The pieces</h2>
+    <div class="figure">
+      <svg viewBox="0 0 900 230" role="img" aria-label="The debugger starts the emulator through an adapter, which loads the bridge script; the bridge listens on a TCP port and the debugger connects to it; the system definition tells the debugger what the machine has">
+        <defs>
+          <marker id="b-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <rect class="box-d" x="20" y="30" width="230" height="70" rx="8"/>
+        <text x="135" y="58" text-anchor="middle" font-weight="600">Debugger</text>
+        <text x="135" y="80" text-anchor="middle" class="muted" font-size="13">DAP, terminal monitor, MCP</text>
+        <rect class="box-c" x="330" y="30" width="230" height="70" rx="8"/>
+        <text x="445" y="58" text-anchor="middle" font-weight="600">Emulator adapter</text>
+        <text x="445" y="80" text-anchor="middle" class="muted" font-size="13">mesen2, mesence, custom</text>
+        <rect class="frame" x="640" y="20" width="240" height="190" rx="8"/>
+        <text x="760" y="44" text-anchor="middle" font-weight="600">Emulator process</text>
+        <rect class="box-b" x="665" y="120" width="190" height="64" rx="8"/>
+        <text x="760" y="146" text-anchor="middle" font-weight="600">Bridge script</text>
+        <text x="760" y="166" text-anchor="middle" class="muted" font-size="13">listens on MACHINE_PORT</text>
+        <rect class="box-a" x="20" y="140" width="230" height="64" rx="8"/>
+        <text x="135" y="166" text-anchor="middle" font-weight="600">System definition</text>
+        <text x="135" y="186" text-anchor="middle" class="muted" font-size="13">memories, boot, image header</text>
+        <path class="line" d="M250,65 L330,65" marker-end="url(#b-arrow)"/>
+        <text x="290" y="56" text-anchor="middle" class="muted" font-size="12">starts</text>
+        <path class="line" d="M560,65 L640,65" marker-end="url(#b-arrow)"/>
+        <text x="600" y="56" text-anchor="middle" class="muted" font-size="12">command line</text>
+        <path class="line" d="M250,100 Q 470 150 665 152" marker-end="url(#b-arrow)"/>
+        <text x="455" y="150" text-anchor="middle" class="muted" font-size="12">TCP, one line per command</text>
+        <path class="line" d="M135,140 L135,100" marker-end="url(#b-arrow)"/>
+      </svg>
+    </div>
+    <ul>
+      <li><strong>The bridge</strong> is a script the emulator runs (Lua for Mesen2). It is the only part that knows the emulator's API.</li>
+      <li><strong>The adapter</strong> knows how to start that emulator with that script: command line, settings to prepare. A project can also describe a command line itself (the <em>custom</em> adapter).</li>
+      <li><strong>The system definition</strong> (<a href="../../WinASM65.Systems/NesSystem.cs"><code>NesSystem</code></a>, …) says what the machine has: its memory map, the memories behind its video chip, how a program starts. It is chosen from the project's <code>Target.System</code>, else from what the bridge reports, else from the image's header.</li>
+    </ul>
+
+    <h2 id="config">Choosing an emulator in config.json</h2>
+<pre><code>"Emulator": {
+    "Name": "mesen2",
+    "Path": "C:\\Emulators\\Mesen2\\Mesen.exe",
+    "Bridge": "bridges/my_bridge.lua",
+    "Arguments": "{rom} {script}",
+    "Port": 45678
+}</code></pre>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Key</th><th>Required</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>Path</code></td><td>yes</td><td>The emulator's executable. Relative to config.json.</td></tr>
+        <tr><td><code>Name</code></td><td>no</td><td>The adapter: <code>mesen2</code>, <code>mesence</code>, or any other name for a custom emulator. Without it, a <code>Mesen.exe</code> is taken for Mesen2 and anything else is custom.</td></tr>
+        <tr><td><code>Bridge</code></td><td>no</td><td>The bridge script, replacing the adapter's own: a path (relative to config.json) or the file name of a bridge shipped with WinASM65.</td></tr>
+        <tr><td><code>Arguments</code></td><td>custom only</td><td>The command line of a custom emulator. <code>{rom}</code>, <code>{script}</code> and <code>{port}</code> are replaced; double quotes group words. Without it, the ROM alone is passed.</td></tr>
+        <tr><td><code>Port</code></td><td>no</td><td>The port the terminal monitor uses for an emulator it starts (the debug adapter picks a free one).</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Key names are case-insensitive. The same section is read by the VS Code debugger, the terminal monitor and the MCP server; in VS Code the setting <code>winasm65.emulatorPath</code> and a launch configuration's <code>emulatorPath</code>/<code>emulator</code> override it.</p>
+    <p>Every bridge is also told its port in the environment variable <code>MACHINE_PORT</code>, because not every emulator can pass arguments to a script.</p>
+
+    <h2 id="protocol">The line protocol</h2>
+    <p>The debugger connects to the bridge on <code>127.0.0.1:&lt;port&gt;</code> and sends one command per line. Every command gets exactly one answer line, starting with <code>OK</code> or <code>ERR</code> followed by a reason. Numbers are hexadecimal with <code>$</code> unless said otherwise; byte strings are hexadecimal without separators.</p>
+
+    <h3 id="hello">Handshake: PING and HELLO</h3>
+<pre><code>&gt; PING
+OK Mesen2 2.1.1
+&gt; HELLO
+OK protocol=2 name=Mesen2 version=2.1.1 system=nes caps=memory,cpu,pause,resume,reset,step,break,watchread,watchwrite,state,status spaces=PPU,PAL,OAM,CHR</code></pre>
+    <p><code>PING</code> answers the emulator's name and version. <code>HELLO</code> is contract version 2: the bridge says what it is and what it can do, and the debugger believes it. A bridge that answers <code>HELLO</code> with an error is a version 1 bridge; its capabilities then come from the table of emulators WinASM65 was measured against (<a href="../../WinASM65.Monitor.Core/ExecutionCapabilities.cs"><code>ExecutionCapabilities</code></a>), and it has no memory spaces.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>HELLO field</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>protocol</code></td><td>Contract version, 2 or more.</td></tr>
+        <tr><td><code>name</code>, <code>version</code></td><td>The emulator, shown to the user and in refusals.</td></tr>
+        <tr><td><code>system</code></td><td>The machine running, as a WinASM65 system id (<code>nes</code>, <code>c64</code>, …). Used when the project names none.</td></tr>
+        <tr><td><code>caps</code></td><td>What works, comma-separated: <code>memory</code> (or <code>read</code>, <code>write</code>), <code>cpu</code>, <code>pause</code>, <code>resume</code>, <code>reset</code>, <code>step</code>, <code>break</code>, <code>watchread</code>, <code>watchwrite</code>, <code>state</code>. Unknown words are ignored. A command whose capability is missing is refused by the debugger with the bridge's name, before it is sent.</td></tr>
+        <tr><td><code>spaces</code></td><td>Memories other than the CPU's that <code>READ</code> and <code>WRITE</code> accept as <code>SPACE:address</code>. Their names are the system definition's (NES: <code>PPU</code>, <code>PAL</code>, <code>OAM</code>, <code>CHR</code>).</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3 id="commands">Commands</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Command</th><th>Answer</th><th>Capability</th></tr></thead>
+      <tbody>
+        <tr><td><code>READ [space:]$addr n</code></td><td><code>OK &lt;hex&gt;</code>, n bytes (at most 4096). Without a space, the CPU's bus. Reads must not have side effects (no cleared flags).</td><td>memory</td></tr>
+        <tr><td><code>WRITE [space:]$addr &lt;hex&gt;</code></td><td><code>OK</code> once the bytes read back as written; an error naming the address otherwise (read-only memory). At most 4096 bytes.</td><td>memory</td></tr>
+        <tr><td><code>CPU</code></td><td><code>OK pc=$C000 a=00 x=00 y=00 sp=FD ps=24 cycles=7</code> (cycles in decimal).</td><td>cpu</td></tr>
+        <tr><td><code>STATUS</code></td><td><code>OK running</code>, or <code>OK stopped reason=&lt;breakpoint|step|pause&gt; pc=$C06E prg=$0006E</code>. <code>prg</code> is the offset in the program memory, or <code>-</code>.</td><td>status</td></tr>
+        <tr><td><code>PAUSE</code>, <code>RESUME</code>, <code>STEP</code>, <code>RESET</code></td><td><code>OK</code>; the stop or the resumption is then pushed.</td><td>pause, resume, step, reset</td></tr>
+        <tr><td><code>BREAK SET|REMOVE &lt;exec|read|write&gt; $addr</code>, <code>BREAK LIST</code>, <code>BREAK CLEAR</code></td><td><code>OK</code>; LIST answers the breakpoints or <code>none</code>.</td><td>break</td></tr>
+        <tr><td><code>ROM</code>, <code>ROM LOAD &lt;path&gt;</code></td><td>The loaded image's description as key=value; replaces the image when the emulator can.</td><td>—</td></tr>
+        <tr><td><code>STATE SAVE</code>, <code>STATE LOAD &lt;hex&gt;</code></td><td>An opaque snapshot, at most 128 KB, and its restoration.</td><td>state</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3 id="push">Lines the bridge sends on its own</h3>
+    <ul>
+      <li><code>PUSH STOPPED reason=breakpoint pc=$C06E prg=$0006E</code> when the machine stops (breakpoint, step, pause). A breakpoint stops <em>before</em> its instruction.</li>
+      <li><code>PUSH RESUMED</code> when it runs again.</li>
+      <li><code>PUSH RAM $0010:42 $0011:00 …</code> while running, the bytes written since the last push (at most 4096 per line).</li>
+    </ul>
+
+    <h2 id="new-bridge">Writing a bridge for another emulator</h2>
+    <ol>
+      <li>Listen on the port in <code>MACHINE_PORT</code> and answer one line per command, without blocking the emulation for long: answer between frames, and in chunks (the debugger never asks for more than 256 bytes at once).</li>
+      <li>Answer <code>PING</code> and <code>HELLO</code>; announce only the capabilities that really work, and the memory spaces with the names of the machine's system definition.</li>
+      <li>Implement <code>READ</code>/<code>WRITE</code>, then <code>CPU</code> and <code>STATUS</code>; then the execution commands your emulator's scripting allows. A missing command must answer <code>ERR</code> with the reason, never a wrong <code>OK</code>.</li>
+      <li>Describe the emulator in config.json with a <code>Name</code>, its <code>Path</code>, the <code>Bridge</code> and the <code>Arguments</code> that load the program and the script. No WinASM65 code changes; an adapter class is only needed for an emulator with something to prepare (as Mesen2's script sandbox settings).</li>
+      <li>If the machine has no definition yet, it debugs as a generic 6502 (flat 64 KB, no other memory). Add a class to <a href="../../WinASM65.Systems/SystemRegistry.cs"><code>WinASM65.Systems</code></a> to give it its memories and boot.</li>
+    </ol>
+
+    <h2 id="check">Checking a bridge</h2>
+    <p><code>python tools/mesen2-bridge-check.py &lt;Mesen.exe&gt; &lt;rom.nes&gt; &lt;address&gt;</code> runs the Mesen2 bridge against a real Mesen2 and checks every command: HELLO and the memory spaces, then a breakpoint that stops before its instruction, a step, removal, pause and resume. It is the model for checking another bridge.</p>
+<pre><code>PASS HELLO describes the bridge: OK protocol=2 name=Mesen2 version=2.1.1 system=nes caps=… spaces=PPU,PAL,OAM,CHR
+PASS READ PAL reads the 32 palette bytes
+PASS WRITE PAL changes a colour
+PASS WRITE CHR changes a tile
+PASS PPU:$3F00 is palette entry 0 through the PPU bus
+PASS a breakpoint stops before its instruction: PUSH STOPPED reason=breakpoint pc=$C06E prg=$0006E
+PASS STEP stops one instruction later: PUSH STOPPED reason=step pc=$C06F prg=$0006F</code></pre>
+
+    <footer>
+      <p>Contract version 2. Version 1 bridges (MesenCE) keep working with the capabilities measured for them.</p>
+    </footer>
+  </main>
+
+  <aside class="toc" aria-label="On this page"></aside>
+</div>
+</body>
+</html>

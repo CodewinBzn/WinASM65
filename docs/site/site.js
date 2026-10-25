@@ -15,6 +15,7 @@
     { href: 'targets.html', title: 'Targets and formats' },
     { group: 'Debugging' },
     { href: 'monitor.html', title: 'Monitor' },
+    { href: 'bridges.html', title: 'Emulator bridges' },
     { href: 'tooling.html', title: 'Tooling: DAP and LSP' },
     { href: 'vscode.html', title: 'VS Code extension' },
     { group: 'Project' },

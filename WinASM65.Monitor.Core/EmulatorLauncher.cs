@@ -2,117 +2,92 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
+using WinASM65.Monitor.Emulators;
 
 namespace WinASM65.Monitor
 {
     /// <summary>
-    /// Starts an emulator process and waits for its bridge to come up.
+    /// Starts an emulator process with its bridge, and stops it again.
     ///
-    /// The monitor can launch its own emulator rather than depending on a
-    /// script somebody else started. This class is the reusable part: given
-    /// an emulator name, a ROM path and a port, it starts the process and
-    /// returns the handle, leaving the caller to decide when to stop it.
-    ///
-    /// The two emulators this build knows are MesenCE and Mesen2, and the
-    /// difference between them is which Lua script they load — the bridge
-    /// protocol is the same. Naming the emulator here rather than in the
-    /// caller keeps the two spellings in one place, so a typo cannot reach
-    /// the process start and silently launch the wrong one.
+    /// The monitor can launch its own emulator rather than depending on one
+    /// somebody else started. Which emulator, which bridge and which command line
+    /// come from an <see cref="EmulatorConfiguration"/> (config.json's
+    /// <c>Emulator</c>, or the monitor's command line) and its adapter
+    /// (<see cref="EmulatorAdapters"/>); this class only owns the process.
     /// </summary>
     public class EmulatorLauncher
     {
-        private readonly string _emulatorName;
-        private string _romPath;
-        private readonly string _emulatorId;
+        private readonly EmulatorConfiguration _emulator;
         private readonly int _port;
-        private readonly string _argumentsTemplate;
-        private readonly bool _isGeneric;
+        private string _romPath;
         private Process _process;
-        private string _bridgeScript;
 
-        /// <summary>True when this launcher also starts WinASM65's Mesen bridge.</summary>
-        public bool UsesBridge { get { return !_isGeneric; } }
+        /// <summary>True when the emulator is started with a bridge the monitor can connect to.</summary>
+        public bool UsesBridge
+        {
+            get { return !string.IsNullOrEmpty(_emulator.Bridge) || EmulatorAdapters.For(_emulator).BuiltInBridge != null; }
+        }
+
+        /// <summary>The emulator this launcher starts.</summary>
+        public EmulatorConfiguration Emulator
+        {
+            get { return _emulator; }
+        }
 
         /// <summary>
-        /// Creates a launcher for the named emulator. The process is not
-        /// started until <see cref="Start"/> is called.
+        /// Creates a launcher for an emulator given by its path and adapter name. The
+        /// process is not started until <see cref="Start"/> is called.
         /// </summary>
-        public EmulatorLauncher(string emulatorName, string romPath, string emulatorId, int port)
+        public EmulatorLauncher(string emulatorPath, string romPath, string emulatorId, int port)
+            : this(EmulatorConfiguration.Of(emulatorPath, emulatorId), romPath, port)
         {
-            _emulatorName = emulatorName;
+        }
+
+        public EmulatorLauncher(EmulatorConfiguration emulator, string romPath, int port)
+        {
+            if (emulator == null)
+                throw new ArgumentNullException("emulator");
+            _emulator = emulator;
             _romPath = romPath;
-            _emulatorId = emulatorId;
             _port = port;
         }
 
-        private EmulatorLauncher(string emulatorPath, string argumentsTemplate, string romPath)
-        {
-            _emulatorName = emulatorPath;
-            _argumentsTemplate = argumentsTemplate ?? string.Empty;
-            _isGeneric = true;
-            _romPath = romPath;
-            _emulatorId = null;
-        }
-
-        /// <summary>Reads the optional generic emulator declaration in config.json.</summary>
+        /// <summary>
+        /// The emulator config.json in <paramref name="directory"/> declares, loading
+        /// the image its <c>Output.ObjectFile</c> names; null when it declares none.
+        /// </summary>
         public static EmulatorLauncher FromProjectConfiguration(string directory)
         {
             string configPath = Path.Combine(directory ?? Directory.GetCurrentDirectory(), "config.json");
-            if (!File.Exists(configPath)) return null;
-
-            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(configPath));
-            JsonElement root = document.RootElement;
-            if (!root.TryGetProperty("Emulator", out JsonElement emulator)
-                || emulator.ValueKind != JsonValueKind.Object
-                || !emulator.TryGetProperty("Path", out JsonElement path)
-                || path.ValueKind != JsonValueKind.String
-                || string.IsNullOrWhiteSpace(path.GetString()))
+            EmulatorConfiguration emulator = EmulatorConfiguration.Read(configPath);
+            if (emulator == null)
                 return null;
 
-            string baseDirectory = Path.GetDirectoryName(configPath);
-            string executable = path.GetString();
-            if (!Path.IsPathRooted(executable)) executable = Path.Combine(baseDirectory, executable);
-
             string rom = null;
-            if (root.TryGetProperty("Output", out JsonElement output)
-                && output.ValueKind == JsonValueKind.Object
-                && output.TryGetProperty("ObjectFile", out JsonElement image)
-                && image.ValueKind == JsonValueKind.String)
-                rom = Path.Combine(baseDirectory, image.GetString());
-
-            // The ROM is the conventional first argument.  Configuring it again
-            // as an Arguments template is redundant and made simple projects
-            // unnecessarily Mesen-shaped.
-            return new EmulatorLauncher(executable, null, rom);
+            try
+            {
+                using (JsonDocument document = JsonDocument.Parse(File.ReadAllText(configPath)))
+                {
+                    JsonElement output, image;
+                    if (document.RootElement.TryGetProperty("Output", out output)
+                        && output.ValueKind == JsonValueKind.Object
+                        && output.TryGetProperty("ObjectFile", out image)
+                        && image.ValueKind == JsonValueKind.String)
+                        rom = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(configPath)), image.GetString());
+                }
+            }
+            catch (JsonException)
+            {
+            }
+            return new EmulatorLauncher(emulator, rom, emulator.Port ?? BridgeConnector.DefaultPort);
         }
 
-        /// <summary>
-        /// Starts the named emulator with the given ROM, if any, and returns
-        /// the process handle. The bridge script travels with the executable,
-        /// so the emulator is started with an absolute path to a copy the
-        /// monitor wrote next to itself.
-        /// </summary>
+        /// <summary>Starts the emulator on the current image and returns the process, or null.</summary>
         public Process Start()
         {
-            if (string.IsNullOrEmpty(_emulatorName))
-                throw new ArgumentNullException(nameof(_emulatorName));
-
-            if (_isGeneric)
-            {
-                if (!File.Exists(_emulatorName))
-                    throw new MonitorException("emulator not found: " + _emulatorName);
-                string rom = _romPath ?? string.Empty;
-                string arguments = string.IsNullOrEmpty(_argumentsTemplate)
-                    ? "\"" + rom.Replace("\"", "\\\"") + "\""
-                    : _argumentsTemplate.Replace("{RomPath}", rom);
-                _process = Process.Start(new ProcessStartInfo(_emulatorName, arguments)
-                {
-                    UseShellExecute = false,
-                    WorkingDirectory = Path.GetDirectoryName(_emulatorName) ?? Directory.GetCurrentDirectory()
-                });
-            }
-            else
-                _process = BridgeLauncher.LaunchEmulator(_emulatorName, _romPath, _emulatorId, _port, _bridgeScript);
+            if (!File.Exists(_emulator.Path))
+                throw new MonitorException("emulator not found: " + _emulator.Path);
+            _process = BridgeLauncher.Launch(_emulator, _romPath, _port, Console.Error);
             return _process;
         }
 
@@ -140,14 +115,12 @@ namespace WinASM65.Monitor
                 throw new MonitorException("could not restart the emulator");
         }
 
-        /// <summary>Uses a user-selected Lua bridge on the next restart.</summary>
+        /// <summary>Uses a user-selected bridge script, from the next start on.</summary>
         public void RestartWithBridge(string bridgePath)
         {
-           // if (!UsesBridge)
-           //     throw new MonitorException("the configured emulator has no Mesen bridge launcher");
             if (string.IsNullOrWhiteSpace(bridgePath) || !File.Exists(bridgePath))
                 throw new MonitorException("the bridge script does not exist: " + bridgePath);
-            _bridgeScript = bridgePath;
+            _emulator.Bridge = Path.GetFullPath(bridgePath);
             Stop();
             if (Start() == null)
                 throw new MonitorException("could not restart the emulator with the selected bridge");

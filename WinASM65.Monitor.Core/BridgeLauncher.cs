@@ -3,18 +3,20 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
+using WinASM65.Monitor.Emulators;
 
 namespace WinASM65.Monitor
 {
-    /// <summary>The emulator identifiers the bridge launcher understands.</summary>
+    /// <summary>The names of the built-in emulator adapters (see <see cref="EmulatorAdapters"/>).</summary>
     public static class EmulatorIds
     {
-        public const string MesenCe = "mesence";
-        public const string Mesen2 = "mesen2";
+        public const string MesenCe = EmulatorAdapters.MesenCe;
+        public const string Mesen2 = EmulatorAdapters.Mesen2;
     }
 
     /// <summary>
-    /// Starts an emulator with the monitor's Lua bridge loaded.
+    /// Starts an emulator with its bridge loaded, through the adapter of that
+    /// emulator (<see cref="EmulatorAdapters"/>).
     ///
     /// Diagnostics go to stderr, never stdout: a front end may be using stdout as
     /// its protocol channel.
@@ -22,182 +24,97 @@ namespace WinASM65.Monitor
     public static class BridgeLauncher
     {
         /// <summary>
-        /// Starts an emulator headless with the bridge script, in the invocation its
-        /// own build was proven with. The two supported emulators disagree on almost
-        /// everything: argument order, script naming and whether the script sandbox
-        /// has to be opened before a socket can exist. Guessing would produce a
-        /// bridge that never listens, which looks exactly like a crash.
+        /// Starts an emulator named by its path and adapter name, as the monitor's
+        /// command line and older callers give it.
         /// </summary>
-        // Shared by the shell's launcher, the command-line startup and the debug
-        // adapter, so all of them use exactly the same, emulator-specific
-        // invocation.  MesenCE and Mesen2 do not accept interchangeable script
-        // arguments.
         public static Process LaunchEmulator(string emulatorPath, string romPath, string emulator, int port,
             string bridgeOverride = null)
         {
-            if (!File.Exists(emulatorPath))
+            EmulatorConfiguration configuration = EmulatorConfiguration.Of(emulatorPath, emulator);
+            if (configuration != null && bridgeOverride != null)
+                configuration.Bridge = bridgeOverride;
+            return Launch(configuration, romPath, port, Console.Error);
+        }
+
+        /// <summary>
+        /// Starts the emulator a project configured, loading <paramref name="romPath"/>
+        /// and the bridge, with the bridge told to listen on <paramref name="port"/>.
+        /// Returns null, with the reason in <paramref name="log"/>, when it cannot.
+        /// </summary>
+        public static Process Launch(EmulatorConfiguration emulator, string romPath, int port, TextWriter log)
+        {
+            log = log ?? Console.Error;
+            if (emulator == null || !File.Exists(emulator.Path))
             {
-                Console.Error.WriteLine("Emulator not found: " + emulatorPath);
+                log.WriteLine("Emulator not found: " + (emulator != null ? emulator.Path : "(none configured)"));
                 return null;
             }
             if (!File.Exists(romPath))
             {
-                Console.Error.WriteLine("ROM not found: " + romPath);
+                log.WriteLine("ROM not found: " + romPath);
                 return null;
             }
 
-            string scriptName = emulator == EmulatorIds.Mesen2 ? "bridge_mesen2.lua" : "bridge.lua";
-            string bridgeScript = bridgeOverride ?? Path.Combine(AppContext.BaseDirectory, "Bridge", scriptName);
-            if (!File.Exists(bridgeScript))
-            {
-                // Fall back to the source tree when running from a build output that
-                // did not copy the script, so the tool works straight from bin.
-                bridgeScript = FindBridgeInSourceTree(scriptName);
-            }
-            if (bridgeScript == null)
-            {
-                Console.Error.WriteLine(scriptName + " not found next to the executable or in the source tree.");
+            IEmulatorAdapter adapter = EmulatorAdapters.For(emulator);
+            string bridgeScript = BridgeScriptOf(emulator, adapter, log);
+            if (bridgeScript == null && adapter.BuiltInBridge != null)
                 return null;
-            }
 
-            ProcessStartInfo start = new ProcessStartInfo(emulatorPath)
+            ProcessStartInfo start = new ProcessStartInfo(emulator.Path)
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
-                RedirectStandardError = true
+                RedirectStandardError = true,
+                WorkingDirectory = Path.GetDirectoryName(emulator.Path) ?? Directory.GetCurrentDirectory()
             };
 
-            if (emulator == EmulatorIds.Mesen2)
-            {
-                if (!EnsureMesen2ScriptSettings(emulatorPath))
-                    return null;
+            if (!adapter.Prepare(emulator, log))
+                return null;
+            adapter.AddArguments(start, emulator, romPath, bridgeScript, port);
 
-                // A plain ROM plus Lua script opens Mesen2's normal graphical
-                // window.  --testRunner is specifically its headless mode, so it
-                // made the monitor claim the emulator was started while showing no
-                // emulator at all.  Mesen2 loads the ROM first, then opens and
-                // starts the script (AutoStartScriptOnLoad is enabled by default).
-                start.ArgumentList.Add(romPath);
-                start.ArgumentList.Add(bridgeScript);
-            }
-            else
-            {
-                start.ArgumentList.Add("--testrunner");
-                start.ArgumentList.Add(romPath);
-                start.ArgumentList.Add(bridgeScript);
-            }
-
-            // Mesen2 gives a script no way to be told the port, so it is passed the
-            // one way the sandbox does offer once the OS library is enabled.
+            // A script cannot be given arguments by every emulator, so the port also
+            // travels the one way every sandbox that allows sockets offers.
             start.Environment["MACHINE_PORT"] = port.ToString(CultureInfo.InvariantCulture);
 
             Process process = Process.Start(start);
             if (process == null)
             {
-                Console.Error.WriteLine("Could not start " + emulator + ".");
+                log.WriteLine("Could not start " + adapter.DisplayName + ".");
                 return null;
             }
 
-            process.OutputDataReceived += (s, e) => { if (e.Data != null) Console.Error.WriteLine("[" + emulator + "] " + e.Data); };
-            process.ErrorDataReceived += (s, e) => { if (e.Data != null) Console.Error.WriteLine("[" + emulator + "] " + e.Data); };
+            string prefix = "[" + adapter.Name + "] ";
+            process.OutputDataReceived += (s, e) => { if (e.Data != null) log.WriteLine(prefix + e.Data); };
+            process.ErrorDataReceived += (s, e) => { if (e.Data != null) log.WriteLine(prefix + e.Data); };
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
             return process;
         }
 
         /// <summary>
-        /// Mesen2 runs every script with io, require and os disabled, and refuses to
-        /// execute a script longer than ScriptTimeout seconds. Without the three
-        /// settings below, a bridge cannot open a socket at all and a long pause
-        /// kills the script mid-command. The flags are written beside the emulator
-        /// and reported, never applied silently: this changes a file outside the
-        /// project, and a tool that rewrites its host's configuration without
-        /// saying so is the behaviour this project refuses everywhere else.
+        /// The bridge script to load: the one the project names (a path, or the file
+        /// name of a built-in bridge), else the adapter's own. Built-in bridges are
+        /// looked up next to the executable, then in the source tree.
         /// </summary>
-        private static bool EnsureMesen2ScriptSettings(string emulatorPath)
+        public static string BridgeScriptOf(EmulatorConfiguration emulator, IEmulatorAdapter adapter, TextWriter log)
         {
-            string settingsPath = Path.Combine(Path.GetDirectoryName(emulatorPath) ?? ".", "settings.json");
-
-            if (File.Exists(settingsPath))
+            string wanted = !string.IsNullOrWhiteSpace(emulator.Bridge) ? emulator.Bridge : adapter.BuiltInBridge;
+            if (wanted == null)
+                return null;
+            if (Path.IsPathRooted(wanted))
             {
-                string problem = DescribeMesen2SettingsProblem(File.ReadAllText(settingsPath));
-                if (problem == null) return true;
-
-                Console.Error.WriteLine(
-                    "[mesen2] " + settingsPath + " does not grant the bridge what it needs: " + problem + ".");
-                Console.Error.WriteLine("[mesen2] Add: \"Debug\": { \"ScriptWindow\": { \"AllowIoOsAccess\": true,"
-                    + " \"AllowNetworkAccess\": true, \"ScriptTimeout\": 60 } }");
-                return false;
+                if (File.Exists(wanted))
+                    return wanted;
+                (log ?? Console.Error).WriteLine("Bridge script not found: " + wanted);
+                return null;
             }
 
-            try
-            {
-                File.WriteAllText(settingsPath,
-                    "{\"Debug\":{\"ScriptWindow\":{\"AllowIoOsAccess\":true,\"AllowNetworkAccess\":true,\"ScriptTimeout\":60}}}");
-            }
-            catch (IOException ex)
-            {
-                Console.Error.WriteLine("[mesen2] cannot write " + settingsPath + ": " + ex.Message);
-                return false;
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                Console.Error.WriteLine("[mesen2] cannot write " + settingsPath + ": " + ex.Message);
-                return false;
-            }
-
-            Console.Error.WriteLine("[mesen2] wrote " + settingsPath
-                + " to let the bridge use sockets and to survive a pause.");
-            return true;
-        }
-
-        /// <summary>
-        /// Names the first setting that would stop the bridge, or returns null when
-        /// the file already grants everything the bridge needs.
-        ///
-        /// The value matters, not merely the key. A file that spells
-        /// "AllowNetworkAccess" but sets it to false satisfies a substring test and
-        /// still leaves the bridge unable to open a socket, which reaches the user
-        /// as an emulator that starts and then silently ignores the script: the same
-        /// appearance as a crash, and much harder to diagnose.
-        /// </summary>
-        private static string DescribeMesen2SettingsProblem(string json)
-        {
-            JsonElement root;
-            try
-            {
-                using JsonDocument document = JsonDocument.Parse(json);
-                root = document.RootElement.Clone();
-            }
-            catch (JsonException)
-            {
-                return "the file is not valid JSON";
-            }
-
-            if (root.ValueKind != JsonValueKind.Object
-                || !root.TryGetProperty("Debug", out JsonElement debug)
-                || debug.ValueKind != JsonValueKind.Object
-                || !debug.TryGetProperty("ScriptWindow", out JsonElement window)
-                || window.ValueKind != JsonValueKind.Object)
-            {
-                return "it has no Debug.ScriptWindow section";
-            }
-
-            foreach (string key in new[] { "AllowIoOsAccess", "AllowNetworkAccess" })
-            {
-                if (!window.TryGetProperty(key, out JsonElement value) || value.ValueKind != JsonValueKind.True)
-                    return key + " is missing or not true";
-            }
-
-            if (!window.TryGetProperty("ScriptTimeout", out JsonElement timeout)
-                || !timeout.TryGetInt32(out int seconds)
-                || seconds <= 0)
-            {
-                return "ScriptTimeout is missing or not a positive number of seconds";
-            }
-
-            return null;
+            string beside = Path.Combine(AppContext.BaseDirectory, "Bridge", wanted);
+            string found = File.Exists(beside) ? beside : FindBridgeInSourceTree(wanted);
+            if (found == null)
+                (log ?? Console.Error).WriteLine(wanted + " not found next to the executable or in the source tree.");
+            return found;
         }
 
         private static string FindBridgeInSourceTree(string scriptName)
