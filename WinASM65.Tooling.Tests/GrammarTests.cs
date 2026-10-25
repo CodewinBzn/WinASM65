@@ -51,6 +51,27 @@ namespace WinASM65.Tooling.Tests
         }
 
         [TestMethod]
+        public void BlockCommentsAreColouredBeforeAnythingElse()
+        {
+            // /* ... */ spans lines, as the assembler strips it; it comes first, so that
+            // a "/" is not taken for an operator and a "*" for the program counter.
+            JsonElement block = Repository().GetProperty("block-comment");
+            Assert.IsTrue(Regex.IsMatch("/*", block.GetProperty("begin").GetString()));
+            Assert.IsTrue(Regex.IsMatch("*/", block.GetProperty("end").GetString()));
+            Assert.AreEqual("comment.block.winasm65", block.GetProperty("name").GetString());
+            JsonElement root = JsonDocument.Parse(File.ReadAllText(GrammarPath())).RootElement;
+            Assert.AreEqual("#block-comment", root.GetProperty("patterns")[0].GetProperty("include").GetString());
+        }
+
+        private static string GrammarPath()
+        {
+            DirectoryInfo dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null && !File.Exists(Path.Combine(dir.FullName, "WinASM65.sln")))
+                dir = dir.Parent;
+            return Path.Combine(dir.FullName, "vscode-extension", "syntaxes", "winasm65.tmLanguage.json");
+        }
+
+        [TestMethod]
         public void EveryMnemonicOfTheOpcodeTablesIsColouredAndNoOther()
         {
             SortedSet<string> grammar = Alternatives(Repository().GetProperty("mnemonic").GetProperty("match").GetString());

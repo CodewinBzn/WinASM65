@@ -18,19 +18,54 @@ namespace WinASM65.Core
     /// </summary>
     public static class SourceText
     {
-        /// <summary>The line without its comment: everything from the first <c>;</c> outside a literal.</summary>
+        /// <summary>
+        /// The line without its comments: everything from the first <c>;</c> outside a
+        /// literal, and every <c>/* ... */</c>. A <c>/*</c> left open runs to the end of
+        /// the line.
+        /// </summary>
         public static string StripComment(string line)
         {
+            bool inBlock = false;
+            bool opened;
+            return StripComments(line, ref inBlock, out opened);
+        }
+
+        /// <summary>
+        /// The line without its comments, for a block comment that spans lines:
+        /// <paramref name="inBlock"/> says whether the line starts inside a
+        /// <c>/* ... */</c>, and on return whether the next one does.
+        /// <paramref name="opened"/> is true when the comment still open at the end
+        /// was opened on this line. A block comment is replaced by a space, so
+        /// <c>lda/*x*/#1</c> keeps its two words apart; <c>/*</c> and <c>;</c> inside a
+        /// string or a character literal are data.
+        /// </summary>
+        public static string StripComments(string line, ref bool inBlock, out bool opened)
+        {
+            opened = false;
             if (string.IsNullOrEmpty(line))
                 return line ?? string.Empty;
 
+            StringBuilder kept = new StringBuilder(line.Length);
             int i = 0;
             while (i < line.Length)
             {
+                if (inBlock)
+                {
+                    int close = line.IndexOf("*/", i, System.StringComparison.Ordinal);
+                    if (close < 0)
+                        return kept.ToString();
+                    inBlock = false;
+                    opened = false;
+                    kept.Append(' ');
+                    i = close + 2;
+                    continue;
+                }
                 char c = line[i];
                 if (c == '"')
                 {
-                    i = SkipString(line, i);
+                    int end = SkipString(line, i);
+                    kept.Append(line, i, end - i);
+                    i = end;
                     continue;
                 }
                 if (c == '\'')
@@ -38,15 +73,24 @@ namespace WinASM65.Core
                     int end = CharLiteralEnd(line, i);
                     if (end > 0)
                     {
+                        kept.Append(line, i, end - i);
                         i = end;
                         continue;
                     }
                 }
                 if (c == ';')
-                    return line.Substring(0, i);
+                    break;
+                if (c == '/' && i + 1 < line.Length && line[i + 1] == '*')
+                {
+                    inBlock = true;
+                    opened = true;
+                    i += 2;
+                    continue;
+                }
+                kept.Append(c);
                 i++;
             }
-            return line;
+            return kept.ToString();
         }
 
         /// <summary>
