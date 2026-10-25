@@ -5,6 +5,7 @@
     { group: 'Overview' },
     { href: 'index.html', title: 'WinASM65' },
     { href: 'getting-started.html', title: 'Getting started' },
+    { href: 'example.html', title: 'Example game' },
     { group: 'Assembler' },
     { href: 'assembler.html', title: 'Assembly pipeline' },
     { href: 'syntax.html', title: 'Syntax reference' },
