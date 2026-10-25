@@ -56,6 +56,11 @@ namespace WinASM65.Tooling.Dap
         private bool _launched;
         private bool _configured;
         private bool _stopOnEntry;
+
+        // The pause of a launch, until its stop arrives. The stop is reported by
+        // the bridge on its own thread and may come after configurationDone; it is
+        // the adapter's own doing and must not reach VS Code as a stop.
+        private bool _launchPausePending;
         private bool _terminated;
         private Timer _watchdog;
 
@@ -259,6 +264,7 @@ namespace WinASM65.Tooling.Dap
 
             // Stopped until configurationDone, so breakpoints VS Code is about to
             // send are in place before the program runs a single frame.
+            _launchPausePending = true;
             _backend.Pause();
             Respond(request, null);
             SendEvent("initialized", null);
@@ -569,8 +575,13 @@ namespace WinASM65.Tooling.Dap
                 return;
             _resumeExpected = false;
             _stop = stop;
+            if (_launchPausePending && stop.Reason == StopReason.Pause)
+            {
+                _launchPausePending = false;
+                return; // the launch pause, however late it is reported
+            }
             if (!_configured)
-                return; // the launch pause: nobody is looking yet
+                return; // nobody is looking yet
 
             string reason;
             List<int> hits = new List<int>();
