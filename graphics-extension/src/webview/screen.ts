@@ -1,7 +1,7 @@
 import { ScreenAsset } from '../shared/assets.js';
 import { HostMessage } from '../shared/protocol.js';
 import { GraphicsSystem, attributeColumns, attributeRows, hex2, screenHeight, screenWidth } from '../shared/system.js';
-import { Banner, Choice, StatusBar, checkbox, clamp, el, loadState, post, saveState, selectBox, separator, start, typing } from './common.js';
+import { Banner, Choice, LiveToggle, StatusBar, button, checkbox, clamp, el, loadState, post, saveState, selectBox, separator, start, typing } from './common.js';
 import { Rgb, TileSheet, ZoomCanvas, accent, drawPixels, grid, onPointer, outline, paletteButton, paletteColours } from './render.js';
 import { AssetFields, TileSources } from './tiled.js';
 
@@ -34,6 +34,7 @@ let hoverCell: { column: number; row: number } | undefined;
 const app = document.getElementById('app')!;
 const banner = new Banner();
 const status = new StatusBar();
+const live = new LiveToggle();
 let canvas: ZoomCanvas;
 let sheet: TileSheet;
 let tools: Choice<Tool>;
@@ -90,7 +91,10 @@ function build(): void {
     el('label', {}, 'Zoom', zoom),
     checkbox('Grid', 'Tile grid, every ' + sys.tileWidth + ' pixels', state.grid, on => { state.grid = on; save(); render(); }),
     checkbox('Attributes', 'Attribute grid, every ' + sys.tileWidth * sys.attributeBlockWidth + ' pixels', state.attributeGrid, on => { state.attributeGrid = on; save(); render(); }),
-    checkbox('Overscan', 'Shade the top and bottom 8 pixel rows, which many televisions do not show', state.overscan, on => { state.overscan = on; save(); render(); })
+    checkbox('Overscan', 'Shade the top and bottom 8 pixel rows, which many televisions do not show', state.overscan, on => { state.overscan = on; save(); render(); }),
+    separator(),
+    button('Import PNG…', 'Make tiles, palettes and a screen from a picture, into this folder (and this tile set, if you choose)', () => post({ type: 'importPng' })),
+    live.element
   );
 
   fields = new AssetFields(['name', 'prefix'], (field, value) => edit('Change ' + field, a => {
@@ -345,6 +349,9 @@ start((message: HostMessage) => {
       break;
     case 'notice':
       status.show(message.text, message.level);
+      break;
+    case 'live':
+      live.update(message.state);
       break;
   }
 });

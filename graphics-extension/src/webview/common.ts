@@ -1,4 +1,4 @@
-import type { HostMessage, WebviewMessage } from '../shared/protocol.js';
+import type { HostMessage, LiveState, WebviewMessage } from '../shared/protocol.js';
 
 /**
  * What every editor webview shares: the channel to the host, the saved view
@@ -208,4 +208,27 @@ export function typing(event: KeyboardEvent): boolean {
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+/**
+ * The "Live" button of the toolbar: pressed while edits go into the running
+ * machine. The host says whether it can be used (a WinASM65 debug session)
+ * and what it does here; clicking asks the host to turn it on or off.
+ */
+export class LiveToggle {
+  readonly element: HTMLButtonElement;
+  private state: LiveState = { available: false, on: false, title: 'Live preview: start a WinASM65 debug session first' };
+
+  constructor() {
+    this.element = button('● Live', '', () => post({ type: 'live', on: !this.state.on }), 'live-toggle');
+    this.update(this.state);
+  }
+
+  update(state: LiveState): void {
+    this.state = state;
+    this.element.disabled = !state.available;
+    this.element.title = state.title;
+    this.element.setAttribute('aria-pressed', String(state.on && state.available));
+    this.element.classList.toggle('on', state.on && state.available);
+  }
 }

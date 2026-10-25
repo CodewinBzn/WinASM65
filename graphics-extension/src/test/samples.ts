@@ -1,15 +1,16 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { MapAsset, ScreenAsset, blankMap, blankPalette, blankScreen } from '../shared/assets';
+import { MapAsset, MetaspriteAsset, MetaspriteTile, ScreenAsset, blankMap, blankPalette, blankScreen } from '../shared/assets';
 import { formatAsset } from '../shared/json';
 import { NES_FALLBACK } from '../shared/system';
 
 /**
  * A folder of sample assets around Star Catcher's tile set (example_star_catcher/chr/tiles.chr):
- * its palettes, a title screen and a two-screen map. Written by the integration
- * test and by scripts/preview.mjs, always into a temporary folder.
+ * its palettes, a title screen, a two-screen map, metasprites with animations,
+ * and a source that uses what they export. Written by the integration test and
+ * by scripts/preview.mjs, always into a temporary folder.
  */
-export function writeSamples(folder: string, repo: string): { chr: string; palettes: string; screen: string; map: string } {
+export function writeSamples(folder: string, repo: string): { chr: string; palettes: string; screen: string; map: string; sprites: string; source: string } {
   const nes = NES_FALLBACK;
   fs.mkdirSync(folder, { recursive: true });
   const chr = path.join(folder, 'tiles.chr');
@@ -72,5 +73,55 @@ export function writeSamples(folder: string, repo: string): { chr: string; palet
   map.cells[5 * 32 + 20] = 4;
   const mapPath = path.join(folder, 'level1.map.json');
   fs.writeFileSync(mapPath, formatAsset('map', map, nes));
-  return { chr, palettes, screen: screenPath, map: mapPath };
+
+  // The ship (tiles 1 and 2), its flame (8), a meteor of one tile flipped four
+  // ways (5), and a row of stars too wide for one scanline.
+  const tile = (x: number, y: number, t: number, palette: number, flipH = false, flipV = false, behind = false): MetaspriteTile =>
+    ({ x, y, tile: t, palette, flipH, flipV, behind });
+  const sprites: MetaspriteAsset = {
+    version: 1, system: 'nes', chr: 'tiles.chr', palettes: 'game.pal.json', prefix: '',
+    metasprites: [
+      { name: 'ship', originX: 64, originY: 68, tiles: [tile(56, 60, 1, 0), tile(64, 60, 2, 0)] },
+      { name: 'ship_thrust', originX: 64, originY: 68, tiles: [tile(56, 60, 1, 0), tile(64, 60, 2, 0), tile(60, 68, 8, 3)] },
+      { name: 'meteor', originX: 64, originY: 64, tiles: [tile(56, 56, 5, 2), tile(64, 56, 5, 2, true), tile(56, 64, 5, 2, false, true), tile(64, 64, 5, 2, true, true)] },
+      { name: 'star_row', originX: 0, originY: 64, tiles: Array.from({ length: 9 }, (_, i) => tile(i * 8, 60, i % 2 === 0 ? 3 : 4, 1)) }
+    ],
+    animations: [
+      { name: 'fly', loop: true, frames: [{ metasprite: 'ship', duration: 8 }, { metasprite: 'ship_thrust', duration: 6 }] },
+      { name: 'spin', loop: true, frames: [{ metasprite: 'meteor', duration: 10 }, { metasprite: 'ship', duration: 10 }] }
+    ]
+  };
+  const spritesPath = path.join(folder, 'sprites.msprite.json');
+  fs.writeFileSync(spritesPath, formatAsset('metasprite', sprites, nes));
+
+  // A source that uses the exported labels (the hover pictures).
+  const source = path.join(folder, 'main.asm');
+  fs.writeFileSync(source, [
+    '; Draws the ship: the tables come from sprites.msprite.json (exported).',
+    '        .include "sprites.msprite.asm"',
+    '        .include "game.pal.asm"',
+    '',
+    'DrawShip:',
+    '        lda #<ship',
+    '        sta ptr',
+    '        lda #>ship',
+    '        sta ptr+1',
+    '        ldx #MS_METEOR',
+    '        lda #<fly_anim',
+    '        rts',
+    '',
+    'LoadPalettes:',
+    '        ldx #0',
+    '@loop:  lda palettes,x',
+    '        sta $2007',
+    '        inx',
+    '        cpx #32',
+    '        bne @loop',
+    '        rts',
+    '',
+    'Title:  .incbin "title.nam"',
+    'Tiles:  .incbin "tiles.chr"',
+    ''
+  ].join('\n'));
+  return { chr, palettes, screen: screenPath, map: mapPath, sprites: spritesPath, source };
 }

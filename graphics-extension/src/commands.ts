@@ -3,14 +3,15 @@ import * as vscode from 'vscode';
 import { Designer } from './designer';
 import { Exporter } from './exporting';
 import { relativePath } from './resources';
-import { AssetKind, EXTENSIONS, blankMap, blankPalette, blankScreen, kindOf } from './shared/assets';
+import { AssetKind, EXTENSIONS, blankMap, blankMetasprites, blankPalette, blankScreen, kindOf } from './shared/assets';
 import { EditorRegistry } from './editors/context';
 
 const VIEW_TYPES: Partial<Record<AssetKind, string>> = {
   chr: 'winasm65Graphics.tiles',
   palette: 'winasm65Graphics.palettes',
   screen: 'winasm65Graphics.screen',
-  map: 'winasm65Graphics.map'
+  map: 'winasm65Graphics.map',
+  metasprite: 'winasm65Graphics.metasprites'
 };
 
 /** The commands of the palette and of the Explorer's "WinASM65 Graphics" menu. */
@@ -20,12 +21,13 @@ export function registerCommands(designer: Designer, exporter: Exporter, registr
     vscode.commands.registerCommand('winasm65Graphics.newScreen', (folder?: vscode.Uri) => newAsset(designer, 'screen', folder)),
     vscode.commands.registerCommand('winasm65Graphics.newMap', (folder?: vscode.Uri) => newAsset(designer, 'map', folder)),
     vscode.commands.registerCommand('winasm65Graphics.newTileSet', (folder?: vscode.Uri) => newAsset(designer, 'chr', folder)),
+    vscode.commands.registerCommand('winasm65Graphics.newMetasprites', (folder?: vscode.Uri) => newAsset(designer, 'metasprite', folder)),
     vscode.commands.registerCommand('winasm65Graphics.exportAsset', (file?: vscode.Uri) => exportAsset(exporter, registry, file)),
     vscode.commands.registerCommand('winasm65Graphics.exportFolder', (folder?: vscode.Uri) => exportFolder(exporter, folder))
   ];
 }
 
-const TITLES: Record<string, string> = { palette: 'New Palette', screen: 'New Screen', map: 'New Map', chr: 'New Tile Set' };
+const TITLES: Record<string, string> = { palette: 'New Palette', screen: 'New Screen', map: 'New Map', chr: 'New Tile Set', metasprite: 'New Metasprites' };
 
 async function newAsset(designer: Designer, kind: AssetKind, folderArg?: vscode.Uri): Promise<vscode.Uri | undefined> {
   const title = TITLES[kind];
@@ -35,7 +37,7 @@ async function newAsset(designer: Designer, kind: AssetKind, folderArg?: vscode.
   }
   const name = await vscode.window.showInputBox({
     title,
-    prompt: 'Name of the ' + (kind === 'chr' ? 'tile set' : kind) + ' (the file is <name>' + EXTENSIONS[kind] + ' in ' + vscode.workspace.asRelativePath(folder) + ')',
+    prompt: 'Name of the ' + (kind === 'chr' ? 'tile set' : kind === 'metasprite' ? 'metasprite file' : kind) + ' (the file is <name>' + EXTENSIONS[kind] + ' in ' + vscode.workspace.asRelativePath(folder) + ')',
     validateInput: value => /^[A-Za-z_][\w-]*$/.test(value.trim()) ? undefined : 'A name of letters, digits, _ and -, not starting with a digit'
   });
   if (!name) {
@@ -67,7 +69,13 @@ async function newAsset(designer: Designer, kind: AssetKind, folderArg?: vscode.
       if (chr === null) return undefined;
       const palettes = await chooseReference(target, '**/*.pal.json', 'Palette file (.pal.json) of the ' + kind, title);
       if (palettes === null) return undefined;
-      asset = kind === 'screen' ? blankScreen(system, name.trim(), chr, palettes) : blankMap(system, name.trim(), chr, palettes);
+      if (kind === 'metasprite') {
+        const sprites = blankMetasprites(system, chr, palettes);
+        sprites.metasprites.push({ name: name.trim(), originX: 64, originY: 64, tiles: [] });
+        asset = sprites;
+      } else {
+        asset = kind === 'screen' ? blankScreen(system, name.trim(), chr, palettes) : blankMap(system, name.trim(), chr, palettes);
+      }
     }
     const formatted = await designer.format(kind, asset);
     bytes = Buffer.from(formatted.text, 'utf8');

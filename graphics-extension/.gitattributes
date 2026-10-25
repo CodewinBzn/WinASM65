@@ -1,1 +1,5 @@
 src/test/unit/fixtures/* text eol=lf
+src/test/unit/fixtures/live/*.json text eol=lf
+src/test/unit/fixtures/live/*.asm text eol=lf
+src/test/unit/fixtures/live/*.bin binary
+src/test/unit/fixtures/live/*.nam binary

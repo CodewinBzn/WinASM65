@@ -4,6 +4,7 @@ import { HostMessage, WebviewMessage } from '../shared/protocol';
 import { EditorContext } from './context';
 import { editorHtml, webviewOptions } from './html';
 import { errorText } from './jsonEditor';
+import { LiveChannel } from '../live';
 
 export const TILES_VIEW_TYPE = 'winasm65Graphics.tiles';
 const PALETTE_STATE_KEY = 'winasm65Graphics.tilePalette';
@@ -21,7 +22,12 @@ export class ChrDocument implements vscode.CustomDocument {
   readonly onDidChangeBytes = this.changed.event;
   readonly onDidDispose = this.disposed.event;
 
-  constructor(readonly uri: vscode.Uri, public bytes: Uint8Array) {}
+  /** The bytes as last read from or written to the file. */
+  saved: Uint8Array;
+
+  constructor(readonly uri: vscode.Uri, public bytes: Uint8Array) {
+    this.saved = bytes;
+  }
 
   setBytes(bytes: Uint8Array): void {
     this.bytes = bytes;
@@ -91,6 +97,11 @@ export class TilesEditorProvider implements vscode.CustomEditorProvider<ChrDocum
     return document;
   }
 
+  /** Whether the document holds bytes the file does not. */
+  isDirty(document: ChrDocument): boolean {
+    return document.bytes !== document.saved;
+  }
+
   /** Records an edit (the tests use it as the webview does). */
   edit(document: ChrDocument, after: Uint8Array, label: string): void {
     const before = document.bytes;
@@ -110,6 +121,13 @@ export class TilesEditorProvider implements vscode.CustomEditorProvider<ChrDocum
     webview.html = editorHtml(webview, context.extensionUri, 'tiles', path.basename(document.uri.fsPath));
     const post = (message: HostMessage) => void webview.postMessage(message);
     const subscriptions: vscode.Disposable[] = [context.registry.track(panel, document.uri, 'tiles')];
+
+    // Live preview: the tiles, into the machine's CHR memory (whole changed tiles).
+    const live = new LiveChannel(context.live, 'the tiles into CHR memory', undefined,
+      () => [{ space: 'CHR', address: 0, data: document.bytes, unit: 16 }],
+      state => post({ type: 'live', state }),
+      (text, level) => post({ type: 'notice', text, level }));
+    subscriptions.push(live, document.onDidChangeBytes(() => live.changed()));
 
     // The bytes this webview sent last: not sent back to it.
     let own: Uint8Array | undefined;
@@ -167,8 +185,16 @@ export class TilesEditorProvider implements vscode.CustomEditorProvider<ChrDocum
           post({ type: 'chr', data: Array.from(document.bytes) });
           await sendFiles();
           await sendPalette();
+          live.send();
           break;
         }
+        case 'live':
+          await live.set(message.on);
+          break;
+        case 'importPng':
+          await vscode.commands.executeCommand('winasm65Graphics.importPng', undefined,
+            { folder: path.dirname(document.uri.fsPath), suggestedChr: document.uri.fsPath });
+          break;
         case 'chrEdit': {
           const after = Uint8Array.from(message.data);
           own = after;
@@ -188,6 +214,7 @@ export class TilesEditorProvider implements vscode.CustomEditorProvider<ChrDocum
 
   async saveCustomDocument(document: ChrDocument): Promise<void> {
     await vscode.workspace.fs.writeFile(document.uri, document.bytes);
+    document.saved = document.bytes;
   }
 
   async saveCustomDocumentAs(document: ChrDocument, destination: vscode.Uri): Promise<void> {
@@ -195,7 +222,9 @@ export class TilesEditorProvider implements vscode.CustomEditorProvider<ChrDocum
   }
 
   async revertCustomDocument(document: ChrDocument): Promise<void> {
-    document.setBytes(new Uint8Array(await vscode.workspace.fs.readFile(document.uri)));
+    const bytes = new Uint8Array(await vscode.workspace.fs.readFile(document.uri));
+    document.saved = bytes;
+    document.setBytes(bytes);
   }
 
   async backupCustomDocument(document: ChrDocument, backup: vscode.CustomDocumentBackupContext): Promise<vscode.CustomDocumentBackup> {
