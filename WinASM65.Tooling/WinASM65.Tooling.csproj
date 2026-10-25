@@ -27,6 +27,7 @@
   <ItemGroup>
     <ProjectReference Include="..\WinASM65\WinASM65.csproj" />
     <ProjectReference Include="..\WinASM65.Monitor.Core\WinASM65.Monitor.Core.csproj" />
+    <ProjectReference Include="..\WinASM65.Graphics\WinASM65.Graphics.csproj" />
   </ItemGroup>
 
   <ItemGroup>
