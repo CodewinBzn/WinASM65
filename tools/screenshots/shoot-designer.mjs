@@ -75,7 +75,7 @@ for (const project of ['WinASM65.Designer']) { // the Tooling build may be in us
 }
 
 const workspace = cleanCopy('example_star_catcher');
-const { app, page } = await launch(workspace, {
+const { page, close } = await launch(workspace, {
   'editor.hover.above': false,
   'breadcrumbs.enabled': false,
   'winasm65Graphics.exportOnSave': false,
@@ -166,7 +166,7 @@ try {
     console.log('  Mesen2 not found: the live preview screenshots are skipped (--mesen <Mesen.exe>).');
   }
 } finally {
-  await app.close();
+  await close();
   powershell(`Get-CimInstance Win32_Process -Filter "Name='Mesen.exe'" | Where-Object { $_.CommandLine -like '*${path.basename(path.dirname(workspace))}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`);
   fs.rmSync(path.dirname(workspace), { recursive: true, force: true });
 }

@@ -74,7 +74,12 @@ export async function launch(workspace, settings = {}, extensions = ['vscode-ext
     window.center();
   });
   await page.waitForTimeout(1500);
-  return { app, page };
+  // Closes VS Code and deletes its throwaway profile (some 15 MB a run).
+  const close = async () => {
+    await app.close();
+    fs.rmSync(userData, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
+  };
+  return { app, page, close };
 }
 
 /** Runs a command by its title from the command palette. */
