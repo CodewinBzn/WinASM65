@@ -110,12 +110,12 @@ try {
   });
 
   await step('hover on an instruction', async () => {
-    await hoverAt(page, 340, 10);
+    await hoverAt(page, 338, 10);
     await shot(page, 'vscode-hover-instruction', await box(page, editorPart), true);
   });
 
   await step('hover on a name', async () => {
-    await hoverAt(page, 340, 14);
+    await hoverAt(page, 338, 14);
     await shot(page, 'vscode-hover-symbol', await box(page, editorPart), true);
     await page.keyboard.press('Escape');
   });

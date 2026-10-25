@@ -18,6 +18,9 @@
     { href: 'bridges.html', title: 'Emulator bridges' },
     { href: 'tooling.html', title: 'Tooling: DAP and LSP' },
     { href: 'vscode.html', title: 'VS Code extension' },
+    { group: 'Graphics and AI' },
+    { href: 'graphics.html', title: 'Graphics Designer' },
+    { href: 'ai.html', title: 'Tools for AI assistants' },
     { group: 'Project' },
     { href: 'testing.html', title: 'Tests and tools' }
   ];

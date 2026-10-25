@@ -97,7 +97,7 @@
     <p>This section lists every key the code reads from <code>config.json</code>, with its type, its default and what it does. Two different readers go through the file:</p>
     <ul>
       <li><strong><code>Target</code>, <code>Input</code> and <code>Output</code></strong> are read by <code>JsonConfigurationReader</code> with Newtonsoft.Json into a <code>ConfigFile</code> (<code>Segments/SegmentModels.cs</code>). Key names are matched <strong>without regard to case</strong> (<code>"input"</code> works), and a key the classes do not declare is <strong>ignored silently</strong>, so a misspelt key (<code>"Sytem"</code>) is not reported: the field just keeps its default. A value of the wrong type stops the run, for example <code>Could not convert string to boolean: yes. Path 'Target.Ines.Battery'</code>.</li>
-      <li><strong><code>Emulator</code></strong> is not part of <code>ConfigFile</code>. <code>EmulatorLauncher</code> (monitor) and <code>DebugEnvironment</code> (debug adapter) read it on their own with <code>System.Text.Json</code>, whose property lookup is <strong>case-sensitive</strong>: write <code>Emulator</code> and <code>Path</code> exactly so. The command line still parses the whole file, so a syntax error inside <code>Emulator</code> (an unescaped <code>\</code> in a Windows path, say) fails the build too.</li>
+      <li><strong><code>Emulator</code></strong> is not part of <code>ConfigFile</code>. The monitor and the debug adapter read it through one class, <code>EmulatorConfiguration.Read</code> (<code>Monitor.Core/Emulators</code>), with <code>System.Text.Json</code>; its key names are matched <strong>without regard to case</strong> too. The command line still parses the whole file, so a syntax error inside <code>Emulator</code> (an unescaped <code>\</code> in a Windows path, say) fails the build too.</li>
     </ul>
     <div class="callout">
       <p><strong>Relative paths.</strong> On the command line (<code>WinASM65 -c config.json</code>) every path of <code>Input</code> and <code>Output</code> is relative to the <strong>current directory</strong>: run it from the project directory, as <code>compile.bat</code> does. Everything built through <a href="#session"><code>ProjectSession</code></a> (VS Code build task, debug adapter, language server, the monitor's <code>BUILD</code>) resolves them against the <strong>directory of <code>config.json</code></strong>. <code>Emulator.Path</code> is always relative to the directory of <code>config.json</code>.</p>
@@ -151,11 +151,11 @@
     ]
   },
   "Emulator": {
-    "Path": "C:\\Tools\\Mesen2\\Mesen.exe",
-    "Arguments": "\"{RomPath}\""
+    "Name": "mesen2",
+    "Path": "C:\\Emulators\\Mesen2\\Mesen.exe"
   }
 }</code></pre>
-    <p>Most of the <code>Target</code> section repeats what <code>"System": "nes"</code> already implies (CPU, format, hardware symbols, one PRG and one CHR bank, mapper 0, vertical mirroring, NTSC); it is spelled out here to show the keys. The <code>nes</code> system predefines hardware symbols (<code>PPUCTRL</code>, <code>OAMDMA</code>, <code>JOY1</code>…) with the same values as the constants of <code>src/nes.inc</code>; the source's own definitions are accepted over them. <code>"Arguments"</code> is shown because it appears in real configurations, but nothing reads it (see <a href="#config-emulator">Emulator</a>).</p>
+    <p>Most of the <code>Target</code> section repeats what <code>"System": "nes"</code> already implies (CPU, format, hardware symbols, one PRG and one CHR bank, mapper 0, vertical mirroring, NTSC); it is spelled out here to show the keys. The <code>nes</code> system predefines hardware symbols (<code>PPUCTRL</code>, <code>OAMDMA</code>, <code>JOY1</code>…) with the same values as the constants of <code>src/nes.inc</code>; the source's own definitions are accepted over them. <code>Emulator</code> names the emulator to debug with (see <a href="#config-emulator">Emulator</a>).</p>
 
     <h3 id="config-other">Keys for other systems</h3>
     <p>A few <code>Target</code> keys only matter to other formats or machines. Three small configurations, each complete and built successfully with a one-unit <code>main.asm</code> that has no <code>.org</code>. A BBC Micro file with its code header:</p>
@@ -319,13 +319,16 @@
     </div>
 
     <h3 id="config-emulator">Emulator</h3>
-    <p>Read by <code>EmulatorLauncher.FromProjectConfiguration</code> in the monitor and by <code>DebugEnvironment.ConfiguredEmulator</code> in the debug adapter, with case-sensitive key names. The monitor looks for a file named <code>config.json</code> in its current directory when it is started without <code>--mesen</code>, and starts the program with the ROM (<code>Output.ObjectFile</code>, resolved against the configuration directory) as its only, quoted argument. The debug adapter uses it when <code>launch.json</code> gives no <code>emulatorPath</code>; see <a href="tooling.html#dap">the debug adapter</a>.</p>
+    <p>The emulator a project is debugged on, read by <code>EmulatorConfiguration.Read</code> for both the monitor (<code>EmulatorLauncher.FromProjectConfiguration</code>, from the <code>config.json</code> of its current directory when it is started without <code>--emulator-path</code>, with the ROM <code>Output.ObjectFile</code> names) and the debug adapter (<code>DebugEnvironment.ConfiguredEmulator</code>; <code>launch.json</code>'s <code>emulatorPath</code>, <code>emulator</code> and <code>bridge</code> override it, see <a href="tooling.html#launch">the debug adapter</a>). Key names are matched without regard to case; a section without <code>Path</code> counts as none. How each emulator is started, and the contract its bridge answers, are on <a href="bridges.html">Emulator bridges</a>.</p>
     <div class="table-wrap">
     <table>
       <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
       <tbody>
+        <tr><td><code>Name</code></td><td>string</td><td><code>mesen2</code> for a <code>Mesen.exe</code>, else custom</td><td>The emulator adapter: <code>mesen2</code> (Mesen2 2.1.1, full debugging), <code>mesence</code> (MesenCE, memory only), or any other name for a custom emulator started with <code>Arguments</code>.</td></tr>
         <tr><td><code>Path</code></td><td>string</td><td>none: no emulator</td><td>The emulator executable. A relative path is resolved against the directory of <code>config.json</code>. In JSON, a Windows path needs doubled backslashes.</td></tr>
-        <tr><td><code>Arguments</code></td><td>string</td><td>—</td><td><strong>Not read.</strong> Some configurations carry it (with a <code>{RomPath}</code> placeholder, which <code>EmulatorLauncher</code> knows how to expand), but <code>FromProjectConfiguration</code> passes <code>null</code> as the argument template on purpose: the ROM is always the only argument.</td></tr>
+        <tr><td><code>Bridge</code></td><td>string</td><td>the adapter's own</td><td>The bridge script to load instead: a path (relative to <code>config.json</code>), or the file name of a bridge shipped in <code>Bridge/</code>.</td></tr>
+        <tr><td><code>Arguments</code></td><td>string</td><td><code>{rom}</code></td><td>The command line of a custom emulator, where <code>{rom}</code>, <code>{script}</code> and <code>{port}</code> are replaced; split at spaces outside double quotes. Mesen2 and MesenCE build their own command line and do not read it.</td></tr>
+        <tr><td><code>Port</code></td><td>integer</td><td>45678</td><td>The bridge port the monitor's launch action uses. The debug adapter takes a free port (or <code>launch.json</code>'s <code>port</code>) and passes it in <code>MACHINE_PORT</code>.</td></tr>
       </tbody>
     </table>
     </div>
@@ -365,9 +368,13 @@
 				"FileName": "chr/tiles.chr"
 			}
 		]
+	},
+	"Emulator": {
+		"Name": "mesen2",
+		"Path": "C:\\Emulators\\Mesen2\\Mesen.exe"
 	}
 }</code></pre>
-    <p><code>header.asm</code> emits the whole 16-byte header from <code>.org $0000</code> (<code>"NES", $1A</code>, one PRG bank, one CHR bank, flags <code>$01</code> and <code>$00</code>, then <code>.dsb 8</code> zeros), so <code>"Size": "$10"</code> adds no padding: it only makes the build fail if the header ever grows. <code>game.asm</code> starts at <code>.org $C000</code>; its 1,243 bytes are padded to <code>$3FFA</code>, so that <code>vectors.asm</code>, at <code>.org $FFFA</code>, lands on the last six bytes of the 16 KB PRG bank. <code>vectors.asm</code> writes the addresses of <code>NMI</code>, <code>RESET</code> and <code>IRQ</code>, which <code>game.asm</code> defines, hence its dependency. <code>chr/tiles.chr</code>, written by <code>chr/make_chr.py</code>, is 8 KB of tiles taken as they are. The image is 16 + 16,384 + 8,192 = 24,592 bytes. The <a href="example.html#project">Example game</a> page explains the same file from the game's side.</p>
+    <p><code>header.asm</code> emits the whole 16-byte header from <code>.org $0000</code> (<code>"NES", $1A</code>, one PRG bank, one CHR bank, flags <code>$01</code> and <code>$00</code>, then <code>.dsb 8</code> zeros), so <code>"Size": "$10"</code> adds no padding: it only makes the build fail if the header ever grows. <code>game.asm</code> starts at <code>.org $C000</code>; its 3,682 bytes (the code, the data and the two 1,024-byte screens of <code>gfx/</code>) are padded to <code>$3FFA</code>, so that <code>vectors.asm</code>, at <code>.org $FFFA</code>, lands on the last six bytes of the 16 KB PRG bank. <code>vectors.asm</code> writes the addresses of <code>NMI</code>, <code>RESET</code> and <code>IRQ</code>, which <code>game.asm</code> defines, hence its dependency. <code>chr/tiles.chr</code>, drawn in the <a href="graphics.html">Graphics Designer</a>, is 8 KB of tiles taken as they are. The image is 16 + 16,384 + 8,192 = 24,592 bytes. <code>Emulator</code> is for debugging only: Mesen2 at an example path, to point at your own (or override with the <code>winasm65.emulatorPath</code> setting in VS Code). The <a href="example.html#project">Example game</a> page explains the same file from the game's side.</p>
 
     <h2 id="order">How units are resolved</h2>
     <p>The name of the section, “dependencies”, suggests a dependency graph sorted before the build. There is none. <code>MultiSegmentOrchestrator.AssembleSegments</code> works in two phases, both in the order the <code>Input</code> array lists the units, and <code>Dependencies</code> only says <em>which</em> symbol files a unit is allowed to read in the second phase.</p>
@@ -482,7 +489,7 @@
     <p>Other failures: a missing file (<code>Input file doesn't exist: …</code>), and a missing <code>ObjectFile</code> (<code>An output object file is required.</code>).</p>
 
     <h3>Why the sizes matter</h3>
-    <p>Each object file holds only the bytes its unit emitted, from its first <code>.org</code> onwards; the gaps between units do not exist on disk. <code>Size</code> recreates them. In the <code>star_catcher.nes</code> image, <code>header.o</code> is the 16-byte header; <code>game.o</code> holds 1,243 bytes of code and data from <code>$C000</code> to <code>$C4DA</code> and is padded to <code>$3FFA</code>, so <code>vectors.o</code> starts at the file offset that maps to <code>$FFFA</code>:</p>
+    <p>Each object file holds only the bytes its unit emitted, from its first <code>.org</code> onwards; the gaps between units do not exist on disk. <code>Size</code> recreates them. In the <code>star_catcher.nes</code> image, <code>header.o</code> is the 16-byte header; <code>game.o</code> holds 3,682 bytes of code and data from <code>$C000</code> to <code>$CE61</code> and is padded to <code>$3FFA</code>, so <code>vectors.o</code> starts at the file offset that maps to <code>$FFFA</code>:</p>
 
     <div class="figure">
       <svg viewBox="0 0 900 170" role="img" aria-label="The star_catcher.nes image: 16-byte header at offset 0, game.o at offset $10 mapping to $C000 to $FFF9, vectors.o at $400A mapping to $FFFA to $FFFF, and 8 KB of tiles from tiles.chr at $4010">

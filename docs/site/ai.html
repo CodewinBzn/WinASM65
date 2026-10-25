@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tools for AI assistants</title>
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<div class="layout">
+  <nav class="site-nav" aria-label="Pages"></nav>
+
+  <main>
+    <p class="breadcrumb"><a href="index.html">WinASM65</a> › Tools</p>
+    <header class="page">
+      <h1>Tools for AI assistants</h1>
+      <p class="lede">WinASM65's assembler, debugger and graphics tools are offered to AI assistants through the Model Context Protocol (MCP). An assistant such as Claude Code, Claude Desktop, GitHub Copilot or Cursor can then build a project, read its errors and listings, run it in the emulator, stop on a breakpoint, inspect registers and memory, and edit graphics, the way a person does in VS Code.</p>
+    </header>
+
+    <aside class="sources">
+      <h4>Source files</h4>
+      <ul>
+        <li><a href="../../WinASM65.Tooling/Mcp/McpServer.cs"><code>Mcp/McpServer.cs</code></a></li>
+        <li><a href="../../WinASM65.Tooling/Mcp/McpTool.cs"><code>Mcp/McpTool.cs</code></a></li>
+        <li><a href="../../WinASM65.Tooling/Mcp/CodeTools.cs"><code>Mcp/CodeTools.cs</code></a></li>
+        <li><a href="../../WinASM65.Tooling/Mcp/DebugTools.cs"><code>Mcp/DebugTools.cs</code></a></li>
+        <li><a href="../../vscode-extension/src/mcp.ts"><code>vscode-extension/src/mcp.ts</code></a></li>
+        <li><a href="../../tools/mcp-smoke.py"><code>tools/mcp-smoke.py</code></a></li>
+        <li><a href="../../WinASM65.Tooling.Tests/McpServerTests.cs"><code>McpServerTests.cs</code></a></li>
+      </ul>
+    </aside>
+
+    <h2 id="connect">Connecting an assistant</h2>
+    <p>The server is a mode of <code>WinASM65.Tooling</code>, the same program the VS Code extension runs for its debugger and language server: <code>WinASM65.Tooling.exe --mcp</code>. It speaks MCP over its standard input and output.</p>
+
+    <h3 id="vscode">In VS Code</h3>
+    <p>Nothing to do: with VS Code 1.101 or later, the WinASM65 extension offers the server to the editor's agents (Copilot's agent mode and others). It appears as <strong>WinASM65</strong> in <em>MCP: List Servers</em> and starts when an agent first uses one of its tools.</p>
+
+    <h3 id="claude-code">Claude Code</h3>
+<pre><code>claude mcp add winasm65 -- "C:\Users\you\.vscode\extensions\codewinbzn.winasm65-0.4.0-win32-x64\bin\WinASM65.Tooling.exe" --mcp</code></pre>
+    <p>Any copy of <code>WinASM65.Tooling.exe</code> works: the one shipped in the extension's <code>bin</code> folder, or a build of the repository (<code>dotnet run --project WinASM65.Tooling -- --mcp</code>).</p>
+
+    <h3 id="other-clients">Claude Desktop, Cursor and other clients</h3>
+    <p>Clients configured with a JSON file take the same command:</p>
+<pre><code>{
+  "mcpServers": {
+    "winasm65": {
+      "command": "C:\\path\\to\\WinASM65.Tooling.exe",
+      "args": ["--mcp"]
+    }
+  }
+}</code></pre>
+
+    <h2 id="tools">The tools</h2>
+    <p>Every tool states what it may do in its MCP annotations: <em>read-only</em> tools only look; the others write files, start an emulator or change its memory. Asking you before a tool runs is the assistant's job, under its own permission settings. A tool that fails returns the reason as text the assistant can act on (a build error with its file and line, a breakpoint on a line with no code, a memory the emulator does not offer).</p>
+
+    <h3 id="code-tools">Code</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Tool</th><th>What it does</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>build_project</code></td><td>Builds a project (its config.json) and writes the image; returns success, the image path and size, the target, and every diagnostic as <code>file:line: message</code>.</td><td>writes</td></tr>
+        <tr><td><code>assemble</code></td><td>Assembles a fragment of source text, without a project: listing (address, bytes, line) and diagnostics. Optional CPU.</td><td>read-only</td></tr>
+        <tr><td><code>get_listing</code></td><td>The listing of one source file of a project, optionally a range of lines.</td><td>read-only</td></tr>
+        <tr><td><code>find_symbol</code></td><td>Labels and constants matching a regular expression, with their values and the unit defining them.</td><td>read-only</td></tr>
+        <tr><td><code>describe_instruction</code></td><td>What a mnemonic does, the flags it changes, and every addressing mode with opcode, length and cycles, for a CPU.</td><td>read-only</td></tr>
+        <tr><td><code>list_systems</code></td><td>The target systems, CPUs and emulator adapters.</td><td>read-only</td></tr>
+        <tr><td><code>get_config_schema</code></td><td>The keys of config.json, with an example.</td><td>read-only</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3 id="debug-tools">Debugging</h3>
+    <p>The debug tools drive the same debugger VS Code uses (<a href="tooling.html#dap">the debug adapter</a>), inside the server process: launching, breakpoints and stops behave and fail exactly as in the editor. The emulator is the one the project's config.json names (<a href="bridges.html#config">Emulator section</a>), or the one given to <code>debug_launch</code>.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Tool</th><th>What it does</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>debug_launch</code></td><td>Builds, starts the emulator with its bridge, sets breakpoints given as <code>file:line</code>, runs, and returns the state if it stopped within <code>waitSeconds</code>.</td><td>writes</td></tr>
+        <tr><td><code>debug_attach</code></td><td>Connects to an emulator already running a bridge.</td><td>writes</td></tr>
+        <tr><td><code>set_breakpoints</code></td><td>Replaces a file's breakpoints; says where each landed or why it could not.</td><td>writes</td></tr>
+        <tr><td><code>continue</code>, <code>step</code>, <code>pause</code></td><td>Run, step (over, into, out) or stop; return the new state.</td><td>writes</td></tr>
+        <tr><td><code>get_state</code></td><td>Where and why the program stopped (file, line, its text, routine), registers and flags, and the debug console's output.</td><td>read-only</td></tr>
+        <tr><td><code>read_memory</code></td><td>A hex dump of the CPU's memory or of another memory space of the machine (on the NES: <code>PPU</code>, <code>PAL</code>, <code>OAM</code>, <code>CHR</code>).</td><td>read-only</td></tr>
+        <tr><td><code>write_memory</code></td><td>Writes bytes into a memory space.</td><td>destructive</td></tr>
+        <tr><td><code>evaluate</code></td><td>A register, a symbol or <code>$address</code>; a line starting with <code>&gt;</code> is a monitor command.</td><td>read-only</td></tr>
+        <tr><td><code>describe_machine</code></td><td>The system, its memories and views, and the emulator with its capabilities.</td><td>read-only</td></tr>
+        <tr><td><code>debug_stop</code></td><td>Ends the session and closes the emulator it started.</td><td>writes</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3 id="graphics-tools">Graphics</h3>
+    <p>The graphics tools work on the same asset files as the <a href="graphics.html">graphics designer</a> in VS Code, with the same validation and the same file format: an assistant and a person can take turns on one asset.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Tool</th><th>What it does</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>list_assets</code></td><td>The assets under a folder with their kind, size and problems.</td><td>read-only</td></tr>
+        <tr><td><code>render_asset</code></td><td>Draws an asset as a PNG image the assistant sees: tiles with a palette, palettes, a screen, a map, a metasprite or an animation frame.</td><td>read-only</td></tr>
+        <tr><td><code>get_asset</code></td><td>An asset's JSON and its problems.</td><td>read-only</td></tr>
+        <tr><td><code>update_asset</code></td><td>Replaces a JSON asset after validating it; nothing is written when it has errors, which are returned with their JSON path.</td><td>writes</td></tr>
+        <tr><td><code>get_tiles</code>, <code>edit_tiles</code></td><td>Tile pixels as rows of colour digits, read or drawn.</td><td>read-only, writes</td></tr>
+        <tr><td><code>import_png</code></td><td>A PNG into tiles, palettes and a screen or a metasprite, within the machine's colour limits.</td><td>writes</td></tr>
+        <tr><td><code>export_assets</code></td><td>The files the assembler includes (.bin, .nam, .rle, .asm with labels) for an asset or a folder.</td><td>writes</td></tr>
+        <tr><td><code>describe_graphics_system</code></td><td>The machine's graphics rules and master palette.</td><td>read-only</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2 id="example">An example session</h2>
+    <p>What an assistant sees when it debugs the <a href="example.html">example game</a> (output of <code>tools/mcp-smoke.py</code> against the real Mesen2):</p>
+<pre><code>build_project {"config": "example_star_catcher/config.json"}
+  Build succeeded.
+  Image: …\example_star_catcher\star_catcher.nes (24592 bytes)
+
+debug_launch {"config": "…/config.json", "breakpoints": ["src/game.asm:134"], "waitSeconds": 20}
+  Breakpoint game.asm:134 -> set at line 134
+  Stopped in NMI at …\src\game.asm:134, PC 0xC06E
+    134: pha
+  Registers: PC=$C06E, A=$00, X=$00, Y=$59, SP=$FA, PS=$06  nv-bdIZc, cycles=146526
+  Flags: N=0, V=0, B=0, D=0, I=1, Z=1, C=0
+
+read_memory {"space": "PAL", "address": "$00", "length": 32}
+  PAL $0000-$001F:
+  $0000  0F 30 16 28 0F 30 16 28  0F 30 16 28 0F 30 16 28
+  $0010  0F 30 11 16 0F 28 38 30  0F 07 17 27 0F 27 37 30</code></pre>
+
+    <h2 id="protocol">Protocol details</h2>
+    <ul>
+      <li>Transport: stdio, one JSON-RPC 2.0 message per line (MCP's stdio transport). Diagnostics of the server go to standard error.</li>
+      <li>Versions: <code>2025-06-18</code>, <code>2025-03-26</code> and <code>2024-11-05</code>; the client's version is used when the server speaks it.</li>
+      <li>Methods: <code>initialize</code>, <code>ping</code>, <code>tools/list</code>, <code>tools/call</code>. Notifications are accepted and not answered.</li>
+      <li>One debug session at a time; <code>debug_launch</code> ends the previous one.</li>
+    </ul>
+
+    <h2 id="checking">Checking the server</h2>
+    <p><code>python tools/mcp-smoke.py &lt;WinASM65.Tooling.exe|.dll&gt; &lt;config.json&gt; &lt;source&gt; &lt;line&gt; [&lt;Mesen.exe&gt;]</code> plays an assistant: it initializes, lists the tools, builds, lists a line, launches the debugger with a breakpoint on that line, waits for the stop, reads the registers and the palette memory, and stops. <code>McpServerTests</code> covers the protocol and every tool against a fake machine.</p>
+
+    <footer>
+      <p>The asset formats are described on the <a href="graphics.html">graphics designer</a> page.</p>
+    </footer>
+  </main>
+
+  <aside class="toc" aria-label="On this page"></aside>
+</div>
+</body>
+</html>

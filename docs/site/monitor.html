@@ -39,7 +39,7 @@
     </aside>
 
     <figure class="shot">
-      <a href="img/monitor-tui.png"><img src="img/monitor-tui.png" alt="The terminal monitor on Star Catcher, connected to Mesen2 2.1.1: the status line (connected, RAM: Live, RUNNING, caps: full control, $C0A4, A=00 X=00 Y=59 SP=FD), the file tree with src\game.asm, src\header.asm, src\nes.inc, src\vectors.asm, chr\make_chr.py, config.json and star_catcher.nes, game.asm open at its constants, and the RAM and ROM panes"></a>
+      <a href="img/monitor-tui.png"><img src="img/monitor-tui.png" alt="The terminal monitor on Star Catcher, connected to Mesen2 2.1.1: the status line (connected, RAM: Live, RUNNING, caps: full control, $C0A4, A=00 X=00 Y=59 SP=FD), the file tree with the project's sources (src\game.asm, src\header.asm, src\nes.inc, src\vectors.asm), config.json and star_catcher.nes, game.asm open at its constants, and the RAM and ROM panes"></a>
       <figcaption>The monitor on the example game, <a href="example.html">Star Catcher</a>, started with <code>--emulator mesen2</code> and <code>--source src/game.asm</code>. The status line reads: host <code>Mesen2 2.1.1</code>, <code>connected</code>, <code>RAM: Live</code> (the bridge is pushing RAM changes), <code>RUNNING</code>, <code>caps: full control</code>, then the program counter, the registers, the cycle count and the breakpoint count. Below: the file tree, the source with its listing gutter (address, bytes, cycles), and the RAM ($0000–$3FFF) and ROM ($8000–$FFFF) panes. The game's 16 KB of program are mirrored at <code>$8000</code> and <code>$C000</code>, so the ROM pane starts with the first bytes of <code>RESET</code> (<code>78 D8 A2 40</code>: <code>sei</code>, <code>cld</code>, <code>ldx #$40</code>).</figcaption>
     </figure>
 
@@ -197,7 +197,7 @@
     <p>When no bridge answers, the monitor still starts, on <code>DummyBridgeBackend</code>: name <code>Dummy 0.0</code>, reads return zeros, writes and execution commands are ignored, <code>IsConnected</code> is false. It does not implement <code>IExecutionAdapter</code>, so its capability set is <code>None</code> and the status line says <code>caps: nothing measured</code>.</p>
 
     <h2 id="startup">Starting the monitor</h2>
-    <pre><code>WinASM65.Monitor --emulator mesen2 --mesen C:\Mesen2\Mesen.exe --rom star_catcher.nes --source src/game.asm
+    <pre><code>WinASM65.Monitor --emulator mesen2 --emulator-path C:\Emulators\Mesen2\Mesen.exe --rom star_catcher.nes --source src/game.asm
 WinASM65.Monitor --port 45678          # attach to a bridge that is already listening
 WinASM65.Monitor --repl &lt; commands.txt # line mode</code></pre>
     <div class="table-wrap">
@@ -205,9 +205,10 @@ WinASM65.Monitor --repl &lt; commands.txt # line mode</code></pre>
       <thead><tr><th>Option</th><th>Meaning</th><th>Default</th></tr></thead>
       <tbody>
         <tr><td><code>--port &lt;n&gt;</code></td><td>Bridge port.</td><td><code>45678</code></td></tr>
-        <tr><td><code>--mesen &lt;exe&gt;</code></td><td>Launch this emulator with the bridge. Requires <code>--rom</code>.</td><td>attach only</td></tr>
+        <tr><td><code>--emulator-path &lt;exe&gt;</code>, <code>--mesen &lt;exe&gt;</code></td><td>Launch this emulator with its bridge. Requires <code>--rom</code> (exit code 2 without it). <code>--mesen</code> is the older name of the same option.</td><td>attach only</td></tr>
         <tr><td><code>--rom &lt;file&gt;</code></td><td>ROM to load.</td><td>—</td></tr>
-        <tr><td><code>--emulator &lt;id&gt;</code></td><td><code>mesence</code> (memory only) or <code>mesen2</code> (full control). Anything else exits with code 2.</td><td><code>mesence</code></td></tr>
+        <tr><td><code>--emulator &lt;name&gt;</code></td><td>The emulator adapter: <code>mesen2</code> (full control), <code>mesence</code> (memory only), or any other name for a custom emulator (its bridge given with <code>--bridge</code>). See <a href="bridges.html">Emulator bridges</a>.</td><td><code>mesen2</code> for a <code>Mesen.exe</code>, else custom</td></tr>
+        <tr><td><code>--bridge &lt;file&gt;</code></td><td>The bridge script to load instead of the adapter's own.</td><td>the adapter's</td></tr>
         <tr><td><code>--theme &lt;file&gt;</code></td><td>Palette file.</td><td><code>theme.json</code> beside the executable, else built-in</td></tr>
         <tr><td><code>--source &lt;file&gt;</code></td><td>Source to open in the editor, relative to the working directory.</td><td>none</td></tr>
         <tr><td><code>--tui</code> / <code>--repl</code></td><td>Force the terminal UI or the line prompt.</td><td>TUI unless stdin or stdout is redirected</td></tr>
@@ -218,14 +219,14 @@ WinASM65.Monitor --repl &lt; commands.txt # line mode</code></pre>
     <p>What <code>Program.Main</code> does, in order:</p>
     <ol>
       <li>Sets the console to UTF-8 (SharpConsoleUI draws box characters directly) and parses the options.</li>
-      <li>With <code>--mesen</code>, starts the emulator through <code>EmulatorLauncher</code>; exit code 3 if it cannot. Without it, <code>EmulatorLauncher.FromProjectConfiguration</code> reads an optional <code>"Emulator": { "Path": … }</code> from <code>config.json</code> in the working directory. That generic launcher passes the ROM (<code>Output.ObjectFile</code>) as the only argument and loads no bridge.</li>
+      <li>With <code>--emulator-path</code>, starts the emulator through <code>EmulatorLauncher</code> and its adapter; exit code 3 if it cannot. Without it, <code>EmulatorLauncher.FromProjectConfiguration</code> reads the optional <code>Emulator</code> section of <code>config.json</code> in the working directory (<code>Name</code>, <code>Path</code>, <code>Bridge</code>, <code>Arguments</code>, <code>Port</code>) for the shell's launch action, with the ROM <code>Output.ObjectFile</code> names.</li>
       <li><code>BridgeConnector.TryConnect(port)</code> retries the connection every 250 ms for up to <strong>15 s</strong> (<code>DefaultTimeoutMs = 15000</code>). If nothing answers, it writes the reason to stderr, "… Starting without a bridge.", and the monitor continues on a <code>DummyBridgeBackend</code>.</li>
       <li>Builds one <code>Cpu6502</code>, shared by the session and the listing source so they agree on mnemonics, lengths and cycles, then a <code>MonitorSession</code> rooted in the working directory.</li>
-      <li>Runs <code>ShellRunner.Run</code> (TUI) or <code>RunRepl</code>. On every way out, the emulator it started is killed and waited for, so Mesen never outlives the monitor.</li>
+      <li>Runs <code>ShellRunner.Run</code> (TUI) or <code>RunRepl</code>. On every way out, the emulator it started is killed and waited for, so it never outlives the monitor.</li>
     </ol>
 
     <h3>Mesen2 or MesenCE</h3>
-    <p><code>BridgeLauncher.LaunchEmulator</code> is shared by the monitor and the debug adapter. The two emulators need different invocations:</p>
+    <p><code>BridgeLauncher.Launch</code> is shared by the monitor and the debug adapter; how each emulator is started is its adapter's business (<code>EmulatorAdapters</code>, see <a href="bridges.html">Emulator bridges</a>, which also covers custom emulators). The two built-in ones need different invocations:</p>
     <div class="table-wrap">
     <table>
       <thead><tr><th></th><th>Mesen2 (<code>mesen2</code>)</th><th>MesenCE (<code>mesence</code>)</th></tr></thead>
@@ -238,7 +239,7 @@ WinASM65.Monitor --repl &lt; commands.txt # line mode</code></pre>
       </tbody>
     </table>
     </div>
-    <p>The script is looked up beside the executable (<code>Bridge/</code>), then in <code>WinASM65.Monitor.Core/Bridge/</code> up the source tree. In the TUI, <code>R</code> (or "Reconnect to bridge" in the tree's menu) opens a Windows file dialog to pick another <code>.lua</code>, restarts the emulator with it and reconnects.</p>
+    <p>A bridge given by an absolute path is used as it is; otherwise the script is looked up beside the executable (<code>Bridge/</code>), then in <code>WinASM65.Monitor.Core/Bridge/</code> up the source tree. In the TUI, <code>R</code> (or "Reconnect to bridge" in the tree's menu) opens a Windows file dialog to pick another <code>.lua</code>, restarts the emulator with it and reconnects.</p>
 
     <h2 id="bridge">The bridge and its protocol</h2>
     <p>The bridge is a Lua script running inside the emulator. It opens a TCP server on <code>127.0.0.1</code>, accepts a single client, and turns each text line into calls on the emulator's <code>emu.*</code> API. All the logic stays on the .NET side, so the protocol can be typed by hand over telnet. The constants live in <code>Protocol/MonitorProtocol.cs</code>.</p>

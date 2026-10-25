@@ -15,7 +15,7 @@
     <p class="breadcrumb"><a href="index.html">WinASM65</a> › Debugging</p>
     <header class="page">
       <h1>Tooling: DAP and LSP</h1>
-      <p class="lede"><code>WinASM65.Tooling</code> is the editor side of WinASM65: one executable that runs as a Debug Adapter, a Language Server or a build front end. The VS Code extension starts it; any other editor that speaks DAP or LSP could too.</p>
+      <p class="lede"><code>WinASM65.Tooling</code> is the editor side of WinASM65: one executable that runs as a Debug Adapter, a Language Server, an MCP server for AI assistants or a build front end. The VS Code extension starts it; any other editor that speaks DAP or LSP could too. The debugger is not tied to one machine or one emulator: the system comes from the project, the emulator from its <code>config.json</code>.</p>
     </header>
 
     <aside class="sources">
@@ -31,12 +31,15 @@
         <li><a href="../../WinASM65.Monitor.Core/Debugging/SourceMap.cs"><code>Monitor.Core/Debugging/SourceMap.cs</code></a></li>
         <li><a href="../../WinASM65.Monitor.Core/Debugging/SourceMapBuilder.cs"><code>Monitor.Core/Debugging/SourceMapBuilder.cs</code></a></li>
         <li><a href="../../WinASM65.Monitor.Core/BridgeLauncher.cs"><code>Monitor.Core/BridgeLauncher.cs</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/Emulators/EmulatorAdapters.cs"><code>Monitor.Core/Emulators/EmulatorAdapters.cs</code></a></li>
+        <li><a href="../../WinASM65.Systems/SystemRegistry.cs"><code>Systems/SystemRegistry.cs</code></a></li>
+        <li><a href="../../WinASM65.Tooling/Mcp/McpServer.cs"><code>Mcp/McpServer.cs</code></a></li>
         <li><a href="../../WinASM65.Tooling.Tests/DebugSessionTests.cs"><code>Tooling.Tests/DebugSessionTests.cs</code></a></li>
         <li><a href="../../WinASM65.Tooling.Tests/LanguageServerTests.cs"><code>Tooling.Tests/LanguageServerTests.cs</code></a></li>
       </ul>
     </aside>
 
-    <h2 id="modes">One program, three modes</h2>
+    <h2 id="modes">One program, four modes</h2>
     <p><code>Program.Main</code> reads its first argument and picks a mode. Anything else prints a usage text on stderr and exits with code 2.</p>
     <div class="table-wrap">
     <table>
@@ -44,13 +47,14 @@
       <tbody>
         <tr><td><code>WinASM65.Tooling --dap</code></td><td>Debug Adapter Protocol</td><td>stdin/stdout, <code>Content-Length</code> framing</td><td><code>DebugSession</code></td></tr>
         <tr><td><code>WinASM65.Tooling --lsp</code></td><td>Language Server Protocol</td><td>stdin/stdout, <code>Content-Length</code> framing</td><td><code>LanguageServer</code></td></tr>
+        <tr><td><code>WinASM65.Tooling --mcp</code></td><td>Model Context Protocol (see <a href="ai.html">Tools for AI assistants</a>)</td><td>stdin/stdout, one JSON message per line</td><td><code>McpServer</code></td></tr>
         <tr><td><code>WinASM65.Tooling --build &lt;config.json&gt;</code></td><td>One build</td><td>stdout lines, exit code</td><td><code>Program.RunBuild</code></td></tr>
       </tbody>
     </table>
     </div>
 
     <div class="figure">
-      <svg viewBox="0 0 900 480" role="img" aria-label="VS Code starts WinASM65.Tooling in three modes. The --dap mode uses WinASM65.Monitor.Core and the assembler and reaches Mesen2 over TCP; the --lsp mode uses the assembler and the project locator of Monitor.Core; the --build mode uses only the assembler.">
+      <svg viewBox="0 0 900 480" role="img" aria-label="VS Code starts WinASM65.Tooling in three modes. The --dap mode uses WinASM65.Monitor.Core and the assembler and reaches the emulator's bridge over TCP (Mesen2 here); the --lsp mode uses the assembler and the project locator of Monitor.Core; the --build mode uses only the assembler.">
         <defs>
           <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
@@ -145,7 +149,7 @@ build failed: 1 error(s)</code></pre>
     <p>Each line is <code>DebugSession.FormatDiagnostic</code> (<code>file:line: message</code>, or <code>file: message</code> without a line; the configuration file stands in when a diagnostic has no file) with <code>error</code> or <code>warning</code> inserted before the message. The extension's pattern is <code>^(.+?)(?::(\d+))?: (error|warning): (.*)$</code>; <code>BuildModeTests</code> reads it from <code>package.json</code> and applies it to the real output, so the two cannot drift apart.</p>
 
     <h2 id="dap">Debug adapter</h2>
-    <p><code>DebugSession</code> is one debugging session of a 6502 machine. Every request and every event from the machine is handled on the session loop. The bridge reports stops on its receiver thread, which must never wait for a reply (it is the thread that delivers replies), so the <code>Stopped</code> and <code>Resumed</code> events are only queued with <code>Post</code>; a handler on the loop is then free to read registers or memory.</p>
+    <p><code>DebugSession</code> is one debugging session of a 6502 machine, whatever the machine. Once connected it knows the system from <code>SystemRegistry.Resolve</code> (in <code>WinASM65.Systems</code>): the project's <code>Target.System</code> first, else the system the bridge names in its <code>HELLO</code>, else the image's header, else a plain 6502. The system says how a program starts (from the reset vector, or from where it was loaded), how the image maps to ROM for the source map, which memories besides the CPU's it has, and the views a memory panel shows first. Every request and every event from the machine is handled on the session loop. The bridge reports stops on its receiver thread, which must never wait for a reply (it is the thread that delivers replies), so the <code>Stopped</code> and <code>Resumed</code> events are only queued with <code>Post</code>; a handler on the loop is then free to read registers or memory.</p>
 
     <h3 id="environment">The environment</h3>
     <p>Everything the session does outside its own memory goes through <code>IDebugEnvironment</code>, so the tests can run it against a fake machine (<code>FakeDebugMachine</code>) with the real assembler and no emulator. <code>DebugEnvironment</code> is the real one:</p>
@@ -154,28 +158,29 @@ build failed: 1 error(s)</code></pre>
       <thead><tr><th>Member</th><th>Real implementation</th></tr></thead>
       <tbody>
         <tr><td><code>Build(config, writeImage)</code></td><td><code>ProjectSession.Open(config).Build</code> with <code>CaptureListing = true</code>: the listings stay in memory for the source map.</td></tr>
-        <tr><td><code>ConfiguredEmulator(config)</code></td><td><code>Emulator.Path</code> from <code>config.json</code>, resolved against the project directory when relative; null otherwise.</td></tr>
+        <tr><td><code>ConfiguredEmulator(config)</code></td><td><code>EmulatorConfiguration.Read</code>: the <code>Emulator</code> section of <code>config.json</code> (<code>Name</code>, <code>Path</code>, <code>Bridge</code>, <code>Arguments</code>, <code>Port</code>), paths resolved against the project directory; null without one.</td></tr>
         <tr><td><code>FreePort()</code></td><td>Opens a <code>TcpListener</code> on port 0 of the loopback address and returns the port it got.</td></tr>
-        <tr><td><code>Launch(emulator, rom, id, port)</code></td><td><code>BridgeLauncher.LaunchEmulator</code>: Mesen2 with the ROM and <code>Bridge/bridge_mesen2.lua</code>, the port in the <code>MACHINE_PORT</code> environment variable. The process is wrapped so the session can see it exit and kill it (with its children).</td></tr>
+        <tr><td><code>Launch(emulator, rom, port)</code></td><td><code>BridgeLauncher.Launch</code>: the emulator's adapter (<code>EmulatorAdapters.For</code>: <code>mesen2</code>, <code>mesence</code>, or a custom one whose command line is <code>Emulator.Arguments</code>) prepares it and writes its command line with the ROM and the bridge script; the port also travels in the <code>MACHINE_PORT</code> environment variable. The process is wrapped so the session can see it exit and kill it (with its children).</td></tr>
         <tr><td><code>Connect(port, timeout)</code></td><td><code>BridgeConnector.Connect(port, timeout, poll: false)</code>: no background RAM polling, since the adapter reads memory only when VS Code asks.</td></tr>
       </tbody>
     </table>
     </div>
-    <p>Before each Mesen2 launch, <code>BridgeLauncher</code> makes sure Mesen2's <code>settings.json</code> lets a script open a socket (<code>AllowIoOsAccess</code>, <code>AllowNetworkAccess</code>, <code>ScriptTimeout</code>). It creates the file when it does not exist; when it exists without those entries it reports what to add and refuses to start. See <a href="monitor.html#bridge">the bridge</a>.</p>
+    <p>See <a href="bridges.html">Emulator bridges</a> for the adapters and the contract a bridge answers. Before each Mesen2 launch, its adapter makes sure Mesen2's <code>settings.json</code> lets a script open a socket (<code>AllowIoOsAccess</code>, <code>AllowNetworkAccess</code>, <code>ScriptTimeout</code>). It creates the file when it does not exist; when it exists without those entries it reports what to add and refuses to start. See <a href="monitor.html#bridge">the bridge</a>.</p>
 
     <h3 id="launch">Launch and attach arguments</h3>
     <div class="table-wrap">
     <table>
       <thead><tr><th>Request</th><th>Argument</th><th>Default</th><th>Meaning</th></tr></thead>
       <tbody>
-        <tr><td rowspan="7"><code>launch</code></td><td><code>config</code></td><td>required</td><td>The project's <code>config.json</code>.</td></tr>
+        <tr><td rowspan="8"><code>launch</code></td><td><code>config</code></td><td>required</td><td>The project's <code>config.json</code>.</td></tr>
         <tr><td><code>emulatorPath</code></td><td><code>Emulator.Path</code> of <code>config.json</code></td><td>The emulator executable. The extension fills it from the <code>winasm65.emulatorPath</code> setting when launch.json leaves it out.</td></tr>
-        <tr><td><code>emulator</code></td><td><code>mesen2</code></td><td>Which bridge script to load. Only a bridge that reports stops can be debugged.</td></tr>
+        <tr><td><code>emulator</code></td><td><code>Emulator.Name</code> of <code>config.json</code>, else <code>mesen2</code> for a <code>Mesen.exe</code></td><td>The emulator adapter: <code>mesen2</code>, <code>mesence</code>, or any other name for a custom emulator started with <code>Emulator.Arguments</code>. Only a bridge that reports stops can be debugged.</td></tr>
+        <tr><td><code>bridge</code></td><td>the adapter's own, else <code>Emulator.Bridge</code></td><td>A bridge script to load instead, relative to <code>config.json</code>.</td></tr>
         <tr><td><code>rom</code></td><td>the image the build wrote</td><td>The file the emulator runs.</td></tr>
         <tr><td><code>port</code></td><td>0 (a free port)</td><td>The bridge port.</td></tr>
-        <tr><td><code>stopOnEntry</code></td><td>false</td><td>Stop on the first instruction, at the address in the reset vector.</td></tr>
+        <tr><td><code>stopOnEntry</code></td><td>false</td><td>Stop on the first instruction: the address in the reset vector for a cartridge, the run (or load) address of a loaded program.</td></tr>
         <tr><td><code>connectTimeoutMs</code></td><td>15000</td><td>How long to wait for the bridge to answer.</td></tr>
-        <tr><td rowspan="4"><code>attach</code></td><td><code>port</code></td><td>45678</td><td>A bridge already running in Mesen2.</td></tr>
+        <tr><td rowspan="4"><code>attach</code></td><td><code>port</code></td><td>45678</td><td>A bridge already running in an emulator.</td></tr>
         <tr><td><code>config</code></td><td>none</td><td>Optional. When given, the project is built (without writing the image) to get the source map, so source breakpoints work.</td></tr>
         <tr><td><code>stopOnAttach</code></td><td>false</td><td>Pause the machine at <code>configurationDone</code>.</td></tr>
         <tr><td><code>connectTimeoutMs</code></td><td>15000</td><td>As for launch.</td></tr>
@@ -251,11 +256,11 @@ build failed: 1 error(s)</code></pre>
     </div>
     <ol>
       <li><strong>Build.</strong> <code>launch</code> builds the project with the image written. A failed build fails the request (“the build failed; see the debug console”); each diagnostic has been printed to the debug console as <code>file:line: message</code>. On success the listings become the <code>SourceMap</code>, and the console says how many units and mapped lines it has.</li>
-      <li><strong>Start.</strong> The emulator is the <code>emulatorPath</code> argument, else <code>Emulator.Path</code> of <code>config.json</code>; with neither, the launch fails and says where to set one.</li>
-      <li><strong>Connect.</strong> The adapter retries a one-second connection every 200 ms until the timeout, and gives up early if the emulator process has exited. An early exit gets its own message: Mesen2 runs as a single instance, so a second launch is handed to the window already open and the new process quits.</li>
+      <li><strong>Start.</strong> The emulator is the <code>Emulator</code> section of <code>config.json</code>, with what the <code>emulatorPath</code>, <code>emulator</code> and <code>bridge</code> arguments override; with no path at all, the launch fails and says where to set one. Its adapter starts it with the bridge.</li>
+      <li><strong>Connect.</strong> The adapter retries a one-second connection every 200 ms until the timeout, and gives up early if the emulator process has exited. An early exit gets its own message, the adapter's hint: Mesen2 runs as a single instance, so a second launch is handed to the window already open and the new process quits.</li>
       <li><strong>Check.</strong> The bridge must report execution state (<code>IExecutionEvents.ReportsExecutionState</code>) and the CPU state (<code>ICpuStateSource</code>). Otherwise the launch is refused with “… cannot be debugged: its bridge does not report when the machine stops”: that is the case of the MesenCE bridge.</li>
       <li><strong>Hold.</strong> The machine is paused until <code>configurationDone</code>, so the breakpoints VS Code is about to send are in place before the program runs one frame.</li>
-      <li><strong>Run.</strong> <code>configurationDone</code> resets the machine, so the program starts from its reset vector. With <code>stopOnEntry</code>, a temporary breakpoint is first planted at the address read from <code>$FFFC</code>, and the stop is reported with the reason <code>entry</code>. After an <code>attach</code> nothing is reset: the machine is paused only with <code>stopOnAttach</code>, and a machine that is already stopped is reported as stopped.</li>
+      <li><strong>Run.</strong> How depends on the system. A cartridge (the NES) is reset, so the program starts from its reset vector; with <code>stopOnEntry</code>, a temporary breakpoint is first planted at the address read from <code>$FFFC</code>. A loaded program simply resumes, with the temporary breakpoint at the target's run (or load) address. The stop is reported with the reason <code>entry</code>. After an <code>attach</code> nothing is reset: the machine is paused only with <code>stopOnAttach</code>, and a machine that is already stopped is reported as stopped.</li>
     </ol>
 
     <h3 id="requests">Requests</h3>
@@ -270,7 +275,7 @@ build failed: 1 error(s)</code></pre>
         <tr><td><code>setBreakpoints</code></td><td>Maps each line to addresses through the source map (below). Answers <code>id</code>, <code>verified</code>, the line actually used and, when relevant, a <code>message</code>.</td></tr>
         <tr><td><code>setExceptionBreakpoints</code></td><td>Accepted with an empty list: the 6502 has no exceptions to break on.</td></tr>
         <tr><td><code>configurationDone</code></td><td>Starts the program (launch) or reports the machine as it is (attach).</td></tr>
-        <tr><td><code>threads</code></td><td>One thread, id 1, named <code>6502</code>.</td></tr>
+        <tr><td><code>threads</code></td><td>One thread, id 1, named after the system's CPU (<code>6502</code>).</td></tr>
         <tr><td><code>stackTrace</code></td><td>One frame: the source line of the PC from <code>SourceMap.Resolve(pc, prgOffset)</code>, named after the nearest label (<code>NMI</code>, <code>NMI+2</code>), or <code>$C06E</code> when no label precedes it. “(bank unknown)” is appended when the PC maps to several banks and the stop gave no PRG offset. A PC with no source gets a <code>subtle</code> frame without a source. The frame carries <code>instructionPointerReference</code>.</td></tr>
         <tr><td><code>scopes</code></td><td><code>Registers</code> (hint <code>registers</code>), <code>Flags</code>, and <code>Zero page</code> (marked expensive, so VS Code reads it only when expanded).</td></tr>
         <tr><td><code>variables</code></td><td>Registers: <code>PC</code>, <code>A</code>, <code>X</code>, <code>Y</code>, <code>SP</code>, <code>PS</code> (with a flag string such as <code>Nv-bdIzC</code>, upper case = set), <code>cycles</code>. Flags: <code>N V B D I Z C</code> as 0 or 1 (bit 5 is skipped). Zero page: 16 rows of 16 bytes. <code>PC</code>, <code>SP</code> (as <code>$0100+SP</code>) and each zero-page row carry a <code>memoryReference</code>, which opens VS Code's hex memory view.</td></tr>
@@ -282,7 +287,10 @@ build failed: 1 error(s)</code></pre>
         <tr><td><code>readMemory</code></td><td>Reads in chunks of 4096 bytes, clipped to <code>$0000-$FFFF</code>; returns base64 data and <code>unreadableBytes</code> for what lay past the end. A memory reference may be <code>0x1234</code>, <code>$1234</code> or decimal.</td></tr>
         <tr><td><code>writeMemory</code></td><td>Writes in chunks of 4096 bytes; a write past <code>$FFFF</code> is refused, and the bridge's refusal (a write into ROM) is passed on. A <code>memory</code> event follows, so open memory views refresh.</td></tr>
         <tr><td><code>evaluate</code></td><td>See <a href="#evaluate">below</a>.</td></tr>
-        <tr><td><code>winasm65.symbols</code></td><td>Custom request. Arguments <code>from</code>, <code>to</code> (default <code>0</code> and <code>$FFFF</code>); returns <code>symbols: [{ name, value }]</code>, every name of the build whose value lies in the range, sorted by value. The <a href="vscode.html#ram">RAM panel</a> uses it to name bytes.</td></tr>
+        <tr><td><code>winasm65.symbols</code></td><td>Custom request. Arguments <code>from</code>, <code>to</code> (default <code>0</code> and <code>$FFFF</code>); returns <code>symbols: [{ name, value }]</code>, every name of the build whose value lies in the range, sorted by value. The <a href="vscode.html#ram">Memory panel</a> uses it to name bytes.</td></tr>
+        <tr><td><code>winasm65.system</code></td><td>Custom request, no arguments. Describes the machine: <code>id</code>, <code>name</code>, <code>cpu</code>, its memory <code>spaces</code> (<code>CPU</code> and the system's others, e.g. <code>PPU</code>, <code>PAL</code>, <code>OAM</code>, <code>CHR</code> on the NES; each with <code>length</code>, <code>writable</code>, <code>description</code>, and <code>available</code>: whether this emulator's bridge offers it), the <code>views</code> to show (<code>name</code>, <code>space</code>, <code>start</code>, <code>length</code>, <code>writable</code>), the master <code>palette</code>, and the <code>emulator</code> (<code>name</code>, <code>version</code>, contract <code>protocol</code>, <code>capabilities</code>). The Memory panel and the Graphics Designer's live preview read it.</td></tr>
+        <tr><td><code>winasm65.memory.read</code></td><td>Custom request. Arguments <code>space</code> (default <code>CPU</code>), <code>address</code>, <code>count</code> (at most 65536); returns <code>space</code>, <code>address</code> and base64 <code>data</code>. A space other than the CPU's is read through the bridge (<code>READ SPACE:$addr</code>); one the bridge does not offer is refused with its name.</td></tr>
+        <tr><td><code>winasm65.memory.write</code></td><td>Custom request. Arguments <code>space</code>, <code>address</code>, base64 <code>data</code>; returns <code>bytesWritten</code>. A write to the CPU's space is followed by a <code>memory</code> event. The <a href="graphics.html#live">live preview</a> writes tiles, palettes and screens this way.</td></tr>
         <tr><td><code>terminate</code></td><td>Clears the breakpoints, closes the connection, kills the emulator if the adapter started it, sends <code>terminated</code>.</td></tr>
         <tr><td><code>disconnect</code></td><td>Clears the breakpoints and closes the connection. The emulator is killed when <code>terminateDebuggee</code> says so, which defaults to “the adapter launched it”; an attached machine is resumed instead.</td></tr>
       </tbody>
@@ -304,7 +312,7 @@ build failed: 1 error(s)</code></pre>
       <li>A stop on a user breakpoint's address in another bank is resumed silently.</li>
       <li>Otherwise the reason is <code>breakpoint</code> (with <code>hitBreakpointIds</code>), <code>step</code> or <code>pause</code>, with <code>allThreadsStopped</code>.</li>
     </ol>
-    <p>A <code>RESUMED</code> the adapter did not cause (a click in Mesen2's own window) becomes a <code>continued</code> event. A one-second watchdog ends the session with <code>terminated</code> when the bridge connection drops, and the emulator's <code>Exited</code> event does the same when Mesen2 is closed.</p>
+    <p>A <code>RESUMED</code> the adapter did not cause (a click in the emulator's own window) becomes a <code>continued</code> event. A one-second watchdog ends the session with <code>terminated</code> when the bridge connection drops, and the emulator's <code>Exited</code> event does the same when the emulator is closed.</p>
 
     <h3 id="evaluate">Evaluate</h3>
     <div class="table-wrap">
@@ -383,7 +391,8 @@ build failed: 1 error(s)</code></pre>
     <ul>
       <li><strong>One stack frame.</strong> The JSR chain is not reconstructed; the frame is named after the nearest label. <code>stepOut</code> assumes the top of the stack is the return address.</li>
       <li><strong>No disassembly view.</strong> <code>disassemble</code> is not implemented.</li>
-      <li><strong>Mesen2 only.</strong> The MesenCE bridge does not report stops and is refused. Mesen2 runs as a single instance: close it before pressing F5.</li>
+      <li><strong>Bridges that report stops.</strong> Mesen2's bridge is the one shipped that does; the MesenCE bridge (contract 1) does not report stops and is refused. Mesen2 runs as a single instance: close it before pressing F5.</li>
+      <li><strong>One system profile so far.</strong> The NES has its own system definition (memories, views, boot, iNES mapping); every other target is debugged as a plain 6502 with the CPU's memory only.</li>
       <li><strong>Banks.</strong> A stop in a bank is told apart only when both the bridge and the source map know the PRG offset.</li>
     </ul>
 
@@ -392,7 +401,8 @@ build failed: 1 error(s)</code></pre>
     <table>
       <thead><tr><th>File</th><th>Covers</th></tr></thead>
       <tbody>
-        <tr><td><code>DebugSessionTests</code></td><td>The adapter end to end against <code>FakeDebugMachine</code> and the real assembler: launch, breakpoints on labels, stops, step over, banks, shared addresses, memory, the RAM panel's requests, the console, build errors, an emulator that exits, disconnect.</td></tr>
+        <tr><td><code>DebugSessionTests</code></td><td>The adapter end to end against <code>FakeDebugMachine</code> and the real assembler: launch, breakpoints on labels, stops, step over, banks, shared addresses, memory, the Memory panel's requests (<code>winasm65.system</code>, memory spaces read and written by name, a space the bridge lacks), a loaded program started from its load address, the emulator and bridge chosen in launch.json, the console, build errors, an emulator that exits, disconnect.</td></tr>
+        <tr><td><code>McpServerTests</code></td><td><code>--mcp</code>: version negotiation and the tool list, notifications and unknown methods, the code tools (build, assemble, listing, symbols, instructions), wrong arguments, the debugger driven from launch to a stop on the fake machine, and the graphics tools (tiles drawn, read, rendered and exported; bad tile rows refused).</td></tr>
         <tr><td><code>LanguageServerTests</code></td><td>Diagnostics and their clearing, names from other units, errors in includes, both hover cards, the listing column for units and includes, URIs.</td></tr>
         <tr><td><code>MessageStreamTests</code></td><td>The framing.</td></tr>
         <tr><td><code>BuildModeTests</code></td><td><code>--build</code> output against the problem pattern read from <code>package.json</code>.</td></tr>

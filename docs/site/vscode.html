@@ -15,7 +15,7 @@
     <p class="breadcrumb"><a href="index.html">WinASM65</a> › Debugging</p>
     <header class="page">
       <h1>VS Code extension</h1>
-      <p class="lede">Syntax colouring, errors as you type, hover cards, a listing column, a build task and a source-level debugger that runs the program in Mesen2. The TypeScript side is thin: almost everything is done by <a href="tooling.html"><code>WinASM65.Tooling</code></a>, which the extension ships and starts.</p>
+      <p class="lede">Syntax colouring, errors as you type, hover cards, a listing column, a build task, a source-level debugger that runs the program in an emulator (Mesen2 for the NES, or any emulator with a WinASM65 bridge), a Memory panel, and the WinASM65 tools offered to VS Code's AI agents. The TypeScript side is thin: almost everything is done by <a href="tooling.html"><code>WinASM65.Tooling</code></a>, which the extension ships and starts.</p>
     </header>
 
     <aside class="sources">
@@ -24,7 +24,8 @@
         <li><a href="../../vscode-extension/package.json"><code>vscode-extension/package.json</code></a></li>
         <li><a href="../../vscode-extension/src/extension.ts"><code>src/extension.ts</code></a></li>
         <li><a href="../../vscode-extension/src/listing.ts"><code>src/listing.ts</code></a></li>
-        <li><a href="../../vscode-extension/src/ramPanel.ts"><code>src/ramPanel.ts</code></a></li>
+        <li><a href="../../vscode-extension/src/memoryPanel.ts"><code>src/memoryPanel.ts</code></a></li>
+        <li><a href="../../vscode-extension/src/mcp.ts"><code>src/mcp.ts</code></a></li>
         <li><a href="../../vscode-extension/syntaxes/winasm65.tmLanguage.json"><code>syntaxes/winasm65.tmLanguage.json</code></a></li>
         <li><a href="../../vscode-extension/language-configuration.json"><code>language-configuration.json</code></a></li>
         <li><a href="../../vscode-extension/README.md"><code>vscode-extension/README.md</code></a></li>
@@ -34,7 +35,7 @@
     </aside>
 
     <figure class="shot">
-      <a href="img/vscode-editor.png"><img src="img/vscode-editor.png" alt="VS Code with example_star_catcher open: the Explorer lists chr, src (game.asm, header.asm, nes.inc, vectors.asm), compile.bat, config.json and README.md; the editor shows lines 314 to 353 of game.asm, the end of spawn_objects and move_objects, with mnemonics, labels, anonymous + labels, numbers and comments coloured"></a>
+      <a href="img/vscode-editor.png"><img src="img/vscode-editor.png" alt="VS Code with example_star_catcher open: the Explorer lists chr, gfx, src (game.asm, header.asm, nes.inc, vectors.asm and their objects), compile.bat, config.json and README.md; the editor shows lines 312 to 353 of game.asm, the end of spawn_objects and move_objects, with mnemonics, labels, anonymous + labels, numbers and comments coloured"></a>
       <figcaption>The example game, <a href="example.html">Star Catcher</a> (<code>example_star_catcher</code>), in VS Code. <code>.nas</code> and <code>.asm</code> files open as “6502 Assembly (WinASM65)”, shown at the right of the status bar.</figcaption>
     </figure>
 
@@ -45,12 +46,14 @@ npm install
 npm run package
 code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
     <p>The version in the file name is the <code>version</code> of <code>package.json</code> (0.3.2 at the time of writing). <code>--force</code> replaces an installed copy of the same version. What <code>npm run package</code> does is described in <a href="#package">Packaging</a>.</p>
-    <p>To debug you also need <strong>Mesen2 2.1.1</strong>. Give its path in one of three places, read in this order:</p>
+    <p>To debug you also need an emulator with a WinASM65 bridge: <strong>Mesen2 2.1.1</strong> for the NES, or another one configured in the project (see <a href="bridges.html">Emulator bridges</a>). Give its path in one of three places, read in this order:</p>
     <ol>
       <li><code>"emulatorPath"</code> in <code>launch.json</code>;</li>
       <li>the <code>winasm65.emulatorPath</code> setting (copied into the launch configuration when it has none);</li>
       <li><code>Emulator.Path</code> in the project's <code>config.json</code>.</li>
     </ol>
+    <p>Which emulator it is (<code>Emulator.Name</code>: <code>mesen2</code>, <code>mesence</code> or a custom name) and which bridge script it loads come from the same <code>Emulator</code> section, and can be overridden by the <code>emulator</code> and <code>bridge</code> attributes of <code>launch.json</code>. Without a name, a <code>Mesen.exe</code> is taken for Mesen2.</p>
+    <p>The <strong>WinASM65 Graphics Designer</strong> is a separate extension that depends on this one: editors for tiles, palettes, screens, maps and metasprites, pictures in the hover of exported labels, and a live preview through this debugger. See <a href="graphics.html">Graphics Designer</a>.</p>
     <div class="callout">
       <p><strong>Close Mesen2 before pressing F5.</strong> Mesen2 runs as a single instance: a second launch is handed to the window already open, and the bridge never listens on the port the adapter waits on. The adapter notices that the new process exited and says so.</p>
       <p>The first launch writes the <code>settings.json</code> entries Mesen2 needs to let the bridge script open a socket, next to <code>Mesen.exe</code>.</p>
@@ -80,11 +83,11 @@ code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
     <p>The language server answers hovers with a card laid out like a JSDoc hover. It is computed from the unsaved text, so it is right while you type.</p>
     <div class="grid-2">
       <figure class="shot">
-        <a href="img/vscode-hover-instruction.png"><img src="img/vscode-hover-instruction.png" alt="Hover card on adc obj_speed,x, line 340 of game.asm: ADC — Add with Carry, Adds a byte and the carry to A, @mode zero page,X, @cycles 4 cycles, @bytes 2 — 75 27 at $C1C6, @flags N V Z C, and a table of the eight ADC forms with the zero page,X form marked"></a>
+        <a href="img/vscode-hover-instruction.png"><img src="img/vscode-hover-instruction.png" alt="Hover card on adc obj_speed,x, line 338 of game.asm: ADC — Add with Carry, Adds a byte and the carry to A, @mode zero page,X, @cycles 4 cycles, @bytes 2 — 75 27 at $C1BF, @flags N V Z C, and a table of the eight ADC forms with the zero page,X form marked"></a>
         <figcaption>On a mnemonic (or anywhere on an instruction line that is not a name): what it does, the form this line assembled to with its cycles, bytes and address, the flags it changes, and every form of the instruction. ◀ marks the one used.</figcaption>
       </figure>
       <figure class="shot">
-        <a href="img/vscode-hover-symbol.png"><img src="img/vscode-hover-symbol.png" alt="Hover card on the name obj_speed: obj_speed = $27, @value $0027 (39), then the line adc obj_speed,x with @cycles 4 cycles and @bytes 2 — 75 27 at $C1C6"></a>
+        <a href="img/vscode-hover-symbol.png"><img src="img/vscode-hover-symbol.png" alt="Hover card on the name obj_speed: obj_speed = $27, @value $0027 (39), then the line adc obj_speed,x with @cycles 4 cycles and @bytes 2 — 75 27 at $C1BF"></a>
         <figcaption>On a name: its value in hex and decimal, then the line it is read on, with what that line assembled to. <code>obj_speed</code> is a zero-page variable (<code>.res</code> from <code>.memarea $0000</code>), so the instruction took the two-byte zero page,X form.</figcaption>
       </figure>
     </div>
@@ -110,7 +113,7 @@ code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
         <figcaption>Right-click → <strong>WinASM65</strong> → <strong>Show Listing</strong>. The same submenu is in the Explorer and the line-number margin; a button in the editor title bar does the same.</figcaption>
       </figure>
       <figure class="shot">
-        <a href="img/vscode-listing.png"><img src="img/vscode-listing.png" alt="game.asm, lines 334 to 373, with a grey column left of the source: C1BD A2 05, C1BF B5 15, C1C1 F0 33 and so on, C1C6 75 27 on line 340, blank on the labels move_objects and collide, on comments and on empty lines"></a>
+        <a href="img/vscode-listing.png"><img src="img/vscode-listing.png" alt="game.asm, lines 328 to 367, with a grey column left of the source: C1B6 A2 05, C1B8 B5 15, C1BA F0 33 and so on, C1BF 75 27 on line 338, blank on the labels move_objects and collide, on comments and on empty lines"></a>
         <figcaption>Each line shows the address and the bytes it assembled to, as in a <code>.lst</code> file. Lines without code get a blank column, so the source stays aligned.</figcaption>
       </figure>
     </div>
@@ -137,8 +140,8 @@ code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
 
     <h2 id="debug">Debugging</h2>
     <figure class="shot">
-      <a href="img/vscode-debug.png"><img src="img/vscode-debug.png" alt="VS Code paused on line 134 of game.asm (pha, the first instruction after NMI:). Variables shows Registers (PC = $C06E, A = $00, X = $00, Y = $59, SP = $FA) and Flags; Call Stack shows NMI game.asm 134:1, paused on breakpoint; the RAM panel is on the right; the debug console shows building, built 3 unit(s), 564 mapped line(s), starting Mesen.exe with star_catcher.nes, connected to Mesen2 2.1.1"></a>
-      <figcaption>Star Catcher paused on a breakpoint on line 134 of <code>game.asm</code>, the first instruction of the NMI handler (<code>$C06E</code>). Left: the Registers and Flags (Zero page follows below them), and a one-frame call stack named after the nearest label. Right: the RAM panel, on the title screen: <code>ship_x</code> at <code>$07</code> holds <code>$78</code> (120) and <code>ptr</code> at <code>$13</code> still points at <code>TitleText</code> (<code>$C427</code>). Bottom: the debug console's account of the launch.</figcaption>
+      <a href="img/vscode-debug.png"><img src="img/vscode-debug.png" alt="VS Code paused on line 134 of game.asm (pha, the first instruction after NMI:). Variables shows Registers (PC = $C06E, A = $00, X = $08, Y = $08, SP = $FA, cycles) and Flags; Call Stack shows NMI game.asm 134:1, paused on breakpoint; the Memory panel is on the right; the debug console shows building, built 3 unit(s), 1252 mapped line(s), starting Mesen2 (Mesen.exe) with star_catcher.nes, connected to Mesen2 2.1.1, Nintendo Entertainment System"></a>
+      <figcaption>Star Catcher paused on a breakpoint on line 134 of <code>game.asm</code>, the first instruction of the NMI handler (<code>$C06E</code>). Left: the Registers and Flags (Zero page follows below them), and a one-frame call stack named after the nearest label. Right: the Memory panel's RAM view, on the title screen: <code>ship_x</code> at <code>$07</code> holds <code>$78</code> (120) and <code>ptr</code> at <code>$13</code> still points at <code>spr_ship</code> (<code>$C50A</code>), the last metasprite drawn. Bottom: the debug console's account of the launch.</figcaption>
     </figure>
     <div class="grid-2">
       <figure class="shot">
@@ -146,25 +149,24 @@ code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
         <figcaption>The game runs in Mesen2's own window, with the WinASM65 bridge script loaded.</figcaption>
       </figure>
       <div>
-        <p><strong>F5 in a folder with a <code>config.json</code></strong> is enough: without a <code>launch.json</code>, the extension's <code>ConfigurationProvider</code> picks the <code>config.json</code> closest to the file being edited (walking up at most 8 directories), else the first one in the workspace, and fills in a launch configuration. With none it says “No config.json found”. To keep a configuration, add one to <code>launch.json</code>; the snippets <em>WinASM65: Debug on Mesen2</em> and <em>WinASM65: Attach to Mesen2</em> write these:</p>
+        <p><strong>F5 in a folder with a <code>config.json</code></strong> is enough: without a <code>launch.json</code>, the extension's <code>ConfigurationProvider</code> picks the <code>config.json</code> closest to the file being edited (walking up at most 8 directories), else the first one in the workspace, and fills in a launch configuration. With none it says “No config.json found”. To keep a configuration, add one to <code>launch.json</code>; the snippets <em>WinASM65: Debug</em> and <em>WinASM65: Attach</em> write these, and the emulator is the one the project configures:</p>
       </div>
     </div>
 <pre><code>{
   "type": "winasm65",
   "request": "launch",
-  "name": "Debug on Mesen2",
-  "config": "${workspaceFolder}/config.json",
-  "stopOnEntry": false
+  "name": "Debug",
+  "config": "${workspaceFolder}/config.json"
 }
 
 {
   "type": "winasm65",
   "request": "attach",
-  "name": "Attach to Mesen2",
+  "name": "Attach",
   "port": 45678,
   "config": "${workspaceFolder}/config.json"
 }</code></pre>
-    <p>Every attribute and its default is in <a href="tooling.html#launch">Tooling › Launch and attach arguments</a>. What the session offers:</p>
+    <p>A launch may also name <code>"emulator"</code> (<code>mesen2</code>, <code>mesence</code>, or any name for a custom emulator), <code>"emulatorPath"</code> and <code>"bridge"</code> (a bridge script, relative to <code>config.json</code>). Every attribute and its default is in <a href="tooling.html#launch">Tooling › Launch and attach arguments</a>. What the session offers:</p>
     <div class="table-wrap">
     <table>
       <thead><tr><th>Feature</th><th>Behaviour</th></tr></thead>
@@ -174,41 +176,50 @@ code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
         <tr><td>Variables</td><td>Registers (<code>PC A X Y SP PS cycles</code>), Flags (<code>N V B D I Z C</code>), Zero page in rows of 16 bytes.</td></tr>
         <tr><td>Memory</td><td>The 64 KiB address space in VS Code's hex view, opened from <code>PC</code>, <code>SP</code> or a zero-page row. Bytes can be edited there.</td></tr>
         <tr><td>Debug console</td><td>A name, a register or <code>$0010</code> shows its value. Monitor commands (<code>CPU</code>, <code>READ $0200 16</code>, <code>BREAK LIST</code>, …) go straight to the monitor; prefix any line with <code>&gt;</code> to force that.</td></tr>
-        <tr><td>Stop</td><td>Stopping the session kills the Mesen2 it started; detaching from an attached Mesen2 resumes it. Closing Mesen2 ends the session.</td></tr>
+        <tr><td>Stop</td><td>Stopping the session kills the emulator it started; detaching from an attached emulator resumes it. Closing the emulator ends the session.</td></tr>
       </tbody>
     </table>
     </div>
 
-    <h2 id="ram">RAM panel</h2>
+    <h2 id="ram">Memory panel</h2>
     <div class="grid-2">
       <figure class="shot">
-        <a href="img/vscode-ram.png"><img src="img/vscode-ram.png" alt="The RAM panel: Refresh button, Live checkbox, status stopped · SP=$FA · 0 byte(s) changed, a legend, then the zero page (5A 78 at $0006, 27 C4 at $0013) and the stack in hex rows"></a>
-        <figcaption>The RAM panel: <code>$0000-$07FF</code> in hex and ASCII, the zero page and stack shaded.</figcaption>
+        <a href="img/vscode-ram.png"><img src="img/vscode-ram.png" alt="The Memory panel on its RAM view: Refresh button, Live checkbox, status stopped · SP=$FA · 0 byte(s) changed, a legend, then the zero page (5A 78 at $0006, 0A C5 at $0013) and the stack in hex rows"></a>
+        <figcaption>The RAM view, <code>$0000-$07FF</code> of the CPU's memory, in hex and ASCII, the zero page and stack shaded.</figcaption>
       </figure>
       <div>
-        <p><code>src/ramPanel.ts</code> shows the 2 KiB of RAM at <code>$0000-$07FF</code> in a webview beside the editor, titled <strong>RAM $0000-$07FF</strong>.</p>
+        <p><code>src/memoryPanel.ts</code> shows the machine's memories in a webview beside the editor, titled <strong>Memory — </strong> and the system's name. Which memories it offers comes from the debug adapter (<code>winasm65.system</code>): the views the system definition proposes, chosen in a list. On the NES: RAM, PRG ROM, nametables (<code>PPU</code>), palettes (<code>PAL</code>), sprites (<code>OAM</code>) and tiles (<code>CHR</code>); a view whose memory the emulator's bridge does not offer is marked “not offered by” the emulator. An adapter that predates the request gets the 2 KiB at <code>$0000-$07FF</code>.</p>
         <ul>
-          <li><strong>Opens</strong> at the first stop of a WinASM65 session (setting <code>winasm65.ram.openOnStop</code>), with <strong>WinASM65: Show RAM</strong>, or with its button in the debug toolbar.</li>
+          <li><strong>Opens</strong> at the first stop of a WinASM65 session (setting <code>winasm65.ram.openOnStop</code>), with <strong>WinASM65: Show Memory</strong>, or with its button in the debug toolbar.</li>
           <li><strong>Refreshes</strong> at every stop, and with the Refresh button.</li>
-          <li><strong>Marks</strong> the bytes changed since the previous stop, shades the zero page and the stack, and outlines the byte at <code>$0100+SP</code>.</li>
-          <li><strong>Names</strong>: hovering a byte shows its address, every name the build gives that value, and the value. Named bytes are underlined with dots.</li>
-          <li><strong>Edits</strong>: double-click a byte, type one or two hex digits, Enter. Escape or leaving the field cancels.</li>
+          <li><strong>Marks</strong> the bytes changed since the previous stop (per view). In the CPU's memory it also shades the zero page and the stack, and outlines the byte at <code>$0100+SP</code>.</li>
+          <li><strong>Names</strong>: in the CPU's memory, hovering a byte shows its address, every name the build gives that value, and the value. Named bytes are underlined with dots.</li>
+          <li><strong>Edits</strong>: double-click a byte of a writable view, type one or two hex digits, Enter. Escape or leaving the field cancels.</li>
         </ul>
       </div>
     </div>
+    <figure class="shot">
+      <a href="img/vscode-memory-palettes.png"><img src="img/vscode-memory-palettes.png" alt="The Memory panel titled Memory — Nintendo Entertainment System, its list set to Palettes (PAL) $0000-$001F, Refresh and Live; status stopped, 0 byte(s) changed; two rows of 16 bytes: 0F 30 16 28 four times, then 0F 30 11 16, 0F 28 38 30, 0F 07 17 27, 0F 27 37 30"></a>
+      <figcaption>Another memory of the same machine: Star Catcher's palettes, read from the PPU's palette RAM through the bridge's <code>PAL</code> space. Four background palettes, then the ship's, the stars', the meteors' and the burst's.</figcaption>
+    </figure>
     <p>The panel talks only to the debug adapter, through <code>session.customRequest</code>:</p>
     <div class="table-wrap">
     <table>
       <thead><tr><th>Request</th><th>When</th><th>For</th></tr></thead>
       <tbody>
-        <tr><td><code>readMemory { memoryReference: "0x0000", count: 2048 }</code></td><td>every refresh</td><td>the bytes</td></tr>
-        <tr><td><code>evaluate { expression: "SP", context: "watch" }</code></td><td>every refresh</td><td>the stack pointer</td></tr>
-        <tr><td><code>winasm65.symbols { from: 0, to: 2047 }</code></td><td>once per session</td><td>the names</td></tr>
-        <tr><td><code>writeMemory</code> (one byte, base64)</td><td>after an edit</td><td>the change; a refusal is shown in the status line</td></tr>
+        <tr><td><code>winasm65.system</code></td><td>once per session</td><td>the views and memories, the emulator's name</td></tr>
+        <tr><td><code>readMemory { memoryReference, count }</code></td><td>every refresh of a CPU view, in chunks of 4096 bytes</td><td>the bytes</td></tr>
+        <tr><td><code>winasm65.memory.read { space, address, count }</code></td><td>every refresh of another view</td><td>the bytes</td></tr>
+        <tr><td><code>evaluate { expression: "SP", context: "watch" }</code></td><td>every refresh of a CPU view</td><td>the stack pointer</td></tr>
+        <tr><td><code>winasm65.symbols { from: 0, to: 65535 }</code></td><td>once per session</td><td>the names</td></tr>
+        <tr><td><code>writeMemory</code> or <code>winasm65.memory.write</code> (one byte, base64)</td><td>after an edit</td><td>the change; a refusal is shown in the status line</td></tr>
       </tbody>
     </table>
     </div>
-    <p>A <code>DebugAdapterTracker</code> watches the adapter's events: <code>stopped</code> refreshes the panel, <code>continued</code> marks it as running. The <strong>Live</strong> box re-reads RAM every 500 ms while the panel considers the machine running; changes are then measured from the last frame shown. Since a name like <code>SHIP_SPEED = 2</code> is a plain constant, a small constant can share a value with a variable's address (in Star Catcher, <code>buttons</code> is at <code>$02</code>), so the tooltip lists every name rather than guessing one. The range is fixed: it is the NES work RAM, whatever the target.</p>
+    <p>A <code>DebugAdapterTracker</code> watches the adapter's events: <code>stopped</code> refreshes the panel, <code>continued</code> marks it as running. The <strong>Live</strong> box re-reads the view every 500 ms while the panel considers the machine running; changes are then measured from the last frame shown. Since a name like <code>SHIP_SPEED = 2</code> is a plain constant, a small constant can share a value with a variable's address (in Star Catcher, <code>buttons</code> is at <code>$02</code>), so the tooltip lists every name rather than guessing one.</p>
+
+    <h2 id="mcp">Tools for AI agents</h2>
+    <p>On VS Code 1.101 and later, <code>src/mcp.ts</code> registers WinASM65's MCP server with VS Code (<code>vscode.lm.registerMcpServerDefinitionProvider</code>, declared under <code>mcpServerDefinitionProviders</code> as <code>winasm65.mcp</code>): the Tooling found as below, started with <code>--mcp</code>. VS Code's agents then get the same build, debug and graphics tools as an external assistant, with VS Code asking before each tool runs. On an older VS Code nothing is registered and the log says so. The tools and how to add the server to other clients are in <a href="ai.html">Tools for AI assistants</a>.</p>
 
     <h2 id="contributions">What package.json contributes</h2>
     <div class="table-wrap">
@@ -218,10 +229,11 @@ code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
         <tr><td><code>languages</code></td><td><code>winasm65</code> (“6502 Assembly (WinASM65)”) for <code>.nas</code> and <code>.asm</code>, with <code>language-configuration.json</code>.</td></tr>
         <tr><td><code>grammars</code></td><td><code>source.winasm65</code> from <code>syntaxes/winasm65.tmLanguage.json</code>.</td></tr>
         <tr><td><code>breakpoints</code></td><td>Breakpoints allowed in <code>winasm65</code> files.</td></tr>
-        <tr><td><code>debuggers</code></td><td>Type <code>winasm65</code>, label “WinASM65 (Mesen2)”: launch and attach attributes, an initial configuration and two snippets.</td></tr>
+        <tr><td><code>debuggers</code></td><td>Type <code>winasm65</code>, label “WinASM65”: launch and attach attributes (<code>emulator</code> offers <code>mesen2</code> and <code>mesence</code> but takes any name), an initial configuration and two snippets.</td></tr>
         <tr><td><code>taskDefinitions</code></td><td>Type <code>winasm65</code> with a required <code>config</code>.</td></tr>
         <tr><td><code>problemPatterns</code>, <code>problemMatchers</code></td><td><code>$winasm65</code>: <code>^(.+?)(?::(\d+))?: (error|warning): (.*)$</code>, file locations <code>autoDetect</code> relative to the workspace folder.</td></tr>
-        <tr><td><code>commands</code></td><td><code>winasm65.showListing</code> (Show Listing), <code>winasm65.hideListing</code> (Hide Listing), <code>winasm65.showRam</code> (Show RAM), all in the category WinASM65.</td></tr>
+        <tr><td><code>commands</code></td><td><code>winasm65.showListing</code> (Show Listing), <code>winasm65.hideListing</code> (Hide Listing), <code>winasm65.showRam</code> (Show Memory), all in the category WinASM65.</td></tr>
+        <tr><td><code>mcpServerDefinitionProviders</code></td><td><code>winasm65.mcp</code>, labelled WinASM65: the MCP server.</td></tr>
         <tr><td><code>submenus</code></td><td><code>winasm65.context</code>, labelled WinASM65.</td></tr>
         <tr><td><code>configuration</code></td><td>The four settings below.</td></tr>
       </tbody>
@@ -236,9 +248,9 @@ code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
         <tr><td><code>editor/context</code></td><td>WinASM65 submenu</td><td>the file is <code>winasm65</code></td></tr>
         <tr><td><code>editor/lineNumber/context</code></td><td>WinASM65 submenu</td><td>the file is <code>winasm65</code></td></tr>
         <tr><td><code>explorer/context</code></td><td>WinASM65 submenu</td><td>the resource is <code>winasm65</code></td></tr>
-        <tr><td><code>winasm65.context</code> (the submenu)</td><td>Show Listing / Hide Listing; Show RAM</td><td>listing hidden / shown; Show RAM only while a WinASM65 session runs</td></tr>
+        <tr><td><code>winasm65.context</code> (the submenu)</td><td>Show Listing / Hide Listing; Show Memory</td><td>listing hidden / shown; Show Memory only while a WinASM65 session runs</td></tr>
         <tr><td><code>editor/title</code></td><td>Show Listing / Hide Listing buttons</td><td>the file is <code>winasm65</code></td></tr>
-        <tr><td><code>debug/toolBar</code></td><td>Show RAM button</td><td>the session is of type <code>winasm65</code></td></tr>
+        <tr><td><code>debug/toolBar</code></td><td>Show Memory button</td><td>the session is of type <code>winasm65</code></td></tr>
         <tr><td><code>commandPalette</code></td><td>Show Listing or Hide Listing</td><td>only the one that applies</td></tr>
       </tbody>
     </table>
@@ -250,18 +262,18 @@ code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
       <thead><tr><th>Setting</th><th>Default</th><th>Meaning</th></tr></thead>
       <tbody>
         <tr><td><code>winasm65.toolingPath</code></td><td>empty</td><td>A <code>WinASM65.Tooling</code> executable, or a <code>.dll</code> run with <code>dotnet</code>. Empty: the copy shipped with the extension.</td></tr>
-        <tr><td><code>winasm65.emulatorPath</code></td><td>empty</td><td><code>Mesen.exe</code>, used when <code>launch.json</code> names none. It comes before <code>Emulator.Path</code> of <code>config.json</code>.</td></tr>
+        <tr><td><code>winasm65.emulatorPath</code></td><td>empty</td><td>The emulator's executable, used when <code>launch.json</code> names none. It comes before <code>Emulator.Path</code> of <code>config.json</code>.</td></tr>
         <tr><td><code>winasm65.languageServer.enabled</code></td><td><code>true</code></td><td>Errors as you type, hover and the listing column. Read when the extension starts.</td></tr>
-        <tr><td><code>winasm65.ram.openOnStop</code></td><td><code>true</code></td><td>Open the RAM panel the first time a WinASM65 session stops.</td></tr>
+        <tr><td><code>winasm65.ram.openOnStop</code></td><td><code>true</code></td><td>Open the Memory panel the first time a WinASM65 session stops.</td></tr>
       </tbody>
     </table>
     </div>
     <p>The extension activates on <code>onLanguage:winasm65</code>, <code>workspaceContains:**/config.json</code>, <code>onDebugResolve:winasm65</code>, <code>onDebugDynamicConfigurations:winasm65</code> and <code>onCommand:workbench.action.tasks.runTask</code>.</p>
 
     <h2 id="architecture">How the extension works</h2>
-    <p><code>activate</code> in <code>src/extension.ts</code> creates the <strong>WinASM65</strong> log channel, registers three providers, starts the language client, and creates the listing column and the RAM panel. Each piece and what it talks to:</p>
+    <p><code>activate</code> in <code>src/extension.ts</code> creates the <strong>WinASM65</strong> log channel, registers three providers, starts the language client, creates the listing column and the Memory panel, and offers the MCP server to VS Code's agents. Each piece and what it talks to:</p>
     <div class="figure">
-      <svg viewBox="0 0 900 400" role="img" aria-label="Inside the extension: the adapter factory spawns WinASM65.Tooling --dap, the configuration provider fills the launch configuration, the RAM panel sends custom requests to the debug session, the language client spawns --lsp, the listing column sends winasm65/listing through the language client, and the build task provider runs --build as a process.">
+      <svg viewBox="0 0 900 400" role="img" aria-label="Inside the extension: the adapter factory spawns WinASM65.Tooling --dap, the configuration provider fills the launch configuration, the Memory panel sends custom requests to the debug session, the language client spawns --lsp, the listing column sends winasm65/listing through the language client, and the build task provider runs --build as a process.">
         <defs>
           <marker id="arrow-x" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
@@ -277,8 +289,8 @@ code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
         <text x="180" y="116" text-anchor="middle" font-weight="600">ConfigurationProvider</text>
         <text x="180" y="133" text-anchor="middle" class="muted" font-size="12">F5 without launch.json</text>
         <rect class="box-d" x="30" y="156" width="300" height="46" rx="8"/>
-        <text x="180" y="176" text-anchor="middle" font-weight="600">RamPanel</text>
-        <text x="180" y="193" text-anchor="middle" class="muted" font-size="12">ramPanel.ts, webview + adapter tracker</text>
+        <text x="180" y="176" text-anchor="middle" font-weight="600">MemoryPanel</text>
+        <text x="180" y="193" text-anchor="middle" class="muted" font-size="12">memoryPanel.ts, webview + adapter tracker</text>
         <rect class="box-d" x="30" y="228" width="300" height="46" rx="8"/>
         <text x="180" y="248" text-anchor="middle" font-weight="600">LanguageClient</text>
         <text x="180" y="265" text-anchor="middle" class="muted" font-size="12">vscode-languageclient</text>
@@ -301,8 +313,8 @@ code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
         <path class="line" d="M330,119 L600,110" marker-end="url(#arrow-x)" stroke-dasharray="5 4"/>
         <text x="465" y="106" text-anchor="middle" class="muted" font-size="12">launch arguments</text>
         <path class="line" d="M330,179 L600,145" marker-end="url(#arrow-x)"/>
-        <text x="465" y="185" text-anchor="middle" class="muted" font-size="12">readMemory, evaluate, writeMemory,</text>
-        <text x="465" y="200" text-anchor="middle" class="muted" font-size="12">winasm65.symbols</text>
+        <text x="465" y="185" text-anchor="middle" class="muted" font-size="12">winasm65.system, winasm65.memory.*,</text>
+        <text x="465" y="200" text-anchor="middle" class="muted" font-size="12">readMemory, evaluate, winasm65.symbols</text>
         <path class="line" d="M330,251 L600,251" marker-end="url(#arrow-x)"/>
         <text x="465" y="243" text-anchor="middle" class="muted" font-size="12">spawns, LSP on stdio</text>
         <path class="line" d="M180,288 L180,274" marker-end="url(#arrow-x)"/>
@@ -313,7 +325,7 @@ code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
     </div>
 
     <h3 id="tooling-path">Finding the Tooling executable</h3>
-    <p><code>resolveTooling</code> returns the first of these paths that exists. A <code>.dll</code> is started as <code>dotnet &lt;dll&gt;</code>, anything else directly; the mode (<code>--dap</code>, <code>--lsp</code>, <code>--build</code>) is appended by the caller.</p>
+    <p><code>resolveTooling</code> returns the first of these paths that exists. A <code>.dll</code> is started as <code>dotnet &lt;dll&gt;</code>, anything else directly; the mode (<code>--dap</code>, <code>--lsp</code>, <code>--mcp</code>, <code>--build</code>) is appended by the caller.</p>
     <ol>
       <li>The <code>winasm65.toolingPath</code> setting.</li>
       <li><code>bin/WinASM65.Tooling.exe</code> inside the extension: the copy <code>npm run package</code> ships.</li>
@@ -332,7 +344,8 @@ code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
         <tr><td><code>BuildTaskProvider</code></td><td>task provider</td><td>Offers a build task per project and resolves <code>winasm65</code> tasks from <code>tasks.json</code>, replacing <code>${workspaceFolder}</code> in <code>config</code>.</td></tr>
         <tr><td><code>LanguageClient</code></td><td>started by <code>startLanguageServer</code></td><td>The Tooling with <code>--lsp</code>, for <code>file</code> documents of language <code>winasm65</code>, with a file watcher on <code>**/config.json</code>. Skipped when <code>winasm65.languageServer.enabled</code> is false.</td></tr>
         <tr><td><code>ListingColumn</code></td><td>commands Show/Hide Listing</td><td>Waits for the language client, then asks it for <code>winasm65/listing</code>.</td></tr>
-        <tr><td><code>RamPanel</code></td><td>command Show RAM, a debug adapter tracker</td><td>Reads and writes RAM through the active WinASM65 debug session.</td></tr>
+        <tr><td><code>MemoryPanel</code></td><td>command Show Memory, a debug adapter tracker</td><td>Reads and writes the machine's memories through the active WinASM65 debug session.</td></tr>
+        <tr><td><code>registerMcpServer</code></td><td>MCP server definition provider <code>winasm65.mcp</code></td><td>Offers the Tooling with <code>--mcp</code> to VS Code's agents.</td></tr>
       </tbody>
     </table>
     </div>

@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Graphics Designer</title>
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<div class="layout">
+  <nav class="site-nav" aria-label="Pages"></nav>
+
+  <main>
+    <p class="breadcrumb"><a href="index.html">WinASM65</a> › Graphics</p>
+    <header class="page">
+      <h1>Graphics Designer</h1>
+      <p class="lede">The WinASM65 Graphics Designer is a second VS Code extension that draws a game's graphics where its code is written: tile sets, palettes, screens, metatile maps, metasprites and their animations. Every asset is exported as assembly sources and binary files the assembler includes, a picture of an asset shows when hovering its labels in the code, and edits can be written into the running game. The NES is the system implemented today; the asset model and the editors are driven by a description of the system that the designer program returns.</p>
+    </header>
+
+    <aside class="sources">
+      <h4>Source files</h4>
+      <ul>
+        <li><a href="../../WinASM65.Graphics/"><code>WinASM65.Graphics</code></a> (assets, NES graphics, exporter, renderer, PNG import)</li>
+        <li><a href="../../WinASM65.Designer/"><code>WinASM65.Designer</code></a> (command line and server)</li>
+        <li><a href="../../graphics-extension/"><code>graphics-extension</code></a> (the VS Code extension)</li>
+        <li><a href="../../graphics-extension/README.md"><code>graphics-extension/README.md</code></a> (every key and button)</li>
+        <li><a href="../../example_star_catcher/gfx/"><code>example_star_catcher/gfx</code></a></li>
+        <li><a href="../../tools/screenshots/shoot-designer.mjs"><code>tools/screenshots/shoot-designer.mjs</code></a></li>
+      </ul>
+    </aside>
+
+    <h2 id="overview">The pieces</h2>
+    <p>Three parts, each usable without the next:</p>
+    <ul>
+      <li><strong>WinASM65.Graphics</strong>, a .NET library with no reference to the assembler: the asset files, the graphics of each system (<code>IGraphicsSystem</code>; <code>NesGraphics</code> today), the exporter, a renderer to PNG and a PNG importer.</li>
+      <li><strong>WinASM65.Designer</strong>, its program. <code>WinASM65.Designer export gfx</code> exports every asset of a folder, <code>render</code> draws one to a PNG, <code>import</code> turns a picture into assets, <code>systems</code> describes the systems. With <code>--server</code> it answers JSON-RPC on its standard input and output (<code>describe</code>, <code>load</code>, <code>validate</code>, <code>format</code>, <code>export</code>, <code>render</code>, <code>import</code>).</li>
+      <li><strong>The extension</strong> “WinASM65 Graphics Designer” (<code>codewinbzn.winasm65-graphics</code>), which depends on the WinASM65 extension for the <code>winasm65</code> language and debugger. It opens each asset in its own editor, runs the designer server, exports on save, adds the hover pictures and the live preview.</li>
+    </ul>
+    <p>The same operations are tools of the <a href="ai.html">MCP server</a> (<code>render_asset</code>, <code>edit_tiles</code>, <code>import_png</code>, <code>export_assets</code>…), so an AI assistant can draw with them too.</p>
+
+    <h2 id="assets">Assets</h2>
+    <p>An asset is a file of the project, committed with the code. JSON assets carry <code>"version": 1</code> and <code>"system": "nes"</code>, and name the files they draw with by relative path:</p>
+    <table>
+      <thead><tr><th>File</th><th>Editor</th><th>Holds</th></tr></thead>
+      <tbody>
+        <tr><td><code>*.chr</code></td><td>Tile Set</td><td>The tiles, in the system's own encoding (NES: 16 bytes a tile, 2 bit planes). A binary file, included as it is.</td></tr>
+        <tr><td><code>*.pal.json</code></td><td>Palettes</td><td>4 background and 4 sprite palettes of 4 colours of the master palette, with names.</td></tr>
+        <tr><td><code>*.screen.json</code></td><td>Screen</td><td>A 32×30 tile screen and its attributes (a palette per 16×16 block); compression <code>none</code> or <code>rle</code>.</td></tr>
+        <tr><td><code>*.map.json</code></td><td>Map</td><td>Metatiles (2×2 tiles and a palette) and a map of them, any number of screens wide and high.</td></tr>
+        <tr><td><code>*.msprite.json</code></td><td>Metasprites</td><td>Groups of hardware sprites around an origin, and animations of them.</td></tr>
+      </tbody>
+    </table>
+    <p>JSON assets stay text: every edit goes through VS Code's undo, dirty state, save and diff, and <em>Open as Text</em> shows the JSON. The screen, map and metasprite editors draw with the tile set and palettes their asset names; an unsaved edit in an open tile editor shows in them at once.</p>
+
+    <h2 id="editors">The editors</h2>
+    <p>Pictures of the example game, <a href="example.html">Star Catcher</a>, whose graphics are these assets.</p>
+
+    <h3 id="palettes">Palettes</h3>
+    <figure class="shot">
+      <a href="img/designer-palettes.png"><img src="img/designer-palettes.png" alt="The Palettes editor on game.pal.json: four background palettes named text and background 1 to 3, four sprite palettes named ship, stars, meteors and burst, each of four swatches with its hexadecimal colour; a ≠ mark on the colour 0 of the palettes that differ from the universal background colour; the NES master palette of 64 colours on the right, with $0D and the repeated blacks crossed out"></a>
+      <figcaption>Choose a colour of a palette, then a colour of the master palette. Colour 0 of every palette is drawn as the universal background colour, as the hardware does: a ≠ marks the ones that differ, and <em>Share colour 0</em> sets them all. Colours that repeat black, or <code>$0D</code>, which some televisions take for a sync signal, are crossed out.</figcaption>
+    </figure>
+
+    <h3 id="tiles">Tile Set</h3>
+    <figure class="shot">
+      <a href="img/designer-tiles.png"><img src="img/designer-tiles.png" alt="The Tile Set editor on tiles.chr: the sheet of tiles on the left (the ship, stars, meteor, burst, heart, digits and letters), the ship's two tiles selected as a 2x2 block and drawn big on the right in white, blue and red, the colours of the sprite palette ship of gfx/game.pal.json chosen in the toolbar; tools Pencil, Fill, Line, Rectangle, Picker, Copy, Paste, Flip H, Flip V, Rotate, Clear and Import PNG"></a>
+      <figcaption>The sheet on the left, the selected tile (or 2×2 block) drawn big on the right, with pencil, fill, line, rectangle and picker. Tiles hold colour numbers, not colours: they are shown in any palette of a palette file, here the ship's. <em>Import PNG…</em> appends a picture's tiles.</figcaption>
+    </figure>
+
+    <h3 id="metasprites">Metasprites and animations</h3>
+    <figure class="shot">
+      <a href="img/designer-metasprites.png"><img src="img/designer-metasprites.png" alt="The Metasprites editor on objects.msprite.json: the list ship, star, star twinkle, meteor and burst on the left with the ship selected, its prefix spr_, tile set ../chr/tiles.chr and palettes game.pal.json; the ship's two sprites in the middle with the magenta origin cross; statistics: 2 tiles, max 2 on one scanline (limit 8), size 17x9 px; on the right the tile sheet and the animation twinkle, two frames star and star twinkle of 8 frames each, looping, with Play and onion skin"></a>
+      <figcaption>A metasprite is placed tile by tile around an origin (the magenta cross), each tile with its sprite palette and flips. Under the drawing, the most sprites on one scanline against the system's limit (8 on the NES). An animation is a list of metasprites and durations in video frames, played at 60 frames a second with an onion skin.</figcaption>
+    </figure>
+
+    <h3 id="screens">Screens</h3>
+    <figure class="shot">
+      <a href="img/designer-screen.png"><img src="img/designer-screen.png" alt="The Screen editor on title.screen.json: the title screen of Star Catcher, STAR CATCHER, PRESS START, CATCH THE STARS AVOID THE METEORS and MADE WITH WINASM65 among stars, with the 16x16 attribute grid; on the left the name title, prefix scr_, the tile set and palettes, compression none (.nam) and the tile sheet; tools Paint, Rectangle, Pick and Attribute, the four background palettes"></a>
+      <figcaption>Paint tiles from the sheet, fill rectangles, pick, and paint a background palette per 16×16 attribute block. The overscan shading shows the lines a television may hide. <em>Import PNG…</em> makes a screen from a picture.</figcaption>
+    </figure>
+
+    <h3 id="maps">Maps</h3>
+    <figure class="shot">
+      <a href="img/designer-map.png"><img src="img/designer-map.png" alt="The Map editor on play.map.json: a map of 16 by 15 metatiles, one screen, the starry sky of the game; on the left the name play, prefix bg_, the set of 9 metatiles with metatile 0 empty selected, its four corners and its palette, and the tile sheet; tools Paint, Rectangle, Fill, Pick, Resize, + Screen right, + Screen down"></a>
+      <figcaption>A map is made of metatiles: four tiles and a palette, edited on the left. The map grows by whole screens (<em>+ Screen →</em>, <em>+ Screen ↓</em>) for a level that scrolls.</figcaption>
+    </figure>
+
+    <h2 id="export">Export and build</h2>
+    <p>An asset is exported when it is saved (setting <code>winasm65Graphics.exportOnSave</code>), with <em>Export Asset</em>, or <em>Export All Assets in Folder</em>; without VS Code, <code>WinASM65.Designer export gfx</code> does the same. The files are written next to the asset and included by the game like any source; problems go to the Problems panel, on the line of the value at fault. Labels are the asset's <code>prefix</code> followed by the name in lower snake case, constants are upper case.</p>
+    <table>
+      <thead><tr><th>Asset</th><th>Writes</th><th>Defines</th></tr></thead>
+      <tbody>
+        <tr><td><code>game.pal.json</code></td><td><code>game.pal.bin</code> (32 bytes of palette RAM), <code>game.pal.asm</code></td><td><code>palettes:</code> 8 rows of 4 bytes; <code>PAL_&lt;NAME&gt;</code>, the index of each palette</td></tr>
+        <tr><td><code>title.screen.json</code></td><td><code>title.nam</code> (960 tiles, 64 attributes) or <code>title.rle</code>, <code>title.screen.asm</code></td><td><code>title:</code> <code>.incbin "title.nam"</code>; <code>TITLE_SIZE</code></td></tr>
+        <tr><td><code>play.map.json</code></td><td><code>play.map.asm</code></td><td><code>metatile_tl/tr/bl/br</code>, <code>metatile_pal</code>, <code>play_map</code> (a row per map row); <code>PLAY_WIDTH</code>, <code>PLAY_HEIGHT</code>, <code>METATILE_COUNT</code></td></tr>
+        <tr><td><code>objects.msprite.json</code></td><td><code>objects.msprite.asm</code></td><td>per metasprite <code>name:</code> rows <code>.byte dy, tile, attributes, dx</code> ended by <code>$80</code>; <code>metasprites_lo</code>/<code>_hi</code>; <code>MS_&lt;NAME&gt;</code>; per animation <code>name_anim:</code> rows <code>.byte metasprite, duration</code> ended by <code>.byte $FF, loop</code></td></tr>
+      </tbody>
+    </table>
+    <p>In Star Catcher, with the prefixes <code>spr_</code>, <code>scr_</code> and <code>bg_</code>, the game draws the ship with:</p>
+    <pre><code>        .include "../gfx/game.pal.asm"
+        .include "../gfx/objects.msprite.asm"
+        ...
+@show:  lda #SPR_MS_SHIP            ; the metasprite's number
+        jmp draw_metasprite         ; through spr_metasprites_lo/hi</code></pre>
+    <p>The exports are committed, so the game builds with the assembler alone, and a test checks they are what an export of the assets gives today: an asset edited without exporting would build a game that does not match its sources.</p>
+
+    <h2 id="hover">Pictures on hover</h2>
+    <figure class="shot">
+      <a href="img/designer-hover.png"><img src="img/designer-hover.png" alt="Hover on SPR_MS_SHIP, line 492 of game.asm: the assembler's card (SPR_MS_SHIP = $00, the instruction's 2 cycles and bytes A9 00 at $C2C6), then the designer's: metasprite ship of objects.msprite.json, generated in objects.msprite.asm, 16x8 px shown x8, origin in magenta, and the ship drawn in its colours"></a>
+      <figcaption>In the code, a label or constant an asset exported shows the picture it was made from, under the language server's card: a metasprite (its origin in magenta), an animation's first frame, the palettes, a screen or a map. An <code>.incbin</code> of a tile set, a screen or palettes, or an <code>.include</code> of an exported source, shows its asset too.</figcaption>
+    </figure>
+
+    <h2 id="live">Live preview</h2>
+    <p>While a WinASM65 debug session runs, the <strong>● Live</strong> button of the tile, palette and screen editors writes each edit into the running machine, through the debugger's <code>winasm65.memory.write</code> request and the memory spaces of the <a href="bridges.html">bridge</a>: tiles into <code>CHR</code>, palettes into <code>PAL</code>, a screen into the first nametable of <code>PPU</code>. Turning it on writes the whole asset once, then only the bytes that change. The game may write over them (a screen drawn again, palettes loaded again); metasprites and maps have no live preview, since the game builds them from its own tables every frame.</p>
+    <div class="grid-2">
+      <figure class="shot">
+        <a href="img/designer-live.png"><img src="img/designer-live.png" alt="The Palettes editor during a debug session, the debug toolbar above it and ● Live pressed: colour 0 of background palette 0 is now $02, dark blue"></a>
+        <figcaption>Live on, the backdrop (colour 0 of background palette 0) set from <code>$0F</code> to <code>$02</code>…</figcaption>
+      </figure>
+      <figure class="shot">
+        <a href="img/designer-live-mesen2.png"><img src="img/designer-live-mesen2.png" alt="Mesen2 running Star Catcher's title screen with a dark blue sky instead of black"></a>
+        <figcaption>…and the game in Mesen2 at once, without rebuilding.</figcaption>
+      </figure>
+    </div>
+    <p>An emulator whose bridge cannot write a space (MesenCE's, contract 1) is reported by the editor when Live is turned on.</p>
+
+    <h2 id="import">Import PNG</h2>
+    <p><em>WinASM65 Graphics: Import PNG…</em> (Command Palette, the Explorer's menu on a <code>.png</code>, or the button of the tile and screen editors) turns a picture into assets, within the system's limits:</p>
+    <ul>
+      <li><strong>Background</strong>: tiles, palettes and a screen, from a picture of at most 256×240 pixels. The most frequent colour becomes the shared colour 0, each 16×16 block keeps its three most frequent other colours, and the blocks are grouped into four palettes.</li>
+      <li><strong>Sprites</strong>: tiles, palettes and a metasprite file. Colour 0 is transparent, each tile gets a palette, and flipped copies of a tile are reused.</li>
+    </ul>
+    <p>The tiles go to a new tile set or are appended to an existing one, reusing the tiles already there. What had to be merged (colours, blocks that did not fit a palette) is reported.</p>
+
+    <h2 id="systems">Other systems</h2>
+    <p>The editors draw from the system description the designer server returns (<code>describe</code>): tile size and encoding, colours per tile, the master palette, palettes and their layout, the sprite limits, the screen size and attribute blocks. A system is added in <code>WinASM65.Graphics</code> by implementing <code>IGraphicsSystem</code> and its exporters; the extension needs no NES-specific change for it. Only the NES is implemented today.</p>
+
+    <h2 id="settings">Settings and commands</h2>
+    <table>
+      <thead><tr><th>Setting</th><th>Default</th><th></th></tr></thead>
+      <tbody>
+        <tr><td><code>winasm65Graphics.designerPath</code></td><td><em>empty</em></td><td>The WinASM65.Designer executable (or <code>.dll</code>, run with <code>dotnet</code>); empty: the copy shipped with the extension.</td></tr>
+        <tr><td><code>winasm65Graphics.exportOnSave</code></td><td><code>true</code></td><td>Export an asset when it is saved, and report its problems.</td></tr>
+        <tr><td><code>winasm65Graphics.hoverPictures</code></td><td><code>true</code></td><td>Pictures when hovering exported labels and <code>.incbin</code>/<code>.include</code> lines.</td></tr>
+      </tbody>
+    </table>
+    <p>Commands, under <em>WinASM65 Graphics</em>: <em>New Palette…</em>, <em>New Tile Set…</em>, <em>New Screen…</em>, <em>New Map…</em>, <em>New Metasprites…</em> (also in the Explorer's menu on a folder), <em>Export Asset</em>, <em>Export All Assets in Folder</em>, <em>Import PNG…</em>.</p>
+    <p>The screenshots of this page are taken by <code>node tools/screenshots/shoot-designer.mjs</code>, which also checks the live preview against Mesen2 when it is installed.</p>
+  </main>
+
+  <aside class="toc" aria-label="On this page"></aside>
+</div>
+</body>
+</html>

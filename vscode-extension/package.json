@@ -170,7 +170,7 @@
         "winasm65.emulatorPath": {
           "type": "string",
           "default": "",
-          "description": "The emulator's executable, used when neither launch.json nor config.json names one."
+          "description": "The emulator's executable. It takes precedence over the Path of config.json's Emulator section; a launch.json emulatorPath takes precedence over it."
         },
         "winasm65.languageServer.enabled": {
           "type": "boolean",

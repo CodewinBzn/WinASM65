@@ -48,11 +48,18 @@ try {
         Write-Output "  $out"
     }
 
-    # The tiles, drawn by the designer with the ship's palette.
+    # The tiles, drawn by the designer with the ship's palette (sprite palette 0).
     dotnet build (Join-Path $repo 'WinASM65.Designer\WinASM65.Designer.csproj') -c Release -v q -nologo | Out-Null
     $designer = Join-Path $repo 'WinASM65.Designer\bin\Release\net8.0\WinASM65.Designer.exe'
     $tiles = Join-Path $images 'game-tiles.png'
-    & $designer render (Join-Path $example 'chr\tiles.chr') --item '../gfx/game.pal.json#4' --scale 4 -o $tiles | Out-Null
+    $sheet = Join-Path $work 'tiles.png'
+    & $designer render (Join-Path $example 'chr\tiles.chr') --item '../gfx/game.pal.json#4' --scale 4 -o $sheet | Out-Null
+    # Pattern table 0 only, the square top half: the game's tiles are all there.
+    $source = [System.Drawing.Bitmap]::FromFile($sheet)
+    $table = $source.Clone((New-Object System.Drawing.Rectangle 0, 0, $source.Width, $source.Width), $source.PixelFormat)
+    $source.Dispose()
+    $table.Save($tiles, [System.Drawing.Imaging.ImageFormat]::Png)
+    $table.Dispose()
     Write-Output "  $tiles"
 } finally {
     Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue

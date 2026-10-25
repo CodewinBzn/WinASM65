@@ -22,7 +22,7 @@ export function cleanCopy(example) {
   return path.join(root, example);
 }
 
-export async function launch(workspace, settings = {}) {
+export async function launch(workspace, settings = {}, extensions = ['vscode-extension']) {
   const executablePath = process.env.VSCODE_EXECUTABLE
     || await downloadAndUnzipVSCode({ cachePath: path.join(repo, 'vscode-extension', '.vscode-test') });
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'winasm65-vscode-'));
@@ -59,7 +59,7 @@ export async function launch(workspace, settings = {}) {
     env,
     args: [
       workspace,
-      '--extensionDevelopmentPath=' + path.join(repo, 'vscode-extension'),
+      ...extensions.map(e => '--extensionDevelopmentPath=' + path.join(repo, e)),
       '--extensions-dir=' + path.join(userData, 'extensions'),
       '--user-data-dir=' + userData,
       '--skip-welcome', '--skip-release-notes', '--disable-workspace-trust', '--new-window'

@@ -15,7 +15,7 @@
     <p class="breadcrumb"><a href="index.html">WinASM65</a> › Overview</p>
     <header class="page">
       <h1>Example game: Star Catcher</h1>
-      <p class="lede">A small NES game written for this documentation, code and graphics alike: about 700 lines of 6502 assembly, a Python script that draws the tiles, and a <code>config.json</code> that puts them together into a 24,592-byte ROM. Every example on these pages comes from it. This page shows how to build and play it, how the project is laid out, how the graphics are made, and walks through the code.</p>
+      <p class="lede">A small NES game written for this documentation, code and graphics alike: about 900 lines of 6502 assembly, graphics drawn with the <a href="graphics.html">Graphics Designer</a>, and a <code>config.json</code> that puts them together into a 24,592-byte ROM. Every example on these pages comes from it. This page shows how to build and play it, how the project is laid out, how the graphics are made, and walks through the code.</p>
     </header>
 
     <aside class="sources">
@@ -28,7 +28,8 @@
         <li><a href="../../example_star_catcher/src/game.asm"><code>src/game.asm</code></a></li>
         <li><a href="../../example_star_catcher/src/nes.inc"><code>src/nes.inc</code></a></li>
         <li><a href="../../example_star_catcher/src/vectors.asm"><code>src/vectors.asm</code></a></li>
-        <li><a href="../../example_star_catcher/chr/make_chr.py"><code>chr/make_chr.py</code></a></li>
+        <li><a href="../../example_star_catcher/chr/tiles.chr"><code>chr/tiles.chr</code></a></li>
+        <li><a href="../../example_star_catcher/gfx/"><code>gfx/</code></a> (the designer's assets and their exports)</li>
       </ul>
     </aside>
 
@@ -36,7 +37,7 @@
     <p>A ship moves along the bottom of a starfield. Stars and meteors fall from the top: catch the stars, avoid the meteors. Each star is a point, and every ten points the sky gets busier. Three meteors and the game is over. The code and the graphics are original (no tile, sound or routine is borrowed from another game) and may be reused freely.</p>
     <figure class="shot">
       <a href="img/game-title.png"><img src="img/game-title.png" width="512" height="480" style="image-rendering: pixelated" alt="The title screen: STAR CATCHER, PRESS START, CATCH THE STARS, AVOID THE METEORS and MADE WITH WINASM65 in white on a black starfield of white dots and yellow crosses, with the blue and red ship near the bottom"></a>
-      <figcaption>The title screen. Every word is drawn with the game's own font; the starfield is made of two background tiles.</figcaption>
+      <figcaption>The title screen, drawn in the designer's Screen editor. Every word is drawn with the game's own font; the starfield is made of two background tiles.</figcaption>
     </figure>
     <figure class="shot">
       <a href="img/game-play.png"><img src="img/game-play.png" width="512" height="480" style="image-rendering: pixelated" alt="A game in progress: SCORE 0000 at the top left, a red heart and 2 at the top right, two yellow stars and a brown meteor falling, the ship at the bottom"></a>
@@ -49,10 +50,10 @@
 
     <h2 id="play">Build and play</h2>
     <p>From the <code>example_star_catcher</code> folder, any of these builds the ROM, <code>star_catcher.nes</code>:</p>
-<pre><code>compile.bat                    # deletes the previous outputs, then WinASM65 -l -c config.json
+<pre><code>compile.bat                    # exports the graphics, deletes the previous outputs, then WinASM65 -l -c config.json
 WinASM65 -l -c config.json     # the same build by hand; -l also writes src\*.lst</code></pre>
-    <p>Run the command line from the project folder: on the command line the paths of <code>config.json</code> are relative to the current directory (see <a href="segments.html#config">the config.json reference</a>). Open the ROM in Mesen2, or any NES emulator: mapper 0, 16 KB of program, 8 KB of tiles.</p>
-    <p>In VS Code with the <a href="vscode.html">WinASM65 extension</a>, open the folder and press <strong>F5</strong>: the extension finds <code>config.json</code>, builds the project and starts Mesen2 with the debugger attached. The committed <code>config.json</code> has no <code>Emulator</code> section, so tell the extension where Mesen2 is with the <code>winasm65.emulatorPath</code> setting (or <code>emulatorPath</code> in <code>launch.json</code>). A breakpoint on line 134 of <code>src/game.asm</code> stops at the start of every frame, as on the <a href="vscode.html#debug">VS Code page</a>.</p>
+    <p>Run the command line from the project folder: on the command line the paths of <code>config.json</code> are relative to the current directory (see <a href="segments.html#config">the config.json reference</a>). Open the ROM in Mesen2, or any NES emulator: mapper 0, 16 KB of program, 8 KB of tiles. <code>compile.bat</code> first runs <code>WinASM65.Designer export gfx</code> when the designer is on the <code>PATH</code>; without it, the exported graphics committed in <code>gfx/</code> are used.</p>
+    <p>In VS Code with the <a href="vscode.html">WinASM65 extension</a>, open the folder and press <strong>F5</strong>: the extension finds <code>config.json</code>, builds the project and starts Mesen2 with the debugger attached. The committed <code>config.json</code> names the emulator in its <code>Emulator</code> section, <code>mesen2</code> at an example path, <code>C:\Emulators\Mesen2\Mesen.exe</code>: point it at your Mesen2, or set the <code>winasm65.emulatorPath</code> setting (or <code>emulatorPath</code> in <code>launch.json</code>), which takes precedence. A breakpoint on line 134 of <code>src/game.asm</code> stops at the start of every frame, as on the <a href="vscode.html#debug">VS Code page</a>.</p>
     <div class="table-wrap">
     <table>
       <thead><tr><th>Button</th><th>Does</th></tr></thead>
@@ -71,13 +72,17 @@ WinASM65 -l -c config.json     # the same build by hand; -l also writes src\*.ls
       <thead><tr><th>File</th><th>What it is</th></tr></thead>
       <tbody>
         <tr><td><code>config.json</code></td><td>The project: three units, combined with the tiles into the ROM.</td></tr>
-        <tr><td><code>compile.bat</code></td><td>Deletes <code>src\*.o</code>, <code>src\*.symb</code>, <code>src\*.lst</code> and the ROM, then builds with listings.</td></tr>
+        <tr><td><code>compile.bat</code></td><td>Exports the graphics when <code>WinASM65.Designer</code> is on the <code>PATH</code>, deletes <code>src\*.o</code>, <code>src\*.symb</code>, <code>src\*.lst</code> and the ROM, then builds with listings.</td></tr>
         <tr><td><code>src/header.asm</code></td><td>The 16-byte iNES header.</td></tr>
         <tr><td><code>src/game.asm</code></td><td>The game: start-up, main loop, NMI, ship, falling objects, score, sound, data.</td></tr>
         <tr><td><code>src/nes.inc</code></td><td>NES registers, buttons and two macros, included by <code>game.asm</code>. Not a unit of its own.</td></tr>
         <tr><td><code>src/vectors.asm</code></td><td>The NMI, RESET and IRQ vectors.</td></tr>
-        <tr><td><code>chr/make_chr.py</code></td><td>Draws every tile as ASCII art and writes <code>chr/tiles.chr</code>.</td></tr>
-        <tr><td><code>chr/tiles.chr</code></td><td>The 8 KB of tiles, generated and committed.</td></tr>
+        <tr><td><code>chr/tiles.chr</code></td><td>The 8 KB of tiles, drawn in the designer's Tile Set editor.</td></tr>
+        <tr><td><code>gfx/game.pal.json</code></td><td>The 8 palettes.</td></tr>
+        <tr><td><code>gfx/objects.msprite.json</code></td><td>The metasprites (ship, star and its twinkle, meteor, burst) and the twinkle animation.</td></tr>
+        <tr><td><code>gfx/title.screen.json</code>, <code>gfx/over.screen.json</code></td><td>The title and game over screens.</td></tr>
+        <tr><td><code>gfx/play.map.json</code></td><td>The play background, a map of 2×2 metatiles.</td></tr>
+        <tr><td><code>gfx/*.asm</code>, <code>*.bin</code>, <code>*.nam</code></td><td>What the assets export, included by <code>game.asm</code>; committed, so the game builds without the designer.</td></tr>
       </tbody>
     </table>
     </div>
@@ -116,23 +121,28 @@ WinASM65 -l -c config.json     # the same build by hand; -l also writes src\*.ls
 				"FileName": "chr/tiles.chr"
 			}
 		]
+	},
+	"Emulator": {
+		"Name": "mesen2",
+		"Path": "C:\\Emulators\\Mesen2\\Mesen.exe"
 	}
 }</code></pre>
     <ul>
       <li><strong><code>Input</code></strong> lists the three units. Each is assembled on its own into an object file beside its source: <code>src/header.o</code>, <code>src/game.o</code>, <code>src/vectors.o</code>. <code>game.asm</code> also writes <code>src/game.symb</code>, the JSON table of its global names.</li>
-      <li><strong><code>Output</code></strong> puts four files end to end. <code>header.o</code> is already 16 bytes, so its <code>"Size": "$10"</code> only guards against a header that grows. <code>game.o</code> holds 1,243 bytes, assembled from <code>.org $C000</code>; <code>"Size": "$3FFA"</code> (always hexadecimal) pads it with zeros to 16,378 bytes, so that the six bytes of <code>vectors.o</code> fall on <code>$FFFA</code>–<code>$FFFF</code>, the last six bytes of the 16 KB bank. <code>chr/tiles.chr</code> is taken as it is.</li>
+      <li><strong><code>Output</code></strong> puts four files end to end. <code>header.o</code> is already 16 bytes, so its <code>"Size": "$10"</code> only guards against a header that grows. <code>game.o</code> holds 3,682 bytes, assembled from <code>.org $C000</code> (the two 1,024-byte screens included); <code>"Size": "$3FFA"</code> (always hexadecimal) pads it with zeros to 16,378 bytes, so that the six bytes of <code>vectors.o</code> fall on <code>$FFFA</code>–<code>$FFFF</code>, the last six bytes of the 16 KB bank. <code>chr/tiles.chr</code> is taken as it is.</li>
+      <li><strong><code>Emulator</code></strong> is used only to debug: the emulator the VS Code debugger and the monitor start, here Mesen2 at an example path to replace with your own. See <a href="bridges.html">Emulator bridges</a>.</li>
       <li>There is no <code>Target</code> section: the target is <code>raw</code> and the image is written exactly as concatenated, header included. The <a href="segments.html#config-example">complete config.json example</a> builds the same ROM with a <code>Target</code> section that writes the header instead.</li>
     </ul>
     <div class="figure">
-      <svg viewBox="0 0 900 200" role="img" aria-label="The ROM layout: header.o, 16 bytes at file offset $0000; game.o padded to $3FFA bytes at offset $0010, the CPU addresses $C000 to $FFF9, of which 1,243 bytes are code and data; vectors.o, 6 bytes at offset $400A, CPU addresses $FFFA to $FFFF; tiles.chr, 8 KB at offset $4010. 24,592 bytes in all.">
+      <svg viewBox="0 0 900 200" role="img" aria-label="The ROM layout: header.o, 16 bytes at file offset $0000; game.o padded to $3FFA bytes at offset $0010, the CPU addresses $C000 to $FFF9, of which 3,682 bytes are code and data; vectors.o, 6 bytes at offset $400A, CPU addresses $FFFA to $FFFF; tiles.chr, 8 KB at offset $4010. 24,592 bytes in all.">
         <text x="20" y="22" class="muted" font-size="12.5">star_catcher.nes: file offsets below the bar, what each part is inside it</text>
         <rect class="box-a" x="20" y="40" width="36" height="74" rx="3"/>
         <text x="38" y="81" text-anchor="middle" font-size="12" font-weight="600">H</text>
         <rect class="box-b" x="56" y="40" width="96" height="74"/>
         <rect class="box-b" x="152" y="40" width="440" height="74" fill-opacity="0.45"/>
         <text x="104" y="70" text-anchor="middle" font-size="12" font-weight="600">code + data</text>
-        <text x="104" y="88" text-anchor="middle" class="muted" font-size="11">$C000–$C4DA</text>
-        <text x="104" y="104" text-anchor="middle" class="muted" font-size="11">1,243 bytes</text>
+        <text x="104" y="88" text-anchor="middle" class="muted" font-size="11">$C000–$CE61</text>
+        <text x="104" y="104" text-anchor="middle" class="muted" font-size="11">3,682 bytes</text>
         <text x="372" y="72" text-anchor="middle" font-weight="600">game.o, padded to $3FFA</text>
         <text x="372" y="92" text-anchor="middle" class="muted" font-size="12">zeros up to $FFF9</text>
         <rect class="box-c" x="592" y="40" width="22" height="74"/>
@@ -165,56 +175,78 @@ WinASM65 -l -c config.json     # the same build by hand; -l also writes src\*.ls
         .dsb 8                  ; unused, zero</code></pre>
 
     <h2 id="graphics">The graphics</h2>
-    <p>The NES draws everything from 8×8 tiles stored in the cartridge's character ROM. Each pixel of a tile is a number from 0 to 3; the palette the tile is shown with turns that number into a colour, and 0 is transparent (or the background colour). <code>chr/make_chr.py</code> draws every tile as eight strings of eight characters and encodes them. <code>.</code> is colour 0, <code>1</code>, <code>2</code> and <code>3</code> the other three. The ship is two tiles side by side, cut from one 16-pixel drawing:</p>
-<pre><code>SHIP = [
-    ".......11.......",
-    "......1221......",
-    "......2112......",
-    ".....222222.....",
-    "..3..222222..3..",
-    ".32222222222223.",
-    "3222222332222223",
-    "33...3....3...33",
-]
-TILES[0x01] = [row[:8] for row in SHIP]
-TILES[0x02] = [row[8:] for row in SHIP]</code></pre>
-    <h3>Two bit planes</h3>
-    <p>A tile takes 16 bytes: eight bytes that hold bit 0 of each pixel, one byte per row with the leftmost pixel in bit 7, then eight bytes that hold bit 1. <code>encode</code> does just that:</p>
-<pre><code>def encode(tile):
-    """The 16 bytes of a tile: 8 bytes of bit 0 of each pixel, then 8 of bit 1."""
-    assert len(tile) == 8 and all(len(row) == 8 for row in tile), tile
-    low, high = [], []
-    for row in tile:
-        lo = hi = 0
-        for pixel in row:
-            value = 0 if pixel == "." else int(pixel)
-            lo = (lo << 1) | (value & 1)
-            hi = (hi << 1) | (value >> 1)
-        low.append(lo)
-        high.append(hi)
-    return bytes(low + high)</code></pre>
-    <p>Tile <em>n</em> goes at offset <em>n</em> × 16. Pattern table 0, the first 4 KB, holds every tile the game uses, for the background and the sprites alike (<code>PPUCTRL</code> is set to <code>%10000000</code>: NMI on, both from table 0). Pattern table 1 stays empty, which makes 8 KB, one CHR bank.</p>
+    <p>Every picture of the game is an asset of the <a href="graphics.html">Graphics Designer</a>, edited in VS Code and exported to assembly sources that <code>game.asm</code> includes. The exports are committed next to the assets, so the game builds with the assembler alone; a test checks they are what an export of the assets gives today.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Asset</th><th>Editor</th><th>Exported as</th><th>Used by</th></tr></thead>
+      <tbody>
+        <tr><td><code>chr/tiles.chr</code></td><td>Tile Set</td><td>itself: 8 KB taken as they are by <code>config.json</code></td><td>the PPU's pattern tables</td></tr>
+        <tr><td><code>gfx/game.pal.json</code></td><td>Palettes</td><td><code>game.pal.asm</code> (<code>palettes:</code>), <code>game.pal.bin</code></td><td><code>load_palettes</code></td></tr>
+        <tr><td><code>gfx/objects.msprite.json</code></td><td>Metasprites</td><td><code>objects.msprite.asm</code>: the ship, the star, its twinkle, the meteor, the burst, and the animation <code>twinkle</code></td><td><code>draw_sprites</code>, <code>draw_ship</code></td></tr>
+        <tr><td><code>gfx/title.screen.json</code>, <code>gfx/over.screen.json</code></td><td>Screen</td><td><code>title.nam</code>, <code>over.nam</code> (1,024 bytes each) and their <code>.screen.asm</code></td><td><code>enter_title</code>, <code>enter_over</code></td></tr>
+        <tr><td><code>gfx/play.map.json</code></td><td>Map</td><td><code>play.map.asm</code>: 9 metatiles and a map of 16×15 of them</td><td><code>draw_map</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The JSON assets name the tile set and the palettes they are drawn with (<code>"../chr/tiles.chr"</code>, <code>"game.pal.json"</code>), and a <code>prefix</code> for their labels: <code>spr_</code> for the metasprites, <code>scr_</code> for the screens, <code>bg_</code> for the map. The end of <code>game.asm</code> includes the five exports:</p>
+<pre><code>        .include "../gfx/game.pal.asm"
+        .include "../gfx/objects.msprite.asm"
+        .include "../gfx/title.screen.asm"
+        .include "../gfx/over.screen.asm"
+        .include "../gfx/play.map.asm"</code></pre>
+    <p>Saving an asset in VS Code exports it, and the next build uses it; <code>compile.bat</code> also exports them all first when <code>WinASM65.Designer</code> is on the <code>PATH</code> (<code>WinASM65.Designer export gfx</code>).</p>
+
+    <h3 id="tiles">Tiles</h3>
+    <p>The NES draws everything from 8×8 tiles stored in the cartridge's character ROM. Each pixel of a tile is a number from 0 to 3; the palette the tile is shown with turns that number into a colour, and 0 is transparent (or the background colour). A tile takes 16 bytes: eight bytes that hold bit 0 of each pixel, one byte per row with the leftmost pixel in bit 7, then eight bytes that hold bit 1. The Tile Set editor reads and writes <code>chr/tiles.chr</code> in that form.</p>
+    <p>Tile <em>n</em> is at offset <em>n</em> × 16. Pattern table 0, the first 4 KB, holds every tile the game uses, for the background and the sprites alike (<code>PPUCTRL</code> is set to <code>%10000000</code>: NMI on, both from table 0). Pattern table 1 stays empty, which makes 8 KB, one CHR bank.</p>
 
     <h3 id="ascii">Letters at their ASCII codes</h3>
     <p>The font has 5×7 glyphs for the digits, the capital letters and <code>!</code>, <code>-</code> and <code>:</code>, each stored at the tile number equal to its ASCII code, with one empty column on the left and one empty row below. <code>"0"</code> is tile <code>$30</code>, <code>"A"</code> tile <code>$41</code>, and the space, <code>$20</code>, is a tile left empty. So a string in the source is already a row of tiles: <code>.asciiz "SCORE"</code> emits <code>53 43 4F 52 45 00</code>, and those are the tiles of S, C, O, R, E. Digits work the same way, so the score is drawn by adding <code>'0'</code> to each digit.</p>
-    <p>The other tiles: <code>$01</code>–<code>$02</code> the ship, <code>$03</code>–<code>$04</code> the two frames of a twinkling star, <code>$05</code> the meteor, <code>$06</code>–<code>$07</code> two distant stars for the background, <code>$08</code> a burst (drawn, but not used by the code yet), <code>$0A</code> the heart. <code>python chr/make_chr.py --png sheet.png</code> writes a picture of the whole table:</p>
+    <p>The other tiles: <code>$01</code>–<code>$02</code> the ship, <code>$03</code>–<code>$04</code> the two frames of a twinkling star, <code>$05</code> the meteor, <code>$06</code>–<code>$07</code> two distant stars for the background, <code>$08</code> the burst shown when a meteor hits the ship, <code>$0A</code> the heart.</p>
     <figure class="shot">
-      <a href="img/game-tiles.png"><img src="img/game-tiles.png" width="512" height="512" style="image-rendering: pixelated" alt="Pattern table 0 as 16 by 16 tiles: on the first row the ship, the two star frames, the meteor, the two background stars, the burst and the heart; then the exclamation mark, the dash, the digits and the colon, and the letters A to Z, at their ASCII positions; the rest is empty"></a>
-      <figcaption>Pattern table 0, 16 tiles per row, from <code>make_chr.py --png</code>. The preview uses fixed colours (black, white, yellow, orange) for the values 0 to 3, not the game's palettes.</figcaption>
+      <a href="img/game-tiles.png"><img src="img/game-tiles.png" width="512" height="512" style="image-rendering: pixelated" alt="Pattern table 0 as 16 by 16 tiles in the ship's colours, white, blue and red on black: on the first row the ship, the two star frames, the meteor, the two background stars, the burst and the heart; then the exclamation mark, the dash, the digits and the colon, and the letters A to Z, at their ASCII positions; the rest is empty"></a>
+      <figcaption>Pattern table 0, 16 tiles per row, drawn by <code>WinASM65.Designer render</code> in the colours of the ship's sprite palette (<code>--item ../gfx/game.pal.json#4</code>).</figcaption>
     </figure>
 
     <h3 id="palettes">Palettes</h3>
-    <p>The game loads 32 bytes into the PPU at <code>$3F00</code>: four palettes for the background, four for the sprites. Each entry is a colour number of the NES's fixed palette, and <code>$0F</code> (black) is the shared colour 0.</p>
-<pre><code>Palettes:
-        .byte $0F, $30, $16, $28        ; background: white text, red heart, yellow stars
-        .byte $0F, $30, $16, $28
-        .byte $0F, $30, $16, $28
-        .byte $0F, $30, $16, $28
-        .byte $0F, $30, $11, $16        ; ship: white, blue, red
-        .byte $0F, $28, $38, $30        ; stars: yellow, pale yellow, white
-        .byte $0F, $07, $17, $27        ; meteors: dark brown, brown, orange
-        .byte $0F, $27, $37, $30</code></pre>
-    <p>The background uses palette 0 everywhere (the nametable's attribute bytes are cleared to zero): letters are drawn with colour 1 (white), the heart with colour 2 (red), the bright background star with colour 3 (yellow). Each sprite chooses its palette in its attribute byte: <code>PAL_SHIP = 0</code>, <code>PAL_STAR = 1</code>, <code>PAL_METEOR = 2</code>. The last sprite palette is not used.</p>
+    <p>The game loads 32 bytes into the PPU at <code>$3F00</code>: four palettes for the background, four for the sprites. Each entry is a colour number of the NES's fixed palette, and <code>$0F</code> (black) is the shared colour 0. They are edited in <code>gfx/game.pal.json</code>, where each palette has a name, and exported as:</p>
+<pre><code>palettes:
+        .byte $0F, $30, $16, $28 ; background 0: text
+        .byte $0F, $30, $16, $28 ; background 1: background 1
+        .byte $0F, $30, $16, $28 ; background 2: background 2
+        .byte $0F, $30, $16, $28 ; background 3: background 3
+        .byte $0F, $30, $11, $16 ; sprite 0: ship
+        .byte $0F, $28, $38, $30 ; sprite 1: stars
+        .byte $0F, $07, $17, $27 ; sprite 2: meteors
+        .byte $0F, $27, $37, $30 ; sprite 3: burst
+
+PAL_TEXT = 0
+…
+PAL_BURST = 7</code></pre>
+    <p>The screens and the map use background palette 0 everywhere: letters are drawn with colour 1 (white), the heart with colour 2 (red), the bright background star with colour 3 (yellow). Each sprite's palette is in the attribute byte of its metasprite rows: 0 for the ship, 1 for the stars, 2 for the meteor, 3 for the burst.</p>
+
+    <h3 id="metasprites">Metasprites and the twinkle</h3>
+    <p>An object on screen is a metasprite: one or more hardware sprites placed around an origin. The designer exports each one as rows of four bytes (y offset, tile, attributes, x offset) ended by <code>$80</code>, a table of their addresses, and a number for each:</p>
+<pre><code>spr_ship:
+        .byte $00, $01, $00, $00
+        .byte $00, $02, $00, $08
+        .byte $80
+…
+spr_metasprites_lo:
+        .lobytes spr_ship, spr_star, spr_star_twinkle, spr_meteor, spr_burst
+spr_metasprites_hi:
+        .hibytes spr_ship, spr_star, spr_star_twinkle, spr_meteor, spr_burst
+
+SPR_MS_SHIP = 0
+…
+spr_twinkle_anim:
+        .byte 1, 8
+        .byte 2, 8
+        .byte $FF, 1</code></pre>
+    <p>An animation is rows of a metasprite number and a duration in frames, ended by <code>$FF</code> and whether it loops: the star shows <code>SPR_MS_STAR</code> for 8 frames, then <code>SPR_MS_STAR_TWINKLE</code> for 8.</p>
+
+    <h3 id="screens">Screens and the map</h3>
+    <p>The title and game over screens are whole nametables, 960 tile bytes and 64 attribute bytes, drawn in the Screen editor and exported to <code>title.nam</code> and <code>over.nam</code>; <code>title.screen.asm</code> is just <code>scr_title: .incbin "title.nam"</code> and <code>SCR_TITLE_SIZE = 1024</code>. The play background is a map instead: 9 metatiles of 2×2 tiles (<code>bg_metatile_tl</code>, <code>_tr</code>, <code>_bl</code>, <code>_br</code> and <code>bg_metatile_pal</code>) and one byte per metatile in <code>bg_play_map</code>, 16 wide and 15 high (<code>BG_PLAY_WIDTH</code>, <code>BG_PLAY_HEIGHT</code>): 240 bytes instead of 1,024.</p>
 
     <h2 id="tour">A tour of game.asm</h2>
     <p>The file starts with <code>.include "nes.inc"</code>, then its constants (tile numbers, speeds, screen positions), then its variables. The variables live in the zero page, where instructions are one byte shorter and one cycle faster. <code>.memarea $0000</code> starts the reservation area, and each <code>.res</code> gives a name the next free address and moves on:</p>
@@ -228,8 +260,14 @@ score        .res 4             ; four decimal digits, most significant first
 obj_type     .res MAX_OBJECTS   ; 0 when the slot is free
 obj_x        .res MAX_OBJECTS
 obj_y        .res MAX_OBJECTS
-obj_speed    .res MAX_OBJECTS</code></pre>
-    <p><code>.res</code> emits nothing: the names are only addresses, <code>$00</code> to <code>$2C</code>. <code>obj_speed</code> is <code>$27</code>, which is why <code>adc obj_speed,x</code> assembles to the two-byte zero page,X form <code>75 27</code> (<a href="vscode.html#hover">the hover card</a> shows exactly that).</p>
+obj_speed    .res MAX_OBJECTS
+oam_index    .res 1             ; next free entry of the sprite table
+obj_index    .res 1
+ms_x         .res 1             ; where draw_metasprite puts the origin
+ms_y         .res 1
+map_row      .res 1
+map_col      .res 1</code></pre>
+    <p><code>.res</code> emits nothing: the names are only addresses, <code>$00</code> to <code>$32</code>. <code>obj_speed</code> is <code>$27</code>, which is why <code>adc obj_speed,x</code> assembles to the two-byte zero page,X form <code>75 27</code> (<a href="vscode.html#hover">the hover card</a> shows exactly that).</p>
 
     <h3 id="startup">Start-up</h3>
     <p><code>RESET</code>, at <code>$C000</code>, is where the console starts. It masks interrupts, turns decimal mode off (the NES's 6502 has none anyway), stops the APU frame interrupt, sets the stack, turns the picture and the NMI off, and then waits for the PPU to warm up, which takes two vertical blanks. Between the two waits it clears the 2 KB of RAM:</p>
@@ -245,7 +283,7 @@ obj_speed    .res MAX_OBJECTS</code></pre>
 -       bit PPUSTATUS
         bpl -
 .endmacro</code></pre>
-    <p>Then <code>RESET</code> loads the palettes, enables the pulse 1 and noise channels (<code>APU_STATUS = %00001001</code>), seeds the random generator and draws the title screen.</p>
+    <p>Then <code>RESET</code> hides every sprite, loads the palettes, enables the pulse 1 and noise channels (<code>APU_STATUS = %00001001</code>), seeds the random generator and draws the title screen.</p>
 
     <h3 id="loop">Main loop and states</h3>
     <p>The game is in one of three states. Each has an <code>enter_</code> routine, which draws its screen once, and an <code>update_</code> routine, called once per frame:</p>
@@ -291,7 +329,7 @@ obj_speed    .res MAX_OBJECTS</code></pre>
         jmp MainLoop
 @over:  jsr update_over
         jmp MainLoop</code></pre>
-    <p><code>@play</code> and <code>@over</code> are local labels: they belong to <code>MainLoop</code>, and other routines reuse the same names (<code>@loop</code> appears in six of them). <code>update_play</code> moves the ship, spawns and moves the objects, and either goes to <code>enter_over</code> when <code>lives</code> reaches zero or fills the sprite table.</p>
+    <p><code>@play</code> and <code>@over</code> are local labels: they belong to <code>MainLoop</code>, and other routines reuse the same names (<code>@loop</code> appears in six of them). <code>update_play</code> moves the ship, spawns and moves the objects, and either goes to <code>enter_over</code> when <code>lives</code> reaches zero or fills the sprite table (<a href="#sprites">below</a>).</p>
 
     <h3 id="nmi">NMI and the sprite DMA</h3>
     <p>The PPU raises an NMI at the start of every vertical blank, 60 times a second: the only time video memory can be written while the picture is on. <code>NMI</code>, at <code>$C06E</code>, saves the registers and copies the 256-byte sprite table at <code>OAM = $0200</code> to the PPU with one write to <code>OAMDMA</code>:</p>
@@ -376,7 +414,7 @@ obj_speed    .res MAX_OBJECTS</code></pre>
         cmp ship_x
         bcc @next
         beq @next</code></pre>
-    <p><code>collide</code> frees the slot, then either scores a point and plays the catch sound, or takes a life, starts the blinking (<code>hit_timer = 48</code>; the ship is hidden when bit 2 of the timer is set) and plays the crash.</p>
+    <p><code>collide</code> frees the slot, then either scores a point and plays the catch sound, or takes a life, starts the blinking (<code>hit_timer = 48</code>; the burst replaces the ship when bit 2 of the timer is set) and plays the crash.</p>
 
     <h3 id="score">The decimal score</h3>
     <p>The score is four bytes, one decimal digit each, most significant first. Adding a point is a carry that ripples from the last digit: a digit that reaches 10 becomes 0 and the one before it is incremented. Keeping one digit per byte makes drawing trivial (digit + <code>'0'</code>) and needs neither decimal mode, which the NES's CPU lacks, nor a binary-to-decimal conversion.</p>
@@ -407,26 +445,41 @@ obj_speed    .res MAX_OBJECTS</code></pre>
         sta SQ1_HI
         rts</code></pre>
 
-    <h3 id="texts">Drawing text with the picture off</h3>
-    <p><code>enter_title</code> and <code>enter_play</code> redraw the whole screen (clear the nametable, the starfield, the texts); <code>enter_over</code> writes its two lines over the play screen. That is far more than a vertical blank allows, so each starts with <code>screen_off</code>, which disables the NMI and the rendering; with the picture off, video memory can be written at any time. <code>screen_on</code> turns both back on at the next vertical blank. The texts of a screen are a list of entries, each a nametable address (<code>.word</code>) followed by the characters (<code>.asciiz</code>), ended by an address of 0:</p>
-<pre><code>TitleText:
-        .word NT+8*32+10
-        .asciiz "STAR CATCHER"
-        .word NT+18*32+10
-        .asciiz "PRESS START"
-        …
-        .word 0
+    <h3 id="sprites">Drawing metasprites</h3>
+    <p>Every frame of play, <code>draw_sprites</code> rebuilds the sprite table at <code>OAM</code> from the ship and the objects, which the next NMI copies to the PPU. <code>oam_index</code> is the next free entry; <code>ms_x</code> and <code>ms_y</code> are where the origin goes. <code>draw_metasprite</code> takes the metasprite's number in A, finds its rows through the two address tables, and adds the origin to each offset:</p>
+<pre><code>draw_metasprite:
+        tax
+        lda spr_metasprites_lo,x
+        sta ptr
+        lda spr_metasprites_hi,x
+        sta ptr+1
+        ldy #0
+        ldx oam_index
+@next:  lda (ptr),y             ; dy, or the end
+        cmp #$80
+        beq @done
+        clc
+        adc ms_y
+        sta OAM,x
+        …</code></pre>
+    <p>A meteor is <code>lda #SPR_MS_METEOR</code>. A star plays the twinkle: <code>anim_frame</code> takes the animation in <code>ptr</code> and a time in A (<code>frame_count</code>), subtracts the durations row by row until the time falls inside one, and returns that row's metasprite; past the <code>$FF</code> it starts again, so the animation loops. The ship is <code>SPR_MS_SHIP</code>, except while <code>hit_timer</code> runs after a meteor: whenever bit 2 of the timer is set, <code>draw_ship</code> draws <code>SPR_MS_BURST</code> in its place, so the ship blinks with a burst. <code>hide_rest</code> then moves every unused entry off screen (Y = <code>$FF</code>).</p>
 
-PlayText:
+    <h3 id="texts">Screens with the picture off</h3>
+    <p><code>enter_title</code>, <code>enter_play</code> and <code>enter_over</code> redraw the whole background, far more than a vertical blank allows, so each starts with <code>screen_off</code>, which disables the NMI and the rendering; with the picture off, video memory can be written at any time. <code>screen_on</code> turns both back on at the next vertical blank.</p>
+    <p>The title and game over screens come from the designer whole. <code>load_nametable</code> copies the 1,024 bytes at <code>ptr</code> to the nametable, four pages of 256 through <code>lda (ptr),y</code>:</p>
+<pre><code>        lda #&lt;scr_title         ; the screen made in the designer
+        sta ptr
+        lda #&gt;scr_title
+        sta ptr+1
+        jsr load_nametable</code></pre>
+    <p>The play screen is the map. <code>draw_map</code> writes each row of metatiles as two rows of tiles, first the top tiles of the 16 metatiles (<code>bg_metatile_tl</code>, <code>bg_metatile_tr</code>), then their bottom tiles, and then builds the 64 attribute bytes from the metatiles' palettes, four metatiles per byte. Over it, <code>draw_texts</code> writes <code>PlayText</code>: a list of entries, each a nametable address (<code>.word</code>) followed by the characters (<code>.asciiz</code>), ended by an address of 0:</p>
+<pre><code>PlayText:
         .word NT+2*32+2
         .asciiz "SCORE"
         .word NT+2*32+23
         .byte T_HEART, 0
         .word 0</code></pre>
-    <p><code>NT+8*32+10</code> is row 8, column 10: the nametable is 32 tiles wide. The heart is not a character, so its entry is written with <code>.byte</code> and an explicit 0. <code>draw_texts</code> walks the list through the zero-page pointer <code>ptr</code> with <code>lda (ptr),y</code>; since every address is above <code>$2000</code>, a high byte of 0 ends the list. The background stars use the same idea with two tables, the low and the high bytes of 24 nametable addresses:</p>
-<pre><code>StarLo: .lobytes NT+4*32+25, NT+5*32+9, NT+7*32+6, …
-StarHi: .hibytes NT+4*32+25, NT+5*32+9, NT+7*32+6, …</code></pre>
-    <p><code>draw_starfield</code> reads <code>StarHi,x</code> and <code>StarLo,x</code> for the PPU address and alternates the two star tiles. Its loop starts with <code>ldx #STAR_COUNT-1</code>, and <code>STAR_COUNT = 24</code> is only defined at the end of the file: the assembler resolves the forward reference in its second pass.</p>
+    <p><code>NT+2*32+2</code> is row 2, column 2: the nametable is 32 tiles wide. The heart is not a character, so its entry is written with <code>.byte</code> and an explicit 0. <code>draw_texts</code> walks the list through the zero-page pointer <code>ptr</code>; since every address is above <code>$2000</code>, a high byte of 0 ends the list. The game over screen gets the final score and lives the same way, with <code>draw_hud</code> called while the picture is still off.</p>
 
     <h2 id="features">WinASM65 features used</h2>
     <p>Star Catcher was written to use most of what a NES project needs from the assembler. Where each feature appears, and where it is described:</p>
@@ -434,20 +487,21 @@ StarHi: .hibytes NT+4*32+25, NT+5*32+9, NT+7*32+6, …</code></pre>
     <table>
       <thead><tr><th>Feature</th><th>Where in Star Catcher</th><th>Reference</th></tr></thead>
       <tbody>
-        <tr><td><code>.include</code></td><td><code>.include "nes.inc"</code>, line 7 of <code>game.asm</code>: registers, buttons and macros.</td><td><a href="syntax.html#directives">Directives</a></td></tr>
-        <tr><td>Macros with and without a parameter</td><td><code>wait_vblank</code> (start-up, <code>screen_off</code>, <code>screen_on</code>); <code>ppu_addr address</code> (<code>load_palettes</code>, <code>clear_nametable</code>, <code>draw_hud</code>).</td><td><a href="syntax.html#macros">Macros</a></td></tr>
-        <tr><td><code>.memarea</code> and <code>.res</code></td><td>The zero-page variables, <code>frame_ready</code> at <code>$00</code> to <code>obj_speed</code> at <code>$27</code>.</td><td><a href="syntax.html#directives">Directives › Placement</a></td></tr>
+        <tr><td><code>.include</code></td><td><code>.include "nes.inc"</code>, line 7 of <code>game.asm</code>: registers, buttons and macros; the five exports of <code>../gfx</code> at the end.</td><td><a href="syntax.html#directives">Directives</a></td></tr>
+        <tr><td>Macros with and without a parameter</td><td><code>wait_vblank</code> (start-up, <code>screen_off</code>, <code>screen_on</code>); <code>ppu_addr address</code> (<code>load_palettes</code>, <code>load_nametable</code>, <code>draw_map</code>, <code>draw_hud</code>).</td><td><a href="syntax.html#macros">Macros</a></td></tr>
+        <tr><td><code>.memarea</code> and <code>.res</code></td><td>The zero-page variables, <code>frame_ready</code> at <code>$00</code> to <code>map_col</code> at <code>$32</code>.</td><td><a href="syntax.html#directives">Directives › Placement</a></td></tr>
         <tr><td><code>.org</code></td><td><code>$0000</code> in <code>header.asm</code>, <code>$C000</code> in <code>game.asm</code>, <code>$FFFA</code> in <code>vectors.asm</code>.</td><td><a href="syntax.html#directives">Directives › Placement</a></td></tr>
         <tr><td>Local labels <code>@name</code></td><td><code>@clear</code>, <code>@play</code>, <code>@over</code>, <code>@no_hud</code>, <code>@bit</code>, <code>@check</code>, and <code>@loop</code> in six routines.</td><td><a href="syntax.html#labels">Labels</a></td></tr>
-        <tr><td>Anonymous labels <code>-</code> and <code>+</code></td><td><code>wait_vblank</code>, <code>wait_frame</code>, <code>move_ship</code>, <code>spawn_objects</code>, <code>random</code>.</td><td><a href="syntax.html#labels">Labels</a></td></tr>
-        <tr><td><code>.lobytes</code> / <code>.hibytes</code></td><td><code>StarLo</code> and <code>StarHi</code>, the 24 background stars.</td><td><a href="syntax.html#directives">Directives › Data</a></td></tr>
-        <tr><td><code>.asciiz</code>, strings in <code>.byte</code></td><td><code>TitleText</code>, <code>PlayText</code>, <code>OverText</code>; <code>"NES"</code> in the header.</td><td><a href="syntax.html#directives">Directives › Data</a></td></tr>
+        <tr><td>Anonymous labels <code>-</code> and <code>+</code></td><td><code>wait_vblank</code>, <code>wait_frame</code>, <code>update_play</code>, <code>move_ship</code>, <code>spawn_objects</code>, <code>draw_map</code>, <code>random</code>.</td><td><a href="syntax.html#labels">Labels</a></td></tr>
+        <tr><td><code>.lobytes</code> / <code>.hibytes</code></td><td><code>spr_metasprites_lo</code> and <code>spr_metasprites_hi</code>, exported by the designer.</td><td><a href="syntax.html#directives">Directives › Data</a></td></tr>
+        <tr><td><code>.asciiz</code>, strings in <code>.byte</code></td><td><code>PlayText</code>; <code>"NES"</code> in the header.</td></tr>
+        <tr><td><code>.incbin</code></td><td>The two screens, <code>scr_title: .incbin "title.nam"</code> in the exported <code>title.screen.asm</code>.</td><td><a href="syntax.html#directives">Directives › Data</a><td><a href="syntax.html#directives">Directives › Data</a></td></tr>
         <tr><td><code>.word</code></td><td>The text addresses, the three vectors.</td><td><a href="syntax.html#directives">Directives › Data</a></td></tr>
         <tr><td><code>.dsb</code></td><td><code>.dsb 8</code>: the eight zero bytes that end the header.</td><td><a href="syntax.html#directives">Directives › Data</a></td></tr>
-        <tr><td>Expressions with <code>&lt;</code>, <code>&gt;</code>, <code>*</code>, <code>+</code>, <code>-</code></td><td><code>#&lt;TitleText</code>, <code>#&gt;OAM</code>, <code>NT+2*32+8</code>, <code>SHIP_Y-7</code>, <code>MAX_OBJECTS-1</code>.</td><td><a href="syntax.html#expressions">Expressions</a></td></tr>
+        <tr><td>Expressions with <code>&lt;</code>, <code>&gt;</code>, <code>*</code>, <code>+</code>, <code>-</code></td><td><code>#&lt;scr_title</code>, <code>#&gt;OAM</code>, <code>NT+2*32+8</code>, <code>SHIP_Y-7</code>, <code>MAX_OBJECTS-1</code>.</td><td><a href="syntax.html#expressions">Expressions</a></td></tr>
         <tr><td>Character constants, binary numbers</td><td><code>adc #'0'</code> in <code>draw_hud</code>; <code>%00001001</code>, the <code>BUTTON_</code> masks.</td><td><a href="syntax.html#numbers">Numbers and characters</a></td></tr>
         <tr><td>Constants (<code>=</code>)</td><td>The registers of <code>nes.inc</code>, the game's tuning (<code>SHIP_SPEED</code>, <code>METEOR_CHANCE</code>…), tile numbers, screen addresses.</td><td><a href="syntax.html#constants">Constants</a></td></tr>
-        <tr><td>Forward references</td><td><code>ldx #STAR_COUNT-1</code> before <code>STAR_COUNT = 24</code>; <code>jsr</code> to routines further down.</td><td><a href="syntax.html#constants">Constants</a>, <a href="assembler.html">Assembly pipeline</a></td></tr>
+        <tr><td>Forward references</td><td><code>lda #SPR_MS_SHIP</code> and <code>lda #BG_PLAY_HEIGHT</code>, constants defined by the exports included at the end of the file; <code>jsr</code> to routines further down.</td><td><a href="syntax.html#constants">Constants</a>, <a href="assembler.html">Assembly pipeline</a></td></tr>
         <tr><td>Zero page addressing chosen automatically</td><td><code>adc obj_speed,x</code> → <code>75 27</code> (2 bytes) rather than the absolute,X form <code>7D 27 00</code>.</td><td><a href="syntax.html#modes">Addressing modes</a></td></tr>
         <tr><td>Units, <code>Dependencies</code> and <code>.symb</code></td><td><code>vectors.asm</code> takes <code>NMI</code>, <code>RESET</code> and <code>IRQ</code> from <code>game.symb</code>.</td><td><a href="segments.html#config-input">Input[]</a>, <a href="segments.html#order">How units are resolved</a></td></tr>
         <tr><td><code>Size</code> padding in <code>Output</code></td><td><code>"$10"</code> for the header, <code>"$3FFA"</code> for the program; the CHR file taken as it is.</td><td><a href="segments.html#combine">Combining files</a></td></tr>
@@ -456,7 +510,8 @@ StarHi: .hibytes NT+4*32+25, NT+5*32+9, NT+7*32+6, …</code></pre>
     </div>
 
     <h2 id="next">Where to go next</h2>
-    <div class="grid-3">
+    <div class="grid-2">
+      <a class="card" href="graphics.html"><h4>Graphics Designer</h4><p>The editors of every asset of the game, pictures in hovers, and the live preview.</p></a>
       <a class="card" href="vscode.html"><h4>VS Code</h4><p>Hover cards, the listing column and a debug session, all on Star Catcher.</p></a>
       <a class="card" href="segments.html"><h4>Projects and segments</h4><p>Every key of <code>config.json</code>, with a complete example built from this game.</p></a>
       <a class="card" href="monitor.html"><h4>Monitor</h4><p>The terminal monitor on <code>star_catcher.nes</code>, live RAM and ROM.</p></a>
