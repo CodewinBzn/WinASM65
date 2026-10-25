@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VS Code extension</title>
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<div class="layout">
+  <nav class="site-nav" aria-label="Pages"></nav>
+
+  <main>
+    <p class="breadcrumb"><a href="index.html">WinASM65</a> › Debugging</p>
+    <header class="page">
+      <h1>VS Code extension</h1>
+      <p class="lede">Syntax colouring, errors as you type, hover cards, a listing column, a build task and a source-level debugger that runs the program in Mesen2. The TypeScript side is thin: almost everything is done by <a href="tooling.html"><code>WinASM65.Tooling</code></a>, which the extension ships and starts.</p>
+    </header>
+
+    <aside class="sources">
+      <h4>Source files</h4>
+      <ul>
+        <li><a href="../../vscode-extension/package.json"><code>vscode-extension/package.json</code></a></li>
+        <li><a href="../../vscode-extension/src/extension.ts"><code>src/extension.ts</code></a></li>
+        <li><a href="../../vscode-extension/src/listing.ts"><code>src/listing.ts</code></a></li>
+        <li><a href="../../vscode-extension/src/ramPanel.ts"><code>src/ramPanel.ts</code></a></li>
+        <li><a href="../../vscode-extension/syntaxes/winasm65.tmLanguage.json"><code>syntaxes/winasm65.tmLanguage.json</code></a></li>
+        <li><a href="../../vscode-extension/language-configuration.json"><code>language-configuration.json</code></a></li>
+        <li><a href="../../vscode-extension/README.md"><code>vscode-extension/README.md</code></a></li>
+        <li><a href="../../vscode-extension/.vscodeignore"><code>.vscodeignore</code></a></li>
+        <li><a href="../../vscode-extension/src/test/suite.ts"><code>src/test/suite.ts</code></a></li>
+      </ul>
+    </aside>
+
+    <figure class="shot">
+      <a href="img/vscode-editor.png"><img src="img/vscode-editor.png" alt="VS Code with the Bomberman example open: the Explorer lists the .NAS sources and config.json, the editor shows BMAN_BANK1.NAS with mnemonics, labels, numbers and comments coloured"></a>
+      <figcaption>The Bomberman example in VS Code. <code>.nas</code> and <code>.asm</code> files open as “6502 Assembly (WinASM65)”, shown at the right of the status bar.</figcaption>
+    </figure>
+
+    <h2 id="install">Install</h2>
+    <p>The extension is packaged for Windows x64 only (<code>vsce package --target win32-x64</code>) and needs VS Code 1.85 or later. Build and install it from the repository:</p>
+<pre><code>cd vscode-extension
+npm install
+npm run package
+code --install-extension winasm65-win32-x64-0.3.2.vsix --force</code></pre>
+    <p>The version in the file name is the <code>version</code> of <code>package.json</code> (0.3.2 at the time of writing). <code>--force</code> replaces an installed copy of the same version. What <code>npm run package</code> does is described in <a href="#package">Packaging</a>.</p>
+    <p>To debug you also need <strong>Mesen2 2.1.1</strong>. Give its path in one of three places, read in this order:</p>
+    <ol>
+      <li><code>"emulatorPath"</code> in <code>launch.json</code>;</li>
+      <li>the <code>winasm65.emulatorPath</code> setting (copied into the launch configuration when it has none);</li>
+      <li><code>Emulator.Path</code> in the project's <code>config.json</code>.</li>
+    </ol>
+    <div class="callout">
+      <p><strong>Close Mesen2 before pressing F5.</strong> Mesen2 runs as a single instance: a second launch is handed to the window already open, and the bridge never listens on the port the adapter waits on. The adapter notices that the new process exited and says so.</p>
+      <p>The first launch writes the <code>settings.json</code> entries Mesen2 needs to let the bridge script open a socket, next to <code>Mesen.exe</code>.</p>
+    </div>
+
+    <h2 id="highlighting">Highlighting</h2>
+    <p>The TextMate grammar <code>syntaxes/winasm65.tmLanguage.json</code> (scope <code>source.winasm65</code>) colours:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Rule</th><th>Scope</th></tr></thead>
+      <tbody>
+        <tr><td>comments (<code>;</code>)</td><td><code>comment.line.semicolon</code></td></tr>
+        <tr><td>strings, characters</td><td><code>string.quoted.double</code>, <code>string.quoted.single</code></td></tr>
+        <tr><td>label definitions (<code>NAME:</code>, or a name in column 0 before a mnemonic)</td><td><code>entity.name.function.label</code></td></tr>
+        <tr><td>directives, <code>EQU</code></td><td><code>keyword.control.directive</code></td></tr>
+        <tr><td>mnemonics</td><td><code>keyword.other.mnemonic</code></td></tr>
+        <tr><td>numbers</td><td><code>constant.numeric.hex</code> / <code>.binary</code> / <code>.decimal</code></td></tr>
+        <tr><td><code>X</code>/<code>Y</code> after a comma, <code>A</code> as operand; <code>*</code> as program counter</td><td><code>variable.language.register</code>, <code>variable.language.pc</code></td></tr>
+        <tr><td><code>#</code> and operators</td><td><code>keyword.operator.immediate</code>, <code>keyword.operator</code></td></tr>
+        <tr><td>scope braces, other names</td><td><code>punctuation.section.block</code>, <code>variable.other</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The grammar is checked by <code>GrammarTests</code>: it must colour exactly the mnemonics of the assembler's opcode tables and the directives the engine dispatches, no more and no fewer. <code>language-configuration.json</code> declares <code>;</code> as the line comment, the bracket pairs, and a word pattern in which <code>$C01A</code>, <code>%0101</code>, <code>@local</code> and <code>.scoped.name</code> are single words.</p>
+
+    <h2 id="hover">Hover</h2>
+    <p>The language server answers hovers with a card laid out like a JSDoc hover. It is computed from the unsaved text, so it is right while you type.</p>
+    <div class="grid-2">
+      <figure class="shot">
+        <a href="img/vscode-hover-instruction.png"><img src="img/vscode-hover-instruction.png" alt="Hover card on LDA STAGE_STARTED: LDA — Load A, @mode zero page, @cycles 3, @bytes 2 — A5 60 at $C026, @flags N Z, and a table of the eight LDA forms with the zero-page form marked"></a>
+        <figcaption>On a mnemonic (or anywhere on an instruction line that is not a name): what it does, the form this line assembled to with its cycles, bytes and address, the flags it changes, and every form of the instruction. ◀ marks the one used.</figcaption>
+      </figure>
+      <figure class="shot">
+        <a href="img/vscode-hover-symbol.png"><img src="img/vscode-hover-symbol.png" alt="Hover card on the name STAGE_STARTED: STAGE_STARTED = $60, @value $0060 (96), then the line LDA STAGE_STARTED with @cycles 3 cycles and @bytes 2 — A5 60 at $C026"></a>
+        <figcaption>On a name: its value in hex and decimal, then the line it is read on, with what that line assembled to.</figcaption>
+      </figure>
+    </div>
+    <p>The cycle column uses short marks explained under the table: <code>+p</code> one more cycle if a page is crossed, <code>+b</code> for a branch taken, <code>+d</code> in decimal mode. The instruction set is the CPU of the project's target. How the card is built: <a href="tooling.html#hover">Tooling › Hover cards</a>. While a debug session is paused, VS Code can also show a name's current value on hover, through the adapter's <code>evaluate</code>.</p>
+
+    <h2 id="diagnostics">Diagnostics</h2>
+    <figure class="shot">
+      <a href="img/vscode-diagnostics.png"><img src="img/vscode-diagnostics.png" alt="Three errors underlined in BMAN_BANK1.NAS, unsaved, and listed in the Problems panel: LDX does not support indirect indexed (zp),Y addressing; Malformed expression '(1+'; Undefined symbol: NOWHERE"></a>
+      <figcaption>Errors appear as you type, before the file is saved. Each names the rule that was broken.</figcaption>
+    </figure>
+    <ul>
+      <li><strong>On open and on save</strong> the whole project is built. Its diagnostics are exact for every unit and every included file, and an error fixed in a file that is not open disappears from the Problems panel too.</li>
+      <li><strong>While typing</strong> (250 ms after the last key) the unsaved text of a unit is assembled against the names the last build saw. A name defined in another unit is not an error. Until a build has succeeded, “Undefined symbol” is held back, since the name may be defined in another unit.</li>
+      <li><strong>Included files</strong> are checked only by the build, on save: only the build knows the context an include is read in.</li>
+      <li>A file that no <code>config.json</code> governs is assembled on its own.</li>
+    </ul>
+    <p>The details, including how the governing <code>config.json</code> is found: <a href="tooling.html#lsp">Tooling › Language server</a>. Set <code>winasm65.languageServer.enabled</code> to <code>false</code> to turn the language server off; hover, diagnostics and the listing column then go with it.</p>
+
+    <h2 id="listing">Listing column</h2>
+    <div class="grid-2">
+      <figure class="shot">
+        <a href="img/vscode-context-menu.png"><img src="img/vscode-context-menu.png" alt="The editor's context menu with a WinASM65 submenu open, offering Show Listing"></a>
+        <figcaption>Right-click → <strong>WinASM65</strong> → <strong>Show Listing</strong>. The same submenu is in the Explorer and the line-number margin; a button in the editor title bar does the same.</figcaption>
+      </figure>
+      <figure class="shot">
+        <a href="img/vscode-listing.png"><img src="img/vscode-listing.png" alt="BMAN_BANK1.NAS with a grey column left of the source: C01C 48, C01D 98, C026 A5 60, C023 8D 03 20 and so on, blank on labels and empty lines"></a>
+        <figcaption>Each line shows the address and the bytes it assembled to, as in a <code>.lst</code> file. Lines without code get a blank column, so the source stays aligned.</figcaption>
+      </figure>
+    </div>
+    <p><code>src/listing.ts</code> draws the column as a <code>before</code> decoration on every line, in the colour of the line numbers (<code>editorLineNumber.foreground</code>). The column is 14 characters wide, made of non-breaking spaces: four address digits and at most three bytes, followed by <code>…</code> when the line emitted more than three bytes or more than once (a macro, a repeat).</p>
+    <ul>
+      <li><strong>Data.</strong> The rows come from the language server's custom request <code>winasm65/listing</code>, which lists a unit from its unsaved text, so the column follows the edit. An included file is listed from the last successful build. See <a href="tooling.html#listing">the request</a>.</li>
+      <li><strong>Refresh.</strong> When an editor becomes visible (at once), 300 ms after a change, and 500 ms after a save (the server rebuilds the project on save, which is what an include's column comes from).</li>
+      <li><strong>State.</strong> Shown or hidden is remembered per workspace (<code>workspaceState</code>) and exposed as the context key <code>winasm65.listingVisible</code>, which decides whether menus offer Show or Hide. Started from the Explorer, Show Listing first opens the file.</li>
+      <li><strong>Log.</strong> The <strong>WinASM65</strong> output channel records each refresh (“listing: &lt;n&gt; row(s) for &lt;file&gt; in &lt;n&gt; editor(s)”) and any failure.</li>
+    </ul>
+
+    <h2 id="build">Build task</h2>
+    <figure class="shot">
+      <a href="img/vscode-build.png"><img src="img/vscode-build.png" alt="The terminal panel running the task build config.json: WinASM65.Tooling.exe --build …\config.json, then built …\bomber.nes (24592 bytes)"></a>
+      <figcaption><strong>Terminal › Run Build Task</strong> offers “build config.json” for each project in the workspace. It runs <code>WinASM65.Tooling --build</code>; errors go to the Problems panel.</figcaption>
+    </figure>
+    <p><code>BuildTaskProvider</code> finds up to 20 <code>config.json</code> files (outside <code>node_modules</code>) and offers one task per file, named <code>build &lt;relative path&gt;</code>, in the Build group, run in the project's directory. The output is <code>file:line: error: message</code>, which the <code>$winasm65</code> problem matcher turns into problems. A task can also be written in <code>tasks.json</code>:</p>
+<pre><code>{
+  "type": "winasm65",
+  "config": "${workspaceFolder}/config.json",
+  "problemMatcher": "$winasm65",
+  "label": "build"
+}</code></pre>
+
+    <h2 id="debug">Debugging</h2>
+    <figure class="shot">
+      <a href="img/vscode-debug.png"><img src="img/vscode-debug.png" alt="VS Code paused on line 30 of BMAN_BANK1.NAS (PHA after NMI:). Variables shows Registers, Flags and Zero page; Call Stack shows NMI BMAN_BANK1.NAS 30:1, paused on breakpoint; the RAM panel is on the right; the debug console shows building, built 3 unit(s), 6130 mapped line(s), starting Mesen.exe on port 62629, connected to Mesen2 2.1.1"></a>
+      <figcaption>Paused on a breakpoint in the NMI handler. Left: Registers, Flags and Zero page, and a one-frame call stack named after the nearest label. Right: the RAM panel. Bottom: the debug console's account of the launch.</figcaption>
+    </figure>
+    <div class="grid-2">
+      <figure class="shot">
+        <a href="img/mesen2.png"><img src="img/mesen2.png" alt="The Mesen2 window running Bomberman, title screen"></a>
+        <figcaption>The game runs in Mesen2's own window, with the WinASM65 bridge script loaded.</figcaption>
+      </figure>
+      <div>
+        <p><strong>F5 in a folder with a <code>config.json</code></strong> is enough: without a <code>launch.json</code>, the extension's <code>ConfigurationProvider</code> picks the <code>config.json</code> closest to the file being edited (walking up at most 8 directories), else the first one in the workspace, and fills in a launch configuration. With none it says “No config.json found”. To keep a configuration, add one to <code>launch.json</code>; the snippets <em>WinASM65: Debug on Mesen2</em> and <em>WinASM65: Attach to Mesen2</em> write these:</p>
+      </div>
+    </div>
+<pre><code>{
+  "type": "winasm65",
+  "request": "launch",
+  "name": "Debug on Mesen2",
+  "config": "${workspaceFolder}/config.json",
+  "stopOnEntry": false
+}
+
+{
+  "type": "winasm65",
+  "request": "attach",
+  "name": "Attach to Mesen2",
+  "port": 45678,
+  "config": "${workspaceFolder}/config.json"
+}</code></pre>
+    <p>Every attribute and its default is in <a href="tooling.html#launch">Tooling › Launch and attach arguments</a>. What the session offers:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Feature</th><th>Behaviour</th></tr></thead>
+      <tbody>
+        <tr><td>Breakpoints</td><td>In the gutter of any <code>winasm65</code> file. One set on a label or a comment moves to the next line with code (up to 5 lines down). In a banked ROM it stops only in the bank of its line.</td></tr>
+        <tr><td>Stepping</td><td>Continue, pause, step into (one instruction), step over (runs a <code>JSR</code> to its return), step out (to the return address on the stack).</td></tr>
+        <tr><td>Variables</td><td>Registers (<code>PC A X Y SP PS cycles</code>), Flags (<code>N V B D I Z C</code>), Zero page in rows of 16 bytes.</td></tr>
+        <tr><td>Memory</td><td>The 64 KiB address space in VS Code's hex view, opened from <code>PC</code>, <code>SP</code> or a zero-page row. Bytes can be edited there.</td></tr>
+        <tr><td>Debug console</td><td>A name, a register or <code>$0010</code> shows its value. Monitor commands (<code>CPU</code>, <code>READ $0200 16</code>, <code>BREAK LIST</code>, …) go straight to the monitor; prefix any line with <code>&gt;</code> to force that.</td></tr>
+        <tr><td>Stop</td><td>Stopping the session kills the Mesen2 it started; detaching from an attached Mesen2 resumes it. Closing Mesen2 ends the session.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2 id="ram">RAM panel</h2>
+    <div class="grid-2">
+      <figure class="shot">
+        <a href="img/vscode-ram.png"><img src="img/vscode-ram.png" alt="The RAM panel: Refresh button, Live checkbox, status stopped · SP=$F8 · 0 byte(s) changed, a legend, then the zero page and the stack in hex rows"></a>
+        <figcaption>The RAM panel: <code>$0000-$07FF</code> in hex and ASCII, the zero page and stack shaded.</figcaption>
+      </figure>
+      <div>
+        <p><code>src/ramPanel.ts</code> shows the 2 KiB of RAM at <code>$0000-$07FF</code> in a webview beside the editor, titled <strong>RAM $0000-$07FF</strong>.</p>
+        <ul>
+          <li><strong>Opens</strong> at the first stop of a WinASM65 session (setting <code>winasm65.ram.openOnStop</code>), with <strong>WinASM65: Show RAM</strong>, or with its button in the debug toolbar.</li>
+          <li><strong>Refreshes</strong> at every stop, and with the Refresh button.</li>
+          <li><strong>Marks</strong> the bytes changed since the previous stop, shades the zero page and the stack, and outlines the byte at <code>$0100+SP</code>.</li>
+          <li><strong>Names</strong>: hovering a byte shows its address, every name the build gives that value, and the value. Named bytes are underlined with dots.</li>
+          <li><strong>Edits</strong>: double-click a byte, type one or two hex digits, Enter. Escape or leaving the field cancels.</li>
+        </ul>
+      </div>
+    </div>
+    <p>The panel talks only to the debug adapter, through <code>session.customRequest</code>:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Request</th><th>When</th><th>For</th></tr></thead>
+      <tbody>
+        <tr><td><code>readMemory { memoryReference: "0x0000", count: 2048 }</code></td><td>every refresh</td><td>the bytes</td></tr>
+        <tr><td><code>evaluate { expression: "SP", context: "watch" }</code></td><td>every refresh</td><td>the stack pointer</td></tr>
+        <tr><td><code>winasm65.symbols { from: 0, to: 2047 }</code></td><td>once per session</td><td>the names</td></tr>
+        <tr><td><code>writeMemory</code> (one byte, base64)</td><td>after an edit</td><td>the change; a refusal is shown in the status line</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>A <code>DebugAdapterTracker</code> watches the adapter's events: <code>stopped</code> refreshes the panel, <code>continued</code> marks it as running. The <strong>Live</strong> box re-reads RAM every 500 ms while the panel considers the machine running; changes are then measured from the last frame shown. Since a name like <code>FRAMEDONE = $0B</code> is a plain constant, a small constant can share a value with a variable's address, so the tooltip lists every name rather than guessing one. The range is fixed: it is the NES work RAM, whatever the target.</p>
+
+    <h2 id="contributions">What package.json contributes</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Contribution</th><th>Content</th></tr></thead>
+      <tbody>
+        <tr><td><code>languages</code></td><td><code>winasm65</code> (“6502 Assembly (WinASM65)”) for <code>.nas</code> and <code>.asm</code>, with <code>language-configuration.json</code>.</td></tr>
+        <tr><td><code>grammars</code></td><td><code>source.winasm65</code> from <code>syntaxes/winasm65.tmLanguage.json</code>.</td></tr>
+        <tr><td><code>breakpoints</code></td><td>Breakpoints allowed in <code>winasm65</code> files.</td></tr>
+        <tr><td><code>debuggers</code></td><td>Type <code>winasm65</code>, label “WinASM65 (Mesen2)”: launch and attach attributes, an initial configuration and two snippets.</td></tr>
+        <tr><td><code>taskDefinitions</code></td><td>Type <code>winasm65</code> with a required <code>config</code>.</td></tr>
+        <tr><td><code>problemPatterns</code>, <code>problemMatchers</code></td><td><code>$winasm65</code>: <code>^(.+?)(?::(\d+))?: (error|warning): (.*)$</code>, file locations <code>autoDetect</code> relative to the workspace folder.</td></tr>
+        <tr><td><code>commands</code></td><td><code>winasm65.showListing</code> (Show Listing), <code>winasm65.hideListing</code> (Hide Listing), <code>winasm65.showRam</code> (Show RAM), all in the category WinASM65.</td></tr>
+        <tr><td><code>submenus</code></td><td><code>winasm65.context</code>, labelled WinASM65.</td></tr>
+        <tr><td><code>configuration</code></td><td>The four settings below.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3 id="menus">Menus</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Menu</th><th>Item</th><th>When</th></tr></thead>
+      <tbody>
+        <tr><td><code>editor/context</code></td><td>WinASM65 submenu</td><td>the file is <code>winasm65</code></td></tr>
+        <tr><td><code>editor/lineNumber/context</code></td><td>WinASM65 submenu</td><td>the file is <code>winasm65</code></td></tr>
+        <tr><td><code>explorer/context</code></td><td>WinASM65 submenu</td><td>the resource is <code>winasm65</code></td></tr>
+        <tr><td><code>winasm65.context</code> (the submenu)</td><td>Show Listing / Hide Listing; Show RAM</td><td>listing hidden / shown; Show RAM only while a WinASM65 session runs</td></tr>
+        <tr><td><code>editor/title</code></td><td>Show Listing / Hide Listing buttons</td><td>the file is <code>winasm65</code></td></tr>
+        <tr><td><code>debug/toolBar</code></td><td>Show RAM button</td><td>the session is of type <code>winasm65</code></td></tr>
+        <tr><td><code>commandPalette</code></td><td>Show Listing or Hide Listing</td><td>only the one that applies</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3 id="settings">Settings</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Setting</th><th>Default</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>winasm65.toolingPath</code></td><td>empty</td><td>A <code>WinASM65.Tooling</code> executable, or a <code>.dll</code> run with <code>dotnet</code>. Empty: the copy shipped with the extension.</td></tr>
+        <tr><td><code>winasm65.emulatorPath</code></td><td>empty</td><td><code>Mesen.exe</code>, used when <code>launch.json</code> names none. It comes before <code>Emulator.Path</code> of <code>config.json</code>.</td></tr>
+        <tr><td><code>winasm65.languageServer.enabled</code></td><td><code>true</code></td><td>Errors as you type, hover and the listing column. Read when the extension starts.</td></tr>
+        <tr><td><code>winasm65.ram.openOnStop</code></td><td><code>true</code></td><td>Open the RAM panel the first time a WinASM65 session stops.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The extension activates on <code>onLanguage:winasm65</code>, <code>workspaceContains:**/config.json</code>, <code>onDebugResolve:winasm65</code>, <code>onDebugDynamicConfigurations:winasm65</code> and <code>onCommand:workbench.action.tasks.runTask</code>.</p>
+
+    <h2 id="architecture">How the extension works</h2>
+    <p><code>activate</code> in <code>src/extension.ts</code> creates the <strong>WinASM65</strong> log channel, registers three providers, starts the language client, and creates the listing column and the RAM panel. Each piece and what it talks to:</p>
+    <div class="figure">
+      <svg viewBox="0 0 900 400" role="img" aria-label="Inside the extension: the adapter factory spawns WinASM65.Tooling --dap, the configuration provider fills the launch configuration, the RAM panel sends custom requests to the debug session, the language client spawns --lsp, the listing column sends winasm65/listing through the language client, and the build task provider runs --build as a process.">
+        <defs>
+          <marker id="arrow-x" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <rect class="frame" x="10" y="8" width="340" height="384" rx="10"/>
+        <text x="24" y="26" class="muted" font-size="12.5">vscode-extension (TypeScript)</text>
+
+        <rect class="box-d" x="30" y="36" width="300" height="46" rx="8"/>
+        <text x="180" y="56" text-anchor="middle" font-weight="600">AdapterFactory</text>
+        <text x="180" y="73" text-anchor="middle" class="muted" font-size="12">DebugAdapterDescriptorFactory</text>
+        <rect class="box-d" x="30" y="96" width="300" height="46" rx="8"/>
+        <text x="180" y="116" text-anchor="middle" font-weight="600">ConfigurationProvider</text>
+        <text x="180" y="133" text-anchor="middle" class="muted" font-size="12">F5 without launch.json</text>
+        <rect class="box-d" x="30" y="156" width="300" height="46" rx="8"/>
+        <text x="180" y="176" text-anchor="middle" font-weight="600">RamPanel</text>
+        <text x="180" y="193" text-anchor="middle" class="muted" font-size="12">ramPanel.ts, webview + adapter tracker</text>
+        <rect class="box-d" x="30" y="228" width="300" height="46" rx="8"/>
+        <text x="180" y="248" text-anchor="middle" font-weight="600">LanguageClient</text>
+        <text x="180" y="265" text-anchor="middle" class="muted" font-size="12">vscode-languageclient</text>
+        <rect class="box-d" x="30" y="288" width="300" height="40" rx="8"/>
+        <text x="180" y="313" text-anchor="middle" font-weight="600">ListingColumn <tspan class="muted" font-weight="400" font-size="12">listing.ts</tspan></text>
+        <rect class="box-d" x="30" y="340" width="300" height="40" rx="8"/>
+        <text x="180" y="365" text-anchor="middle" font-weight="600">BuildTaskProvider</text>
+
+        <rect class="box-c" x="600" y="50" width="280" height="110" rx="8"/>
+        <text x="740" y="98" text-anchor="middle" font-weight="600">WinASM65.Tooling --dap</text>
+        <text x="740" y="118" text-anchor="middle" class="muted" font-size="12">one process per debug session</text>
+        <rect class="box-c" x="600" y="222" width="280" height="58" rx="8"/>
+        <text x="740" y="246" text-anchor="middle" font-weight="600">WinASM65.Tooling --lsp</text>
+        <text x="740" y="265" text-anchor="middle" class="muted" font-size="12">one process per window</text>
+        <rect class="box-c" x="600" y="334" width="280" height="52" rx="8"/>
+        <text x="740" y="365" text-anchor="middle" font-weight="600">WinASM65.Tooling --build</text>
+
+        <path class="line" d="M330,59 L600,72" marker-end="url(#arrow-x)"/>
+        <text x="465" y="56" text-anchor="middle" class="muted" font-size="12">spawns, DAP on stdio</text>
+        <path class="line" d="M330,119 L600,110" marker-end="url(#arrow-x)" stroke-dasharray="5 4"/>
+        <text x="465" y="106" text-anchor="middle" class="muted" font-size="12">launch arguments</text>
+        <path class="line" d="M330,179 L600,145" marker-end="url(#arrow-x)"/>
+        <text x="465" y="185" text-anchor="middle" class="muted" font-size="12">readMemory, evaluate, writeMemory,</text>
+        <text x="465" y="200" text-anchor="middle" class="muted" font-size="12">winasm65.symbols</text>
+        <path class="line" d="M330,251 L600,251" marker-end="url(#arrow-x)"/>
+        <text x="465" y="243" text-anchor="middle" class="muted" font-size="12">spawns, LSP on stdio</text>
+        <path class="line" d="M180,288 L180,274" marker-end="url(#arrow-x)"/>
+        <text x="190" y="285" class="muted" font-size="11">winasm65/listing</text>
+        <path class="line" d="M330,360 L600,360" marker-end="url(#arrow-x)"/>
+        <text x="465" y="352" text-anchor="middle" class="muted" font-size="12">ProcessExecution, $winasm65</text>
+      </svg>
+    </div>
+
+    <h3 id="tooling-path">Finding the Tooling executable</h3>
+    <p><code>resolveTooling</code> returns the first of these paths that exists. A <code>.dll</code> is started as <code>dotnet &lt;dll&gt;</code>, anything else directly; the mode (<code>--dap</code>, <code>--lsp</code>, <code>--build</code>) is appended by the caller.</p>
+    <ol>
+      <li>The <code>winasm65.toolingPath</code> setting.</li>
+      <li><code>bin/WinASM65.Tooling.exe</code> inside the extension: the copy <code>npm run package</code> ships.</li>
+      <li><code>bin/WinASM65.Tooling</code> inside the extension.</li>
+      <li><code>../WinASM65.Tooling/bin/Debug/net8.0/WinASM65.Tooling.dll</code>: the debug build next to the extension when it runs from the repository.</li>
+    </ol>
+    <p>With none, starting a debug session fails with “WinASM65.Tooling was not found. Set "winasm65.toolingPath".”, the language server is not started (with a warning), and no build task is offered.</p>
+
+    <h3 id="providers">The providers</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Class</th><th>Registered as (type <code>winasm65</code>)</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>AdapterFactory</code></td><td>debug adapter descriptor factory</td><td>Returns a <code>DebugAdapterExecutable</code>: the Tooling with <code>--dap</code>.</td></tr>
+        <tr><td><code>ConfigurationProvider</code></td><td>debug configuration provider</td><td>When the configuration is empty (F5 without <code>launch.json</code>), fills in a launch of the nearest project. For any launch without <code>emulatorPath</code>, copies the <code>winasm65.emulatorPath</code> setting into it.</td></tr>
+        <tr><td><code>BuildTaskProvider</code></td><td>task provider</td><td>Offers a build task per project and resolves <code>winasm65</code> tasks from <code>tasks.json</code>, replacing <code>${workspaceFolder}</code> in <code>config</code>.</td></tr>
+        <tr><td><code>LanguageClient</code></td><td>started by <code>startLanguageServer</code></td><td>The Tooling with <code>--lsp</code>, for <code>file</code> documents of language <code>winasm65</code>, with a file watcher on <code>**/config.json</code>. Skipped when <code>winasm65.languageServer.enabled</code> is false.</td></tr>
+        <tr><td><code>ListingColumn</code></td><td>commands Show/Hide Listing</td><td>Waits for the language client, then asks it for <code>winasm65/listing</code>.</td></tr>
+        <tr><td><code>RamPanel</code></td><td>command Show RAM, a debug adapter tracker</td><td>Reads and writes RAM through the active WinASM65 debug session.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2 id="package">Packaging</h2>
+    <p><code>npm run package</code> chains three scripts of <code>package.json</code>:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Script</th><th>Command</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td><code>tooling</code></td><td><code>dotnet publish ../WinASM65.Tooling/WinASM65.Tooling.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=none -maxcpucount:1 -o bin</code></td><td><code>bin/WinASM65.Tooling.exe</code>, a single self-contained file (no .NET install needed), and <code>bin/Bridge/*.lua</code>, which <code>WinASM65.Monitor.Core</code> copies to every output.</td></tr>
+        <tr><td><code>license</code></td><td>copies <code>../LICENSE.txt</code> into the extension</td><td>The zlib licence travels in the package.</td></tr>
+        <tr><td>(vsce)</td><td><code>vsce package --target win32-x64</code></td><td>Runs <code>vscode:prepublish</code> (<code>tsc</code>), then writes <code>winasm65-win32-x64-&lt;version&gt;.vsix</code>, about 31 MB.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p><code>.vscodeignore</code> keeps the TypeScript sources, source maps, compiled tests, the TypeScript and vsce packages, <code>bin/WinASM65.exe</code> with its runtime config, and the experimental Lua scripts (<code>probe_mame.lua</code>, <code>spike_m0.lua</code>) out of the package. The publish runs on one node (<code>-maxcpucount:1</code>): <code>WinASM65</code> is referenced by both the Tooling and Monitor.Core, and parallel builds of it competed for the same DLL.</p>
+
+    <h2 id="develop">Developing the extension</h2>
+    <ul>
+      <li><strong>Run from source.</strong> Open <code>vscode-extension/</code> in VS Code and press F5. The <em>Run the extension</em> configuration runs the <code>compile</code> task (<code>npm run compile &amp;&amp; dotnet build ../WinASM65.Tooling</code>) and opens <code>example_bomberman-nes</code> in an Extension Development Host. No package is needed: <code>resolveTooling</code> finds the debug build of the Tooling.</li>
+      <li><strong>Tests.</strong> <code>npm test</code> compiles, then <code>@vscode/test-electron</code> starts VS Code with the extension on <code>example_nes_game</code> and runs <code>src/test/suite.ts</code> inside it. Set <code>VSCODE_EXECUTABLE</code> to an installed VS Code to avoid a download.</li>
+      <li><strong>Screenshots.</strong> The images on this page come from <code>tools/screenshots/shoot-all.ps1</code>.</li>
+    </ul>
+    <p>The protocol side (adapter, language server, build mode) is tested in .NET: see <a href="tooling.html#tests">Tooling › Tests</a>.</p>
+
+    <footer>
+      <p>Screenshots are taken from the real programs by <code>tools/screenshots/shoot-all.ps1</code>; run it again after a UI change. This page replaces the French <code>docs/vscode-architecture.html</code>.</p>
+    </footer>
+  </main>
+
+  <aside class="toc" aria-label="On this page"></aside>
+</div>
+</body>
+</html>

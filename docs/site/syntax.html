@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Syntax reference</title>
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<div class="layout">
+  <nav class="site-nav" aria-label="Pages"></nav>
+
+  <main>
+    <p class="breadcrumb"><a href="index.html">WinASM65</a> › Assembler</p>
+    <header class="page">
+      <h1>Syntax reference</h1>
+      <p class="lede">The complete reference of the language WinASM65 accepts: standard MOS 6502 syntax, plus the common forms of ca65, asm6 and NESASM. The examples assume that the names they use are defined, without declaring them.</p>
+    </header>
+
+    <aside class="sources">
+      <h4>Source files</h4>
+      <ul>
+        <li><a href="../../WinASM65/src/Core/AssemblerEngine.cs"><code>Core/AssemblerEngine.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Core/StringLiteral.cs"><code>Core/StringLiteral.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Core/Diagnostic.cs"><code>Core/Diagnostic.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Directives/StandardDirectives.cs"><code>Directives/StandardDirectives.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Directives/ExtendedDirectives.cs"><code>Directives/ExtendedDirectives.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Expressions/Tokenizer.cs"><code>Expressions/Tokenizer.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Expressions/ExpressionEvaluator.cs"><code>Expressions/ExpressionEvaluator.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Symbols/ScopeManager.cs"><code>Symbols/ScopeManager.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Cpu/CpuFactory.cs"><code>Cpu/CpuFactory.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Cpu/Cpu6502X.cs"><code>Cpu/Cpu6502X.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Cpu/CpuR65C02.cs"><code>Cpu/CpuR65C02.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Modules/ModuleDirectives.cs"><code>Modules/ModuleDirectives.cs</code></a></li>
+      </ul>
+    </aside>
+
+    <!-- ============================================================ -->
+    <h2 id="line">Line structure</h2>
+    <p>A line holds at most one instruction or directive, optionally preceded by a label and followed by a comment. Indentation has no meaning: the line is trimmed before it is read. Mnemonics, directives and names are case-insensitive.</p>
+<pre><code>Start:                  ; a label alone on its line (colon required)
+loop    lda $2002,x     ; a label before an instruction (colon optional)
+Table:  .byte 1, 2, 3   ; a label before a directive
+        bne loop</code></pre>
+    <p>A line is one of the following forms, tried in this order:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Form</th><th>Example</th></tr></thead>
+      <tbody>
+        <tr><td>Local scope</td><td><code>{</code> … <code>}</code></td></tr>
+        <tr><td>Anonymous label</td><td><code>-</code>, <code>++ lda #0</code></td></tr>
+        <tr><td>Origin</td><td><code>*= $C000</code></td></tr>
+        <tr><td>Constant</td><td><code>N EQU 5</code>, <code>N .equ 5</code>, <code>N .set 5</code>, <code>N = 5</code></td></tr>
+        <tr><td>Reservation</td><td><code>buffer .res 16</code></td></tr>
+        <tr><td>Label + directive</td><td><code>Data: .word $1234</code></td></tr>
+        <tr><td>Directive</td><td><code>.org $8000</code></td></tr>
+        <tr><td>Label alone</td><td><code>Reset:</code></td></tr>
+        <tr><td>Instruction (with an optional label)</td><td><code>loop: lda #1</code></td></tr>
+        <tr><td>Macro call</td><td><code>vblank wait1, $2002</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Any other line is a syntax error.</p>
+
+    <!-- ============================================================ -->
+    <h2 id="comments">Comments and strings</h2>
+    <p>A comment starts at the first <code>;</code> that is not inside a string or a character. <code>.byte "a;b"</code> and <code>cmp #';'</code> therefore keep their semicolon. A lone apostrophe, as in <code>; wait for 2 VBlank's</code>, opens nothing.</p>
+    <p>A string is written between double quotes and may contain commas, semicolons and escape sequences:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Sequence</th><th>Byte</th></tr></thead>
+      <tbody>
+        <tr><td><code>\n</code> <code>\r</code> <code>\t</code> <code>\0</code></td><td><code>$0A</code> <code>$0D</code> <code>$09</code> <code>$00</code></td></tr>
+        <tr><td><code>\\</code> <code>\"</code> <code>\'</code></td><td>the backslash, the double quote, the apostrophe</td></tr>
+        <tr><td><code>\xNN</code></td><td>the hexadecimal byte <code>NN</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Any other sequence, an unterminated string, or a character above <code>$FF</code> is an error. The file names of <code>.include</code> and <code>.incbin</code> are read verbatim, without escapes, so that a Windows path keeps its backslashes.</p>
+
+    <!-- ============================================================ -->
+    <h2 id="numbers">Numbers and characters</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Form</th><th>Example</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td>Hexadecimal</td><td><code>$FF</code></td><td>255</td></tr>
+        <tr><td>Binary</td><td><code>%1010</code></td><td>10</td></tr>
+        <tr><td>Decimal</td><td><code>123</code></td><td>123</td></tr>
+        <tr><td>Character</td><td><code>'A'</code> or <code>"A"</code></td><td>65</td></tr>
+        <tr><td>Escaped character</td><td><code>'\n'</code>, <code>'\x41'</code></td><td>10, 65</td></tr>
+        <tr><td>Booleans</td><td><code>TRUE</code>, <code>FALSE</code></td><td>1, 0</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p><code>%</code> is a binary prefix only where a value is expected: <code>7%10</code> is a modulo, and equals 7. The C forms <code>0x10</code> and <code>0b1010</code> are not accepted: they produce an error, not a wrong value.</p>
+
+    <!-- ============================================================ -->
+    <h2 id="expressions">Expressions</h2>
+    <p>An expression combines numbers, characters, names and operators. In decreasing order of precedence:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Precedence</th><th>Operators</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td>11 (unary)</td><td><code>&lt;</code> <code>&gt;</code> <code>+</code> <code>-</code> <code>~</code> <code>!</code></td><td>low byte, high byte, sign, complement, logical not</td></tr>
+        <tr><td>10</td><td><code>*</code> <code>/</code> <code>%</code></td><td>multiplication, division, modulo</td></tr>
+        <tr><td>9</td><td><code>+</code> <code>-</code></td><td>addition, subtraction</td></tr>
+        <tr><td>8</td><td><code>&lt;&lt;</code> <code>&gt;&gt;</code></td><td>shifts</td></tr>
+        <tr><td>7</td><td><code>&lt;</code> <code>&gt;</code> <code>&lt;=</code> <code>&gt;=</code></td><td>comparisons</td></tr>
+        <tr><td>6</td><td><code>==</code> <code>=</code> <code>!=</code> <code>&lt;&gt;</code></td><td>equality, inequality</td></tr>
+        <tr><td>5</td><td><code>&amp;</code></td><td>bitwise and</td></tr>
+        <tr><td>4</td><td><code>^</code></td><td>exclusive or</td></tr>
+        <tr><td>3</td><td><code>|</code></td><td>bitwise or</td></tr>
+        <tr><td>2</td><td><code>&amp;&amp;</code>, <code>AND</code></td><td>logical and</td></tr>
+        <tr><td>1</td><td><code>||</code>, <code>OR</code></td><td>logical or</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Parentheses group. <code>AND</code>, <code>OR</code>, <code>TRUE</code> and <code>FALSE</code> are keywords only as whole words, in upper or lower case: <code>origin</code> and <code>and_mask</code> are names. <code>#</code> in front of the operand marks immediate addressing.</p>
+    <div class="callout">
+      <p>An expression that cannot be evaluated is an error reported on its line, instead of silently becoming 0:</p>
+      <ul>
+        <li>an unknown character (<code>lda #$12#</code>);</li>
+        <li>a malformed shape: two values side by side, an operator without an operand, unbalanced parentheses;</li>
+        <li>a division by zero, including one that only appears once a forward reference has been resolved;</li>
+        <li>a number that is too large.</li>
+      </ul>
+    </div>
+
+    <!-- ============================================================ -->
+    <h2 id="pc">Program counter</h2>
+    <p><code>*</code> in operand position is the address of the current line. Between two values, <code>*</code> stays a multiplication. <code>*= expr</code> sets the origin, like <code>.org</code>.</p>
+<pre><code>*= $C000
+        jmp *           ; loop in place: 4C 00 C0
+Here:   .word *+2       ; the address that follows this word
+        lda #2*3        ; 6, a multiplication</code></pre>
+    <p>An expression that is put on hold (because it reads a name defined further down) keeps the address of the line where it is written.</p>
+
+    <!-- ============================================================ -->
+    <h2 id="labels">Labels</h2>
+    <h3>Global labels</h3>
+    <p>A name starts with a letter or <code>_</code>, followed by letters, digits or <code>_</code>. Alone on its line it takes a colon; before an instruction or a directive the colon is optional. A global label that takes an address opens a new scope for local labels.</p>
+
+    <h3>Local labels: <code>@name</code></h3>
+    <p>A name that starts with <code>@</code> belongs to the last global label. The same name can therefore be used again in the next routine:</p>
+<pre><code>Clear:
+        ldx #0
+@loop:  sta $0200,x
+        inx
+        bne @loop
+        rts
+Copy:
+@loop:  lda $0300,x     ; another @loop
+        dex
+        bne @loop</code></pre>
+    <p>A constant or a reservation (<code>.res</code>) does not open a scope. Inside a macro or a <code>.rep</code> block, a local label belongs to the expansion: each call has its own. Referencing a local label of another scope, or defining one before any global label, is an error.</p>
+
+    <h3>Anonymous labels: <code>-</code> and <code>+</code></h3>
+    <p>As in asm6, a line that starts with <code>-</code> or <code>+</code> defines an anonymous label. It can stand alone or be followed by an instruction. An operand that is only <code>-</code> designates the nearest <code>-</code> label backwards; an operand that is only <code>+</code>, the nearest <code>+</code> label forwards.</p>
+<pre><code>        ldx #8
+-       dex
+        bne -           ; back to the "-" line
+        beq +
+        nop
++       rts             ; target of "beq +"</code></pre>
+    <p>Runs of different lengths are distinct labels: <code>bne --</code> targets the nearest <code>--</code> line, not the second <code>-</code>. An anonymous label that cannot be found is reported ("No anonymous label '+' after this line").</p>
+    <p>Local and anonymous labels are never exported (<code>.symb</code> files, module export tables): two units of the same project do not resolve their <code>+</code> against each other. A <a href="modules.html">module</a> does keep its local labels in its own table of local labels, so that its own references to them can be relocated; anonymous labels are left out of it.</p>
+
+    <h3>Lexical scopes</h3>
+    <p><code>{</code> and <code>}</code> open and close a scope: the names defined inside do not leave it.</p>
+
+    <!-- ============================================================ -->
+    <h2 id="constants">Constants</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Form</th><th>Redefinable</th><th>Use</th></tr></thead>
+      <tbody>
+        <tr><td><code>N = expr</code></td><td>yes</td><td>working value, counter in a <code>.rep</code></td></tr>
+        <tr><td><code>N .set expr</code></td><td>yes</td><td>the same, ca65 style</td></tr>
+        <tr><td><code>N EQU expr</code>, <code>N .equ expr</code></td><td>no</td><td>constant: a second definition with another value is an error (the same value is accepted)</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The <code>.equ</code> and <code>.set</code> directives are only used after a name; on their own they are an error.</p>
+    <p>A constant may read a name defined further down: it is then computed as soon as that name is known.</p>
+
+    <!-- ============================================================ -->
+    <h2 id="directives">Directives</h2>
+    <p>A directive starts with a dot. An unknown directive is an error (it used to be ignored silently).</p>
+
+    <h3>Placement</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Directive</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>.org expr</code>, <code>*= expr</code></td><td>Sets the assembly address.</td></tr>
+        <tr><td><code>.pad address[, byte]</code></td><td>Fills up to the address (with 0 by default). An address already passed is an error.</td></tr>
+        <tr><td><code>.align n[, byte]</code></td><td>Fills up to the next multiple of <code>n</code>, which must be a power of two.</td></tr>
+        <tr><td><code>.memarea expr</code></td><td>Sets the start of the reservation area used by <code>.res</code>.</td></tr>
+        <tr><td><code>name .res n</code></td><td>Gives the name the current address of the reservation area, then advances it by <code>n</code>. Emits nothing.</td></tr>
+        <tr><td><code>.res n</code></td><td>Advances the reservation area without naming the space.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Data</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Directive</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>.byte</code> (aliases <code>.db</code>, <code>.byt</code>)</td><td>One byte per value; a string gives its bytes. Values from -128 to 255.</td></tr>
+        <tr><td><code>.word</code> (aliases <code>.dw</code>, <code>.addr</code>)</td><td>One 16-bit word per value, low byte first.</td></tr>
+        <tr><td><code>.asciiz</code></td><td>Like <code>.byte</code>, followed by a zero byte.</td></tr>
+        <tr><td><code>.lobytes e, …</code> / <code>.hibytes e, …</code></td><td>The low (or high) byte of each value: an address table split into two tables.</td></tr>
+        <tr><td><code>.dsb n[, byte]</code> (aliases <code>.ds</code>, <code>.fill</code>)</td><td><code>n</code> bytes of the given value (0 by default). Emits, unlike <code>.res</code>.</td></tr>
+        <tr><td><code>.dsw n[, word]</code></td><td><code>n</code> words of the given value.</td></tr>
+        <tr><td><code>.incbin "file"[, start[, length]]</code></td><td>The bytes of a file, from a given offset and for a given length; the whole file by default. A range outside the file is an error.</td></tr>
+        <tr><td><code>.include "file"</code></td><td>Assembles another source at this point (path relative to the current file).</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Arguments are separated by the commas that are not inside a string, a character or parentheses. A value that does not fit its field is an error, not a truncation. The byte count of <code>.dsb</code>, <code>.pad</code> and <code>.align</code> must be known on the line itself.</p>
+
+    <h3>Conditional assembly</h3>
+<pre><code>.if PAL
+        lda #50
+.elseif DENDY
+        lda #50
+.else
+        lda #60
+.endif</code></pre>
+    <p><code>.if expr</code>, <code>.ifdef name</code>, <code>.ifndef name</code>, <code>.elseif expr</code>, <code>.else</code>, <code>.endif</code>, up to 255 nesting levels. The condition of an <code>.elseif</code> is only read if no earlier branch was taken; an <code>.else</code> or an <code>.elseif</code> after an <code>.else</code> is an error.</p>
+
+    <h3>Diagnostics</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Directive</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>.error "message"</code></td><td>Error on this line: the build fails.</td></tr>
+        <tr><td><code>.warning "message"</code></td><td>Warning: the build goes on.</td></tr>
+        <tr><td><code>.assert expr[, "message"]</code></td><td>Error if the expression is false. If it reads a name defined further down, it is checked once the unit is complete.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>In a conditional branch that is not assembled, these directives do nothing.</p>
+
+    <h3>Modules and end</h3>
+    <p><code>.export a, b</code> and <code>.import sym[, module]</code> declare the names exchanged between relocatable modules (see <a href="modules.html#directives">Modules, linker, viewer</a>). <code>.export</code> takes several names, but must come after their definitions; <code>.import</code> takes one symbol per line, and a second name on the line is the module expected to provide it. <code>.end</code> stops assembling the file.</p>
+
+    <!-- ============================================================ -->
+    <h2 id="macros">Macros and repetitions</h2>
+<pre><code>.macro vblank label, register
+label:  bit register
+        bpl label
+.endmacro           ; or .endm
+
+        vblank wait1, $2002</code></pre>
+    <ul>
+      <li><code>.macro name p1, p2</code> … <code>.endmacro</code> (alias <code>.endm</code>) defines a macro; it is called by its name followed by the arguments.</li>
+      <li>Parameters are replaced as whole words: a parameter named <code>x</code> does not rewrite <code>tax</code>.</li>
+      <li>Arguments are separated like those of a directive. If there are more arguments than parameters, the last parameter receives all the rest: <code>get ($10),y</code> passes the whole operand to a one-parameter macro.</li>
+      <li><code>.rep n</code> … <code>.endrep</code> (aliases <code>.rept</code>, <code>.endr</code>) repeats a block <code>n</code> times.</li>
+      <li>Macros and repetitions do not nest. Each expansion has its own local labels.</li>
+    </ul>
+
+    <!-- ============================================================ -->
+    <h2 id="modes">Addressing modes</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Mode</th><th>Syntax</th><th>Example</th><th>Bytes</th></tr></thead>
+      <tbody>
+        <tr><td>Implied</td><td></td><td><code>clc</code></td><td>1</td></tr>
+        <tr><td>Accumulator</td><td><code>A</code> or nothing</td><td><code>asl a</code>, <code>asl</code></td><td>1</td></tr>
+        <tr><td>Immediate</td><td><code>#value</code></td><td><code>lda #$10</code></td><td>2</td></tr>
+        <tr><td>Zero page</td><td><code>$nn</code></td><td><code>lda $10</code></td><td>2</td></tr>
+        <tr><td>Zero page,X / ,Y</td><td><code>$nn,x</code> <code>$nn,y</code></td><td><code>ldx $10,y</code></td><td>2</td></tr>
+        <tr><td>Absolute</td><td><code>$nnnn</code></td><td><code>jmp $C000</code></td><td>3</td></tr>
+        <tr><td>Absolute,X / ,Y</td><td><code>$nnnn,x</code> <code>$nnnn,y</code></td><td><code>sta $0200,x</code></td><td>3</td></tr>
+        <tr><td>Indirect</td><td><code>($nnnn)</code></td><td><code>jmp ($FFFC)</code></td><td>3</td></tr>
+        <tr><td>Indexed indirect X</td><td><code>($nn,x)</code></td><td><code>lda ($10,x)</code></td><td>2</td></tr>
+        <tr><td>Indirect indexed Y</td><td><code>($nn),y</code></td><td><code>lda ($10),y</code></td><td>2</td></tr>
+        <tr><td>Relative</td><td>target</td><td><code>bne loop</code></td><td>2</td></tr>
+        <tr><td>Zero page indirect (65C02)</td><td><code>($nn)</code></td><td><code>lda ($10)</code></td><td>2</td></tr>
+        <tr><td>Absolute indexed indirect (65C02)</td><td><code>($nnnn,x)</code></td><td><code>jmp ($1234,x)</code></td><td>3</td></tr>
+        <tr><td>Zero page + relative (R65C02)</td><td><code>$nn,target</code></td><td><code>bbr0 $10,loop</code></td><td>3</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <ul>
+      <li><strong>Choosing zero page.</strong> A known value between 0 and 255 takes the zero-page form when the instruction has one. A forward reference takes the absolute form, unless the instruction only exists in zero page (<code>stx name,y</code>, <code>sax</code>, <code>rmb</code>…).</li>
+      <li><strong><code>A</code> as an operand.</strong> <code>A</code> is the accumulator only for an instruction that has that form (ASL, LSR, ROL, ROR; INC and DEC on the 65C02). Anywhere else it is a name: <code>lda A</code> reads the symbol <code>A</code>.</li>
+      <li><strong>Forms that do not exist.</strong> An instruction written in a mode it does not have is an error ("STX does not support absolute,X addressing"). Previously the byte <code>$FF</code> was emitted without any message.</li>
+      <li><strong>Relative branches.</strong> A displacement outside -128…127 is an error, reported on the branch's line even when the target is defined further down.</li>
+    </ul>
+
+    <!-- ============================================================ -->
+    <h2 id="cpus">Processors</h2>
+    <p>The processor is chosen with <code>-cpu</code> on the command line or with <code>Target.Cpu</code> in <code>config.json</code>. See also <a href="cpus.html">CPUs and emulation core</a>.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>Aliases</th><th>Instruction set</th></tr></thead>
+      <tbody>
+        <tr><td><code>6502</code></td><td><code>nmos</code>, <code>nmos6502</code></td><td>The 56 documented instructions of the NMOS 6502 (151 opcodes).</td></tr>
+        <tr><td><code>6502x</code></td><td><code>nmos6502x</code>, <code>6502illegal</code></td><td>The 6502 plus its stable undocumented opcodes.</td></tr>
+        <tr><td><code>65c02</code></td><td><code>cmos</code></td><td>The 65C02: BRA, PHX, PHY, PLX, PLY, STZ, TRB, TSB, <code>(zp)</code>, <code>jmp (abs,x)</code>, extended BIT, INC/DEC A.</td></tr>
+        <tr><td><code>r65c02</code></td><td><code>rockwell</code></td><td>The 65C02 plus RMB0-7, SMB0-7, BBR0-7, BBS0-7.</td></tr>
+        <tr><td><code>w65c02</code></td><td><code>w65c02s</code>, <code>wdc65c02</code></td><td>The R65C02 plus STP and WAI (the 65C02 made today, the one in the Commander X16).</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Undocumented opcodes (<code>6502x</code>)</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Mnemonic</th><th>imm</th><th>zp</th><th>zp,x</th><th>zp,y</th><th>abs</th><th>abs,x</th><th>abs,y</th><th>(zp,x)</th><th>(zp),y</th><th>impl.</th></tr></thead>
+      <tbody>
+        <tr><td>SLO</td><td></td><td>07</td><td>17</td><td></td><td>0F</td><td>1F</td><td>1B</td><td>03</td><td>13</td><td></td></tr>
+        <tr><td>RLA</td><td></td><td>27</td><td>37</td><td></td><td>2F</td><td>3F</td><td>3B</td><td>23</td><td>33</td><td></td></tr>
+        <tr><td>SRE</td><td></td><td>47</td><td>57</td><td></td><td>4F</td><td>5F</td><td>5B</td><td>43</td><td>53</td><td></td></tr>
+        <tr><td>RRA</td><td></td><td>67</td><td>77</td><td></td><td>6F</td><td>7F</td><td>7B</td><td>63</td><td>73</td><td></td></tr>
+        <tr><td>SAX</td><td></td><td>87</td><td></td><td>97</td><td>8F</td><td></td><td></td><td>83</td><td></td><td></td></tr>
+        <tr><td>LAX</td><td></td><td>A7</td><td></td><td>B7</td><td>AF</td><td></td><td>BF</td><td>A3</td><td>B3</td><td></td></tr>
+        <tr><td>DCP</td><td></td><td>C7</td><td>D7</td><td></td><td>CF</td><td>DF</td><td>DB</td><td>C3</td><td>D3</td><td></td></tr>
+        <tr><td>ISC</td><td></td><td>E7</td><td>F7</td><td></td><td>EF</td><td>FF</td><td>FB</td><td>E3</td><td>F3</td><td></td></tr>
+        <tr><td>ANC</td><td>0B</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td>ALR</td><td>4B</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td>ARR</td><td>6B</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td>AXS</td><td>CB</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td>LAS</td><td></td><td></td><td></td><td></td><td></td><td></td><td>BB</td><td></td><td></td><td></td></tr>
+        <tr><td>NOP</td><td>80</td><td>04</td><td>14</td><td></td><td>0C</td><td>1C</td><td></td><td></td><td></td><td>EA</td></tr>
+        <tr><td>JAM</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>02</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Left out:</p>
+    <ul>
+      <li><strong>The unstable opcodes</strong>, whose result depends on the chip: ANE/XAA <code>$8B</code>, LXA <code>$AB</code>, SHA, SHX, SHY, TAS.</li>
+      <li><strong>The duplicate encodings</strong> of an instruction that already has one: SBC <code>$EB</code>, ANC <code>$2B</code>, the other NOP and JAM codes. The disassembler shows them as <code>.byte</code>.</li>
+    </ul>
+
+    <h3>Rockwell and WDC bit instructions</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Mnemonic (n = 0 to 7)</th><th>Syntax</th><th>Opcode</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td>RMBn</td><td><code>rmb3 $10</code></td><td><code>$07 + n×$10</code></td><td>Clears bit n of the zero-page byte.</td></tr>
+        <tr><td>SMBn</td><td><code>smb3 $10</code></td><td><code>$87 + n×$10</code></td><td>Sets bit n.</td></tr>
+        <tr><td>BBRn</td><td><code>bbr0 $10,target</code></td><td><code>$0F + n×$10</code></td><td>Branches if bit n is 0. The displacement counts from the end of the instruction (3 bytes).</td></tr>
+        <tr><td>BBSn</td><td><code>bbs7 $10,target</code></td><td><code>$8F + n×$10</code></td><td>Branches if bit n is 1.</td></tr>
+        <tr><td>WAI (W65C02)</td><td><code>wai</code></td><td><code>$CB</code></td><td>Waits for an interrupt.</td></tr>
+        <tr><td>STP (W65C02)</td><td><code>stp</code></td><td><code>$DB</code></td><td>Stops the clock until reset.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The monitor's execution core only implements the 151 documented NMOS opcodes. The instructions above assemble and disassemble, but do not execute in that core.</p>
+
+    <!-- ============================================================ -->
+    <h2 id="errors">Error messages</h2>
+    <p>Each message is reported on the line that caused it, in the form <code>Line N - File f - Type message</code> (or <code>file:line: error: message</code> with <code>WinASM65.Tooling --build</code>).</p>
+    <div class="grid-2">
+      <figure class="shot">
+        <a href="img/cli-errors.png"><img src="img/cli-errors.png" alt="A console running WinASM65 on a source with four mistakes and listing one error per line"></a>
+        <figcaption>The command line: one message per faulty line, with its line number and file.</figcaption>
+      </figure>
+      <figure class="shot">
+        <a href="img/vscode-diagnostics.png"><img src="img/vscode-diagnostics.png" alt="VS Code's Problems panel listing three WinASM65 errors, with the faulty lines underlined"></a>
+        <figcaption>The same messages in VS Code, as you type. <a href="vscode.html#diagnostics">More</a></figcaption>
+      </figure>
+    </div>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Message</th><th>Cause</th></tr></thead>
+      <tbody>
+        <tr><td>Unknown instruction or macro 'foo'</td><td>A word in mnemonic position that is neither an instruction of the CPU nor a macro.</td></tr>
+        <tr><td>X does not support … addressing</td><td>The instruction does not exist in that mode.</td></tr>
+        <tr><td>Unknown directive '.xxx'</td><td>Unknown directive.</td></tr>
+        <tr><td>Invalid token '…' in expression '…'</td><td>Unrecognized character in an expression.</td></tr>
+        <tr><td>Malformed expression '…'</td><td>Two values side by side, an operator without an operand, unbalanced parentheses.</td></tr>
+        <tr><td>Division by zero in '…'</td><td>Division or modulo by zero.</td></tr>
+        <tr><td>Number '…' is too large</td><td>A number beyond 64 bits.</td></tr>
+        <tr><td>Unterminated string literal / Invalid escape sequence</td><td>Unclosed string, unknown escape.</td></tr>
+        <tr><td>Value N is out of range for a 1-byte (2-byte) operand</td><td>Value too large for its field.</td></tr>
+        <tr><td>Relative jump is too big</td><td>Branch further than 127 bytes.</td></tr>
+        <tr><td>Undefined symbol: name. Define it, or declare it with .import when another module provides it.</td><td>A name never defined (nor imported).</td></tr>
+        <tr><td>Constant 'n' already defined with a different value</td><td>A second <code>EQU</code> definition with another value.</td></tr>
+        <tr><td>Local label '@x' is not defined in the scope of 'G'</td><td>Local label referenced outside its scope.</td></tr>
+        <tr><td>Local label '@x' has no global label before it</td><td>Local label with no global label before it.</td></tr>
+        <tr><td>No anonymous label '-' before (after) this line</td><td>Anonymous label not found.</td></tr>
+        <tr><td>.pad target is below the current address</td><td><code>.pad</code> to an address already passed.</td></tr>
+        <tr><td>.align requires a positive power of two</td><td>Invalid boundary.</td></tr>
+        <tr><td>.incbin offset/length outside 'f'</td><td>Range outside the file.</td></tr>
+        <tr><td>.else/.elseif after .else</td><td>A branch after the <code>.else</code>.</td></tr>
+        <tr><td>Assertion failed: …</td><td>False <code>.assert</code>.</td></tr>
+        <tr><td>Exported symbol 'x' is not defined in this unit.</td><td><code>.export</code> of a name not defined at that point (the definition must come first).</td></tr>
+        <tr><td>X expects …</td><td>Wrong number or kind of arguments, or a value that must be known on the line itself.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <!-- ============================================================ -->
+    <h2 id="omissions">What is not supported</h2>
+    <ul>
+      <li><strong>Directives without a dot</strong> (<code>org</code>, <code>db</code> in the asm6 style): they would collide with labels and macros. Only <code>EQU</code> is written without a dot.</li>
+      <li><strong><code>.dc.b</code> / <code>.dc.w</code></strong> (68000 style): use <code>.byte</code> / <code>.word</code>.</li>
+      <li><strong>ca65's <code>.proc</code>, <code>.scope</code>, <code>.segment</code></strong>: scopes are <code>{ }</code> and local labels; segments are described in <code>config.json</code> (see <a href="segments.html">Projects and segments</a>).</li>
+      <li><strong>Local labels written <code>.name</code></strong>: the dot introduces directives, hence the choice of <code>@name</code>.</li>
+      <li><strong>Several instructions per line</strong>, and <code>*</code> comments in column 1 or <code>/* */</code> comments.</li>
+      <li><strong>Functions</strong> in expressions (<code>.defined()</code>, <code>.sizeof()</code>…).</li>
+      <li><strong>Nested macros and <code>.rep</code>.</strong></li>
+    </ul>
+
+    <footer>
+      <p>English version of <code>docs/syntax.html</code>, checked against the assembler's source. The behaviour described here is exercised by the tests in <code>WinASM65.Tests</code>.</p>
+    </footer>
+  </main>
+
+  <aside class="toc" aria-label="On this page"></aside>
+</div>
+</body>
+</html>
