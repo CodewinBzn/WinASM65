@@ -7,6 +7,8 @@ Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
 
 **Documentation:** open [docs/site/index.html](docs/site/index.html), a website that explains every module of the solution, with screenshots (retaken by `tools/screenshots/shoot-all.ps1`).
 
+**Example:** [`example_star_catcher/`](example_star_catcher/README.md) is a small original NES game, code and graphics, built with WinASM65 and used throughout the documentation.
+
 ------------------------------
 ## Build
 
