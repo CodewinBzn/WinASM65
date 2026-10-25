@@ -128,7 +128,7 @@
 
     <h2 id="build">Build mode</h2>
     <p><code>--build &lt;config.json&gt;</code> builds a project the way the debugger does (<code>ProjectSession.Open(config).Build</code> with <code>WriteImage = true</code>) and prints one line per diagnostic, in the form the extension's <code>$winasm65</code> problem matcher reads:</p>
-<pre><code>c:\…\example_bomberman-nes\BMAN_BANK1.NAS:35: error: LDX does not support indirect indexed (zp),Y addressing
+<pre><code>c:\…\example_nes_game\engine\background.asm:48: error: LDX does not support indirect indexed (zp),Y addressing
 build failed: 1 error(s)</code></pre>
     <div class="table-wrap">
     <table>
@@ -183,7 +183,7 @@ build failed: 1 error(s)</code></pre>
     </div>
 
     <h3 id="sequence">A launch and a breakpoint hit</h3>
-    <p>The exchange when you press F5 on the Bomberman example with a breakpoint on line 30 of <code>BMAN_BANK1.NAS</code>, the first instruction of <code>NMI</code> at <code>$C01A</code>:</p>
+    <p>The exchange when you press F5 on the NES example with a breakpoint on line 77 of <code>engine/background.asm</code>, the first instruction of <code>NMI</code> at <code>$C073</code>:</p>
     <div class="figure">
       <svg viewBox="0 0 900 740" role="img" aria-label="Sequence diagram: VS Code sends initialize and launch; the adapter builds the project, starts Mesen2 with the bridge, connects, pauses the machine and sends initialized; VS Code sets breakpoints, which become BREAK SET commands, then sends configurationDone, which becomes RESET; later the bridge pushes STOPPED, the adapter sends a stopped event, and VS Code asks for the stack trace and variables, which become CPU and READ commands.">
         <defs>
@@ -224,9 +224,9 @@ build failed: 1 error(s)</code></pre>
         <text x="282" y="332" text-anchor="middle" font-size="13">launch response + initialized</text>
 
         <path class="line" d="M115,372 L450,372" marker-end="url(#arrow-s)"/>
-        <text x="282" y="366" text-anchor="middle" font-size="13">setBreakpoints { BMAN_BANK1.NAS, [30] }</text>
+        <text x="282" y="366" text-anchor="middle" font-size="13">setBreakpoints { background.asm, [77] }</text>
         <path class="line" d="M450,404 L785,404" marker-end="url(#arrow-s)"/>
-        <text x="617" y="398" text-anchor="middle" font-size="13">BREAK SET exec $C01A</text>
+        <text x="617" y="398" text-anchor="middle" font-size="13">BREAK SET exec $C073</text>
         <path class="line" d="M115,438 L450,438" marker-end="url(#arrow-s)"/>
         <text x="282" y="432" text-anchor="middle" font-size="13">configurationDone</text>
         <path class="line" d="M450,470 L785,470" marker-end="url(#arrow-s)"/>
@@ -235,7 +235,7 @@ build failed: 1 error(s)</code></pre>
         <text x="785" y="500" text-anchor="middle" font-size="12" class="muted">… the game runs …</text>
 
         <path class="line" d="M785,530 L450,530" marker-end="url(#arrow-s)" stroke-dasharray="5 4"/>
-        <text x="617" y="524" text-anchor="middle" font-size="13">PUSH STOPPED reason=breakpoint pc=$C01A prg=…</text>
+        <text x="617" y="524" text-anchor="middle" font-size="13">PUSH STOPPED reason=breakpoint pc=$C073 prg=…</text>
         <path class="line" d="M450,562 L115,562" marker-end="url(#arrow-s)"/>
         <text x="282" y="556" text-anchor="middle" font-size="13">stopped { breakpoint, hitBreakpointIds }</text>
         <path class="line" d="M115,596 L450,596" marker-end="url(#arrow-s)"/>
@@ -243,7 +243,7 @@ build failed: 1 error(s)</code></pre>
         <path class="line" d="M450,628 L785,628" marker-end="url(#arrow-s)"/>
         <text x="617" y="622" text-anchor="middle" font-size="13">CPU, READ</text>
         <path class="line" d="M450,662 L115,662" marker-end="url(#arrow-s)"/>
-        <text x="282" y="656" text-anchor="middle" font-size="13">frame NMI, BMAN_BANK1.NAS:30, registers</text>
+        <text x="282" y="656" text-anchor="middle" font-size="13">frame NMI, background.asm:77, registers</text>
 
         <text x="20" y="716" class="muted" font-size="12">Dashed: a message the bridge sends on its own. It arrives on the receiver thread and is queued to the session loop.</text>
       </svg>
@@ -270,7 +270,7 @@ build failed: 1 error(s)</code></pre>
         <tr><td><code>setExceptionBreakpoints</code></td><td>Accepted with an empty list: the 6502 has no exceptions to break on.</td></tr>
         <tr><td><code>configurationDone</code></td><td>Starts the program (launch) or reports the machine as it is (attach).</td></tr>
         <tr><td><code>threads</code></td><td>One thread, id 1, named <code>6502</code>.</td></tr>
-        <tr><td><code>stackTrace</code></td><td>One frame: the source line of the PC from <code>SourceMap.Resolve(pc, prgOffset)</code>, named after the nearest label (<code>NMI</code>, <code>NMI+2</code>), or <code>$C01A</code> when no label precedes it. “(bank unknown)” is appended when the PC maps to several banks and the stop gave no PRG offset. A PC with no source gets a <code>subtle</code> frame without a source. The frame carries <code>instructionPointerReference</code>.</td></tr>
+        <tr><td><code>stackTrace</code></td><td>One frame: the source line of the PC from <code>SourceMap.Resolve(pc, prgOffset)</code>, named after the nearest label (<code>NMI</code>, <code>NMI+2</code>), or <code>$C073</code> when no label precedes it. “(bank unknown)” is appended when the PC maps to several banks and the stop gave no PRG offset. A PC with no source gets a <code>subtle</code> frame without a source. The frame carries <code>instructionPointerReference</code>.</td></tr>
         <tr><td><code>scopes</code></td><td><code>Registers</code> (hint <code>registers</code>), <code>Flags</code>, and <code>Zero page</code> (marked expensive, so VS Code reads it only when expanded).</td></tr>
         <tr><td><code>variables</code></td><td>Registers: <code>PC</code>, <code>A</code>, <code>X</code>, <code>Y</code>, <code>SP</code>, <code>PS</code> (with a flag string such as <code>Nv-bdIzC</code>, upper case = set), <code>cycles</code>. Flags: <code>N V B D I Z C</code> as 0 or 1 (bit 5 is skipped). Zero page: 16 rows of 16 bytes. <code>PC</code>, <code>SP</code> (as <code>$0100+SP</code>) and each zero-page row carry a <code>memoryReference</code>, which opens VS Code's hex memory view.</td></tr>
         <tr><td><code>continue</code></td><td>Clears temporary breakpoints, resumes.</td></tr>
@@ -366,7 +366,7 @@ build failed: 1 error(s)</code></pre>
     <p>The assembled form is found by matching the row's first byte and length against <code>InstructionDocs</code> and checking that the mnemonic is written on the line, so a <code>.byte $A9, $01</code> row is not mistaken for <code>LDA #$01</code>. Screenshots are on the <a href="vscode.html#hover">VS Code page</a>.</p>
 
     <h3 id="listing">The <code>winasm65/listing</code> request</h3>
-<pre><code>→ { "textDocument": { "uri": "file:///c%3A/…/BMAN_BANK1.NAS" } }
+<pre><code>→ { "textDocument": { "uri": "file:///c%3A/…/engine/background.asm" } }
 ← { "rows": [ { "line": 29, "address": 49178, "bytes": "48", "more": false }, … ] }</code></pre>
     <ul>
       <li>One row per source line that emitted bytes: the zero-based <code>line</code>, the <code>address</code> and <code>bytes</code> of its first emission, and <code>more</code> when the line emitted several times (a macro, a repeat).</li>

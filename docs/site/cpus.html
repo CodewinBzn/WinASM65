@@ -386,8 +386,8 @@ Set(table, "BRA", AddressingMode.Relative, 0x80);
     </div>
     <p>The language server builds its instruction hover from both (<code>HoverCard.Instruction</code>): the description gives the title, summary and <code>@flags</code>; the form the line assembled to gives <code>@mode</code>, <code>@cycles</code> and <code>@bytes</code>; the table lists every form of the mnemonic on the project's CPU, with a ◀ on the one used. The assembled form is found by matching the listing row's first byte and length against <code>InstructionDocs.ForCpu</code> and checking the mnemonic is written on the line.</p>
     <figure class="shot">
-      <a href="img/vscode-hover-instruction.png"><img src="img/vscode-hover-instruction.png" alt="Hover card on LDA STAGE_STARTED: Load A, zero page form, 3 cycles, 2 bytes A5 60 at $C026, flags N Z, and a table of all eight LDA forms with opcodes, bytes and cycles"></a>
-      <figcaption>The hover of an <code>LDA</code> in the Bomberman example. The cycle column and the "+p" legend come from <code>CycleTimings</code>; the opcode and byte columns from the opcode table.</figcaption>
+      <a href="img/vscode-hover-instruction.png"><img src="img/vscode-hover-instruction.png" alt="Hover card on LDA palette, x: Load A, absolute,X form, 4 cycles plus one on a page crossing, 3 bytes BD 7E C0 at $C04B, flags N Z, and a table of all eight LDA forms with opcodes, bytes and cycles"></a>
+      <figcaption>The hover of an <code>LDA</code> in the NES example. The cycle column and the "+p" legend come from <code>CycleTimings</code>; the opcode and byte columns from the opcode table.</figcaption>
     </figure>
     <p><code>InstructionDocs.MnemonicsFor(cpu)</code> is also what <code>TextFormat/AssemblyLexer</code> classifies mnemonics against when it colours a line.</p>
 
