@@ -39,7 +39,7 @@ namespace WinASM65.Tooling.Tests
                 System.IO.Directory.CreateDirectory(Directory);
                 Environment = new FakeEnvironment();
                 Debug = new DebugTools(() => Environment);
-                Server = new McpServer(CodeTools.All().Concat(Debug.All()).ToList(), m => { lock (_sent) _sent.Add(m); });
+                Server = new McpServer(CodeTools.All().Concat(Debug.All()).Concat(GraphicsTools.All()).ToList(), m => { lock (_sent) _sent.Add(m); });
             }
 
             public string Directory { get; }
@@ -70,10 +70,16 @@ namespace WinASM65.Tooling.Tests
                     return _sent.Single(m => (int?)m["id"] == id);
             }
 
+            /// <summary>Calls a tool; returns its whole result.</summary>
+            public JsonObject CallRaw(string tool, JsonObject arguments = null)
+            {
+                return (JsonObject)Send("tools/call", new JsonObject { ["name"] = tool, ["arguments"] = arguments ?? new JsonObject() })["result"];
+            }
+
             /// <summary>Calls a tool; returns its text and whether it failed.</summary>
             public (string Text, bool Error) Call(string tool, JsonObject arguments = null)
             {
-                JsonObject result = (JsonObject)Send("tools/call", new JsonObject { ["name"] = tool, ["arguments"] = arguments ?? new JsonObject() })["result"];
+                JsonObject result = CallRaw(tool, arguments);
                 string text = string.Join("\n", ((JsonArray)result["content"]).Where(c => (string)c["type"] == "text").Select(c => (string)c["text"]));
                 return (text, (bool)result["isError"]);
             }
@@ -229,6 +235,77 @@ namespace WinASM65.Tooling.Tests
 
                 (string ended, _) = h.Call("debug_stop");
                 StringAssert.Contains(ended, "ended");
+            }
+        }
+        private static JsonObject Palettes(int firstColour)
+        {
+            JsonArray palettes = new JsonArray();
+            for (int i = 0; i < 8; i++)
+                palettes.Add(new JsonObject { ["name"] = "p" + i, ["colors"] = new JsonArray(0x0F, firstColour, 0x16, 0x28) });
+            return new JsonObject { ["version"] = 1, ["system"] = "nes", ["name"] = "game", ["prefix"] = "", ["palettes"] = palettes };
+        }
+
+        [TestMethod]
+        public void TilesAreDrawnReadRenderedAndExported()
+        {
+            using (Harness h = new Harness())
+            {
+                string chr = Path.Combine(h.Directory, "gfx", "tiles.chr");
+                (string drawn, bool error) = h.Call("edit_tiles", new JsonObject
+                {
+                    ["path"] = chr,
+                    ["tiles"] = new JsonArray(new JsonObject
+                    {
+                        ["index"] = 1,
+                        ["rows"] = new JsonArray("11111111", "12222221", "12333321", "12300321", "12300321", "12333321", "12222221", "11111111")
+                    })
+                });
+                Assert.IsFalse(error, drawn);
+                StringAssert.Contains(drawn, "(2 tiles)", "tile 1 grows the file to two tiles");
+
+                (string tiles, _) = h.Call("get_tiles", new JsonObject { ["path"] = chr, ["from"] = 1, ["count"] = 1 });
+                StringAssert.Contains(tiles, "12300321");
+
+                string palette = Path.Combine(h.Directory, "gfx", "game.pal.json");
+                (string written, bool failed) = h.Call("update_asset", new JsonObject { ["path"] = palette, ["asset"] = Palettes(0x30) });
+                Assert.IsFalse(failed, written);
+                Assert.IsTrue(File.Exists(palette));
+
+                (string refused, bool rejected) = h.Call("update_asset", new JsonObject { ["path"] = palette, ["asset"] = Palettes(99) });
+                Assert.IsTrue(rejected, "colour 99 does not exist");
+                StringAssert.Contains(refused, "$.palettes[0].colors[1]");
+                StringAssert.Contains(File.ReadAllText(palette), "48", "the file keeps the valid version ($30 = 48)");
+
+                JsonObject picture = h.CallRaw("render_asset", new JsonObject { ["path"] = chr, ["item"] = "game.pal.json#0", ["scale"] = 1 });
+                Assert.IsFalse((bool)picture["isError"]);
+                JsonObject image = (JsonObject)((JsonArray)picture["content"]).First(c => (string)c["type"] == "image");
+                Assert.AreEqual("image/png", (string)image["mimeType"]);
+                byte[] png = Convert.FromBase64String((string)image["data"]);
+                CollectionAssert.AreEqual(new byte[] { 0x89, (byte)'P', (byte)'N', (byte)'G' }, png.Take(4).ToArray());
+
+                (string listed, _) = h.Call("list_assets", new JsonObject { ["folder"] = h.Directory });
+                StringAssert.Contains(listed, "tiles.chr  Chr  2 tiles");
+                StringAssert.Contains(listed, "game.pal.json  Palette  8 palettes");
+
+                (string exported, bool exportFailed) = h.Call("export_assets", new JsonObject { ["path"] = Path.Combine(h.Directory, "gfx") });
+                Assert.IsFalse(exportFailed, exported);
+                Assert.IsTrue(File.Exists(Path.Combine(h.Directory, "gfx", "game.pal.asm")), exported);
+            }
+        }
+
+        [TestMethod]
+        public void BadTileRowsAreRefusedWithTheirPlace()
+        {
+            using (Harness h = new Harness())
+            {
+                (string text, bool error) = h.Call("edit_tiles", new JsonObject
+                {
+                    ["path"] = Path.Combine(h.Directory, "t.chr"),
+                    ["tiles"] = new JsonArray(new JsonObject { ["index"] = 0, ["rows"] = new JsonArray("0000000", "1", "1", "1", "1", "1", "1", "1") })
+                });
+                Assert.IsTrue(error);
+                StringAssert.Contains(text, "tile 0, row 0: 8 digits expected");
+                Assert.IsFalse(File.Exists(Path.Combine(h.Directory, "t.chr")), "nothing written");
             }
         }
     }
