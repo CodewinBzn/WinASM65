@@ -5,6 +5,8 @@ by CodewinBzn.
 
 Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
 
+**Documentation:** open [docs/site/index.html](docs/site/index.html), a website that explains every module of the solution, with screenshots (retaken by `tools/screenshots/shoot-all.ps1`).
+
 ------------------------------
 ## Build
 
@@ -290,7 +292,7 @@ fill the rest of bytes with the value $00 .
 
 ## Syntax
 
-The complete reference, in French, is [docs/syntax.html](docs/syntax.html). Besides what this section describes, the assembler accepts:
+The complete reference is [docs/site/syntax.html](docs/site/syntax.html). Besides what this section describes, the assembler accepts:
 - character literals `'A'` with escapes, and strings with `\n \t \0 \" \xNN`, commas and semicolons;
 - `ASL A` as well as `ASL`, and `*` as the program counter (`jmp *`, `*= $C000`);
 - local labels `@loop` (scoped to the previous global label) and asm6-style anonymous labels `-` / `+`;

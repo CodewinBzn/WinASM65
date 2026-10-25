@@ -16,7 +16,7 @@ namespace WinASM65.Tests
             while (dir != null && !File.Exists(Path.Combine(dir.FullName, "WinASM65.sln")))
                 dir = dir.Parent;
             Assert.IsNotNull(dir);
-            return File.ReadAllText(Path.Combine(dir.FullName, "docs", "syntax.html"));
+            return File.ReadAllText(Path.Combine(dir.FullName, "docs", "site", "syntax.html"));
         }
 
         [TestMethod]
@@ -24,7 +24,7 @@ namespace WinASM65.Tests
         {
             string doc = Documentation();
             foreach (string directive in AssemblerEngine.DefaultDirectiveNames)
-                StringAssert.Contains(doc, "<code>" + directive, directive + " is missing from docs/syntax.html");
+                StringAssert.Contains(doc, "<code>" + directive, directive + " is missing from docs/site/syntax.html");
         }
 
         [TestMethod]
@@ -32,7 +32,7 @@ namespace WinASM65.Tests
         {
             string doc = Documentation();
             foreach (string cpu in CpuFactory.Names)
-                StringAssert.Contains(doc, "<code>" + cpu + "</code>", cpu + " is missing from docs/syntax.html");
+                StringAssert.Contains(doc, "<code>" + cpu + "</code>", cpu + " is missing from docs/site/syntax.html");
         }
     }
 }

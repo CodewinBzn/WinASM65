@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tooling: DAP and LSP</title>
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<div class="layout">
+  <nav class="site-nav" aria-label="Pages"></nav>
+
+  <main>
+    <p class="breadcrumb"><a href="index.html">WinASM65</a> › Debugging</p>
+    <header class="page">
+      <h1>Tooling: DAP and LSP</h1>
+      <p class="lede"><code>WinASM65.Tooling</code> is the editor side of WinASM65: one executable that runs as a Debug Adapter, a Language Server or a build front end. The VS Code extension starts it; any other editor that speaks DAP or LSP could too.</p>
+    </header>
+
+    <aside class="sources">
+      <h4>Source files</h4>
+      <ul>
+        <li><a href="../../WinASM65.Tooling/Program.cs"><code>Program.cs</code></a></li>
+        <li><a href="../../WinASM65.Tooling/Rpc/MessageStream.cs"><code>Rpc/MessageStream.cs</code></a></li>
+        <li><a href="../../WinASM65.Tooling/Dap/DebugSession.cs"><code>Dap/DebugSession.cs</code></a></li>
+        <li><a href="../../WinASM65.Tooling/Dap/DebugEnvironment.cs"><code>Dap/DebugEnvironment.cs</code></a></li>
+        <li><a href="../../WinASM65.Tooling/Lsp/LanguageServer.cs"><code>Lsp/LanguageServer.cs</code></a></li>
+        <li><a href="../../WinASM65.Tooling/Lsp/HoverCard.cs"><code>Lsp/HoverCard.cs</code></a></li>
+        <li><a href="../../WinASM65.Tooling/WinASM65.Tooling.csproj"><code>WinASM65.Tooling.csproj</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/Debugging/SourceMap.cs"><code>Monitor.Core/Debugging/SourceMap.cs</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/Debugging/SourceMapBuilder.cs"><code>Monitor.Core/Debugging/SourceMapBuilder.cs</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/BridgeLauncher.cs"><code>Monitor.Core/BridgeLauncher.cs</code></a></li>
+        <li><a href="../../WinASM65.Tooling.Tests/DebugSessionTests.cs"><code>Tooling.Tests/DebugSessionTests.cs</code></a></li>
+        <li><a href="../../WinASM65.Tooling.Tests/LanguageServerTests.cs"><code>Tooling.Tests/LanguageServerTests.cs</code></a></li>
+      </ul>
+    </aside>
+
+    <h2 id="modes">One program, three modes</h2>
+    <p><code>Program.Main</code> reads its first argument and picks a mode. Anything else prints a usage text on stderr and exits with code 2.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Command line</th><th>Mode</th><th>Talks over</th><th>Entry point</th></tr></thead>
+      <tbody>
+        <tr><td><code>WinASM65.Tooling --dap</code></td><td>Debug Adapter Protocol</td><td>stdin/stdout, <code>Content-Length</code> framing</td><td><code>DebugSession</code></td></tr>
+        <tr><td><code>WinASM65.Tooling --lsp</code></td><td>Language Server Protocol</td><td>stdin/stdout, <code>Content-Length</code> framing</td><td><code>LanguageServer</code></td></tr>
+        <tr><td><code>WinASM65.Tooling --build &lt;config.json&gt;</code></td><td>One build</td><td>stdout lines, exit code</td><td><code>Program.RunBuild</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 480" role="img" aria-label="VS Code starts WinASM65.Tooling in three modes. The --dap mode uses WinASM65.Monitor.Core and the assembler and reaches Mesen2 over TCP; the --lsp mode uses the assembler and the project locator of Monitor.Core; the --build mode uses only the assembler.">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <rect class="frame" x="20" y="10" width="860" height="86" rx="10"/>
+        <text x="34" y="30" class="muted" font-size="12.5">VS Code + vscode-extension</text>
+        <rect class="box-d" x="40" y="38" width="220" height="46" rx="8"/>
+        <text x="150" y="66" text-anchor="middle" font-weight="600">Run and Debug (F5)</text>
+        <rect class="box-d" x="340" y="38" width="220" height="46" rx="8"/>
+        <text x="450" y="66" text-anchor="middle" font-weight="600">Editor</text>
+        <rect class="box-d" x="640" y="38" width="220" height="46" rx="8"/>
+        <text x="750" y="66" text-anchor="middle" font-weight="600">Tasks</text>
+
+        <rect class="frame" x="20" y="124" width="860" height="104" rx="10"/>
+        <text x="866" y="144" class="muted" font-size="12.5" text-anchor="end">WinASM65.Tooling.exe</text>
+        <rect class="box-c" x="40" y="152" width="220" height="62" rx="8"/>
+        <text x="150" y="178" text-anchor="middle" font-weight="600">--dap</text>
+        <text x="150" y="199" text-anchor="middle" class="muted" font-size="13">DebugSession</text>
+        <rect class="box-c" x="340" y="152" width="220" height="62" rx="8"/>
+        <text x="450" y="178" text-anchor="middle" font-weight="600">--lsp</text>
+        <text x="450" y="199" text-anchor="middle" class="muted" font-size="13">LanguageServer</text>
+        <rect class="box-c" x="640" y="152" width="220" height="62" rx="8"/>
+        <text x="750" y="178" text-anchor="middle" font-weight="600">--build config.json</text>
+        <text x="750" y="199" text-anchor="middle" class="muted" font-size="13">file:line: error: …</text>
+
+        <path class="line" d="M150,84 L150,152" marker-end="url(#arrow)"/>
+        <text x="160" y="114" class="muted" font-size="12">DAP, stdio</text>
+        <path class="line" d="M450,84 L450,152" marker-end="url(#arrow)"/>
+        <text x="460" y="114" class="muted" font-size="12">LSP, stdio</text>
+        <path class="line" d="M750,84 L750,152" marker-end="url(#arrow)"/>
+        <text x="740" y="114" class="muted" font-size="12" text-anchor="end">process, $winasm65 matcher</text>
+
+        <rect class="box-b" x="40" y="296" width="360" height="64" rx="8"/>
+        <text x="220" y="322" text-anchor="middle" font-weight="600">WinASM65.Monitor.Core</text>
+        <text x="220" y="342" text-anchor="middle" class="muted" font-size="13">MonitorSession, bridge client, launcher, SourceMap</text>
+        <rect class="box-a" x="480" y="296" width="380" height="64" rx="8"/>
+        <text x="670" y="322" text-anchor="middle" font-weight="600">WinASM65</text>
+        <text x="670" y="342" text-anchor="middle" class="muted" font-size="13">assembler, ProjectSession, listings, InstructionDocs</text>
+
+        <path class="line" d="M130,214 L150,296" marker-end="url(#arrow)"/>
+        <path class="line" d="M240,214 L560,296" marker-end="url(#arrow)"/>
+        <path class="line" d="M400,214 L330,296" marker-end="url(#arrow)"/>
+        <text x="296" y="262" class="muted" font-size="12" text-anchor="end">ProjectConfigLocator</text>
+        <path class="line" d="M500,214 L640,296" marker-end="url(#arrow)"/>
+        <path class="line" d="M760,214 L770,296" marker-end="url(#arrow)"/>
+        <path class="line" d="M400,328 L480,328" marker-end="url(#arrow)"/>
+
+        <rect class="frame" x="60" y="404" width="320" height="56" rx="8"/>
+        <text x="220" y="428" text-anchor="middle" font-weight="600">Mesen2 2.1.1</text>
+        <text x="220" y="447" text-anchor="middle" class="muted" font-size="13">bridge_mesen2.lua on 127.0.0.1:port</text>
+        <path class="line" d="M220,360 L220,404" marker-end="url(#arrow)" stroke-dasharray="5 4"/>
+        <text x="232" y="388" class="muted" font-size="12">TCP, line protocol</text>
+      </svg>
+    </div>
+    <p class="caption">Solid arrows: calls into a library. Dashed: a runtime connection. The project references are the ones in <code>WinASM65.Tooling.csproj</code>: <code>WinASM65</code> and <code>WinASM65.Monitor.Core</code>.</p>
+
+    <div class="grid-2">
+      <div class="card"><h4>No duplicated logic</h4><p>The build, the listings, the source map and the bridge protocol are the ones the <a href="monitor.html">terminal monitor</a> uses. A fix in either place reaches both front ends.</p></div>
+      <div class="card"><h4>stdout belongs to the protocol</h4><p>In <code>--dap</code> and <code>--lsp</code>, <code>TakeProtocolStreams</code> opens the raw standard streams, then points <code>Console.Out</code> at stderr, so nothing a library prints can land inside a message.</p></div>
+      <div class="card"><h4>No protocol library</h4><p>DAP and LSP share one framing, and the requests answered are few, so both are written by hand on <code>System.Text.Json</code>. No extra NuGet package.</p></div>
+      <div class="card"><h4>One thread does the work</h4><p>In both protocol modes a background reader thread only queues messages; a single loop (<code>Run</code>) handles them in order from a <code>BlockingCollection&lt;Action&gt;</code>.</p></div>
+    </div>
+
+    <h2 id="framing">Message framing</h2>
+    <p><code>Rpc/MessageStream.cs</code> implements the framing both protocols use: a <code>Content-Length</code> header, a blank line (both lines end in CR LF), then exactly that many bytes of UTF-8 JSON.</p>
+<pre><code>Content-Length: 61
+
+{"seq":1,"type":"request","command":"threads","arguments":{}}</code></pre>
+    <ul>
+      <li><strong>Reading</strong> goes byte by byte up to the body, never through a buffered reader: a reader that buffered past the header would swallow the start of the next message. Header names are compared case-insensitively; other headers are ignored; a stray blank line between messages is skipped.</li>
+      <li><strong>Errors.</strong> A bad <code>Content-Length</code> or a body that is not a JSON object throws <code>InvalidDataException</code>. The reader thread catches it (with <code>IOException</code> and <code>JsonException</code>), writes it to stderr and ends the session as if the input had closed.</li>
+      <li><strong>Writing</strong> is serialised by a lock, because the DAP session sends events and responses from more than one place. Each message is flushed at once.</li>
+    </ul>
+
+    <h2 id="build">Build mode</h2>
+    <p><code>--build &lt;config.json&gt;</code> builds a project the way the debugger does (<code>ProjectSession.Open(config).Build</code> with <code>WriteImage = true</code>) and prints one line per diagnostic, in the form the extension's <code>$winasm65</code> problem matcher reads:</p>
+<pre><code>c:\…\example_bomberman-nes\BMAN_BANK1.NAS:35: error: LDX does not support indirect indexed (zp),Y addressing
+build failed: 1 error(s)</code></pre>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Outcome</th><th>Last line</th><th>Exit code</th></tr></thead>
+      <tbody>
+        <tr><td>Success</td><td><code>built &lt;image path&gt; (&lt;n&gt; bytes)</code></td><td>0</td></tr>
+        <tr><td>Errors</td><td><code>build failed: &lt;n&gt; error(s)</code></td><td>1</td></tr>
+        <tr><td>Configuration unreadable (<code>IOException</code>, <code>ArgumentException</code>)</td><td><code>&lt;config&gt;: error: &lt;message&gt;</code></td><td>1</td></tr>
+        <tr><td>Wrong arguments</td><td>usage on stderr</td><td>2</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Each line is <code>DebugSession.FormatDiagnostic</code> (<code>file:line: message</code>, or <code>file: message</code> without a line; the configuration file stands in when a diagnostic has no file) with <code>error</code> or <code>warning</code> inserted before the message. The extension's pattern is <code>^(.+?)(?::(\d+))?: (error|warning): (.*)$</code>; <code>BuildModeTests</code> reads it from <code>package.json</code> and applies it to the real output, so the two cannot drift apart.</p>
+
+    <h2 id="dap">Debug adapter</h2>
+    <p><code>DebugSession</code> is one debugging session of a 6502 machine. Every request and every event from the machine is handled on the session loop. The bridge reports stops on its receiver thread, which must never wait for a reply (it is the thread that delivers replies), so the <code>Stopped</code> and <code>Resumed</code> events are only queued with <code>Post</code>; a handler on the loop is then free to read registers or memory.</p>
+
+    <h3 id="environment">The environment</h3>
+    <p>Everything the session does outside its own memory goes through <code>IDebugEnvironment</code>, so the tests can run it against a fake machine (<code>FakeDebugMachine</code>) with the real assembler and no emulator. <code>DebugEnvironment</code> is the real one:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Member</th><th>Real implementation</th></tr></thead>
+      <tbody>
+        <tr><td><code>Build(config, writeImage)</code></td><td><code>ProjectSession.Open(config).Build</code> with <code>CaptureListing = true</code>: the listings stay in memory for the source map.</td></tr>
+        <tr><td><code>ConfiguredEmulator(config)</code></td><td><code>Emulator.Path</code> from <code>config.json</code>, resolved against the project directory when relative; null otherwise.</td></tr>
+        <tr><td><code>FreePort()</code></td><td>Opens a <code>TcpListener</code> on port 0 of the loopback address and returns the port it got.</td></tr>
+        <tr><td><code>Launch(emulator, rom, id, port)</code></td><td><code>BridgeLauncher.LaunchEmulator</code>: Mesen2 with the ROM and <code>Bridge/bridge_mesen2.lua</code>, the port in the <code>MACHINE_PORT</code> environment variable. The process is wrapped so the session can see it exit and kill it (with its children).</td></tr>
+        <tr><td><code>Connect(port, timeout)</code></td><td><code>BridgeConnector.Connect(port, timeout, poll: false)</code>: no background RAM polling, since the adapter reads memory only when VS Code asks.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Before each Mesen2 launch, <code>BridgeLauncher</code> makes sure Mesen2's <code>settings.json</code> lets a script open a socket (<code>AllowIoOsAccess</code>, <code>AllowNetworkAccess</code>, <code>ScriptTimeout</code>). It creates the file when it does not exist; when it exists without those entries it reports what to add and refuses to start. See <a href="monitor.html#bridge">the bridge</a>.</p>
+
+    <h3 id="launch">Launch and attach arguments</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Request</th><th>Argument</th><th>Default</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td rowspan="7"><code>launch</code></td><td><code>config</code></td><td>required</td><td>The project's <code>config.json</code>.</td></tr>
+        <tr><td><code>emulatorPath</code></td><td><code>Emulator.Path</code> of <code>config.json</code></td><td>The emulator executable. The extension fills it from the <code>winasm65.emulatorPath</code> setting when launch.json leaves it out.</td></tr>
+        <tr><td><code>emulator</code></td><td><code>mesen2</code></td><td>Which bridge script to load. Only a bridge that reports stops can be debugged.</td></tr>
+        <tr><td><code>rom</code></td><td>the image the build wrote</td><td>The file the emulator runs.</td></tr>
+        <tr><td><code>port</code></td><td>0 (a free port)</td><td>The bridge port.</td></tr>
+        <tr><td><code>stopOnEntry</code></td><td>false</td><td>Stop on the first instruction, at the address in the reset vector.</td></tr>
+        <tr><td><code>connectTimeoutMs</code></td><td>15000</td><td>How long to wait for the bridge to answer.</td></tr>
+        <tr><td rowspan="4"><code>attach</code></td><td><code>port</code></td><td>45678</td><td>A bridge already running in Mesen2.</td></tr>
+        <tr><td><code>config</code></td><td>none</td><td>Optional. When given, the project is built (without writing the image) to get the source map, so source breakpoints work.</td></tr>
+        <tr><td><code>stopOnAttach</code></td><td>false</td><td>Pause the machine at <code>configurationDone</code>.</td></tr>
+        <tr><td><code>connectTimeoutMs</code></td><td>15000</td><td>As for launch.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3 id="sequence">A launch and a breakpoint hit</h3>
+    <p>The exchange when you press F5 on the Bomberman example with a breakpoint on line 30 of <code>BMAN_BANK1.NAS</code>, the first instruction of <code>NMI</code> at <code>$C01A</code>:</p>
+    <div class="figure">
+      <svg viewBox="0 0 900 740" role="img" aria-label="Sequence diagram: VS Code sends initialize and launch; the adapter builds the project, starts Mesen2 with the bridge, connects, pauses the machine and sends initialized; VS Code sets breakpoints, which become BREAK SET commands, then sends configurationDone, which becomes RESET; later the bridge pushes STOPPED, the adapter sends a stopped event, and VS Code asks for the stack trace and variables, which become CPU and READ commands.">
+        <defs>
+          <marker id="arrow-s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <rect class="box-d" x="40" y="16" width="150" height="48" rx="8"/>
+        <text x="115" y="45" text-anchor="middle" font-weight="600">VS Code</text>
+        <rect class="box-c" x="375" y="16" width="150" height="48" rx="8"/>
+        <text x="450" y="38" text-anchor="middle" font-weight="600">DebugSession</text>
+        <text x="450" y="55" text-anchor="middle" class="muted" font-size="12">Tooling --dap</text>
+        <rect class="box-b" x="710" y="16" width="150" height="48" rx="8"/>
+        <text x="785" y="38" text-anchor="middle" font-weight="600">Mesen2</text>
+        <text x="785" y="55" text-anchor="middle" class="muted" font-size="12">+ bridge_mesen2.lua</text>
+        <line class="life" x1="115" y1="64" x2="115" y2="724"/>
+        <line class="life" x1="450" y1="64" x2="450" y2="724"/>
+        <line class="life" x1="785" y1="64" x2="785" y2="724"/>
+
+        <path class="line" d="M115,96 L450,96" marker-end="url(#arrow-s)"/>
+        <text x="282" y="90" text-anchor="middle" font-size="13">initialize</text>
+        <path class="line" d="M450,126 L115,126" marker-end="url(#arrow-s)"/>
+        <text x="282" y="120" text-anchor="middle" font-size="13" class="muted">capabilities</text>
+        <path class="line" d="M115,158 L450,158" marker-end="url(#arrow-s)"/>
+        <text x="282" y="152" text-anchor="middle" font-size="13">launch { config, … }</text>
+
+        <path class="line" d="M450,180 L490,180 L490,204 L456,204" marker-end="url(#arrow-s)"/>
+        <text x="500" y="190" font-size="13">build (CaptureListing) → SourceMap</text>
+        <text x="500" y="206" font-size="12" class="muted">diagnostics go to the debug console</text>
+
+        <path class="line" d="M450,240 L785,240" marker-end="url(#arrow-s)"/>
+        <text x="617" y="234" text-anchor="middle" font-size="13">start Mesen.exe rom bridge_mesen2.lua</text>
+        <path class="line" d="M450,274 L785,274" marker-end="url(#arrow-s)"/>
+        <text x="617" y="268" text-anchor="middle" font-size="13">TCP connect (retried), PING, STATUS</text>
+        <path class="line" d="M450,306 L785,306" marker-end="url(#arrow-s)"/>
+        <text x="617" y="300" text-anchor="middle" font-size="13">PAUSE</text>
+        <path class="line" d="M450,338 L115,338" marker-end="url(#arrow-s)"/>
+        <text x="282" y="332" text-anchor="middle" font-size="13">launch response + initialized</text>
+
+        <path class="line" d="M115,372 L450,372" marker-end="url(#arrow-s)"/>
+        <text x="282" y="366" text-anchor="middle" font-size="13">setBreakpoints { BMAN_BANK1.NAS, [30] }</text>
+        <path class="line" d="M450,404 L785,404" marker-end="url(#arrow-s)"/>
+        <text x="617" y="398" text-anchor="middle" font-size="13">BREAK SET exec $C01A</text>
+        <path class="line" d="M115,438 L450,438" marker-end="url(#arrow-s)"/>
+        <text x="282" y="432" text-anchor="middle" font-size="13">configurationDone</text>
+        <path class="line" d="M450,470 L785,470" marker-end="url(#arrow-s)"/>
+        <text x="617" y="464" text-anchor="middle" font-size="13">RESET</text>
+
+        <text x="785" y="500" text-anchor="middle" font-size="12" class="muted">… the game runs …</text>
+
+        <path class="line" d="M785,530 L450,530" marker-end="url(#arrow-s)" stroke-dasharray="5 4"/>
+        <text x="617" y="524" text-anchor="middle" font-size="13">PUSH STOPPED reason=breakpoint pc=$C01A prg=…</text>
+        <path class="line" d="M450,562 L115,562" marker-end="url(#arrow-s)"/>
+        <text x="282" y="556" text-anchor="middle" font-size="13">stopped { breakpoint, hitBreakpointIds }</text>
+        <path class="line" d="M115,596 L450,596" marker-end="url(#arrow-s)"/>
+        <text x="282" y="590" text-anchor="middle" font-size="13">threads, stackTrace, scopes, variables</text>
+        <path class="line" d="M450,628 L785,628" marker-end="url(#arrow-s)"/>
+        <text x="617" y="622" text-anchor="middle" font-size="13">CPU, READ</text>
+        <path class="line" d="M450,662 L115,662" marker-end="url(#arrow-s)"/>
+        <text x="282" y="656" text-anchor="middle" font-size="13">frame NMI, BMAN_BANK1.NAS:30, registers</text>
+
+        <text x="20" y="716" class="muted" font-size="12">Dashed: a message the bridge sends on its own. It arrives on the receiver thread and is queued to the session loop.</text>
+      </svg>
+    </div>
+    <ol>
+      <li><strong>Build.</strong> <code>launch</code> builds the project with the image written. A failed build fails the request (“the build failed; see the debug console”); each diagnostic has been printed to the debug console as <code>file:line: message</code>. On success the listings become the <code>SourceMap</code>, and the console says how many units and mapped lines it has.</li>
+      <li><strong>Start.</strong> The emulator is the <code>emulatorPath</code> argument, else <code>Emulator.Path</code> of <code>config.json</code>; with neither, the launch fails and says where to set one.</li>
+      <li><strong>Connect.</strong> The adapter retries a one-second connection every 200 ms until the timeout, and gives up early if the emulator process has exited. An early exit gets its own message: Mesen2 runs as a single instance, so a second launch is handed to the window already open and the new process quits.</li>
+      <li><strong>Check.</strong> The bridge must report execution state (<code>IExecutionEvents.ReportsExecutionState</code>) and the CPU state (<code>ICpuStateSource</code>). Otherwise the launch is refused with “… cannot be debugged: its bridge does not report when the machine stops”: that is the case of the MesenCE bridge.</li>
+      <li><strong>Hold.</strong> The machine is paused until <code>configurationDone</code>, so the breakpoints VS Code is about to send are in place before the program runs one frame.</li>
+      <li><strong>Run.</strong> <code>configurationDone</code> resets the machine, so the program starts from its reset vector. With <code>stopOnEntry</code>, a temporary breakpoint is first planted at the address read from <code>$FFFC</code>, and the stop is reported with the reason <code>entry</code>. After an <code>attach</code> nothing is reset: the machine is paused only with <code>stopOnAttach</code>, and a machine that is already stopped is reported as stopped.</li>
+    </ol>
+
+    <h3 id="requests">Requests</h3>
+    <p><code>initialize</code> announces <code>supportsConfigurationDoneRequest</code>, <code>supportsReadMemoryRequest</code>, <code>supportsWriteMemoryRequest</code>, <code>supportsEvaluateForHovers</code> and <code>supportsTerminateRequest</code>; stepping granularity, restart and <code>setVariable</code> are declared unsupported. Every request the dispatcher knows:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Request</th><th>What the adapter does</th></tr></thead>
+      <tbody>
+        <tr><td><code>initialize</code></td><td>Returns the capabilities above.</td></tr>
+        <tr><td><code>launch</code></td><td>Build, start the emulator, connect, check, pause; then the response and the <code>initialized</code> event.</td></tr>
+        <tr><td><code>attach</code></td><td>Optional build for the source map, connect to <code>port</code>, check; then the response and <code>initialized</code>.</td></tr>
+        <tr><td><code>setBreakpoints</code></td><td>Maps each line to addresses through the source map (below). Answers <code>id</code>, <code>verified</code>, the line actually used and, when relevant, a <code>message</code>.</td></tr>
+        <tr><td><code>setExceptionBreakpoints</code></td><td>Accepted with an empty list: the 6502 has no exceptions to break on.</td></tr>
+        <tr><td><code>configurationDone</code></td><td>Starts the program (launch) or reports the machine as it is (attach).</td></tr>
+        <tr><td><code>threads</code></td><td>One thread, id 1, named <code>6502</code>.</td></tr>
+        <tr><td><code>stackTrace</code></td><td>One frame: the source line of the PC from <code>SourceMap.Resolve(pc, prgOffset)</code>, named after the nearest label (<code>NMI</code>, <code>NMI+2</code>), or <code>$C01A</code> when no label precedes it. “(bank unknown)” is appended when the PC maps to several banks and the stop gave no PRG offset. A PC with no source gets a <code>subtle</code> frame without a source. The frame carries <code>instructionPointerReference</code>.</td></tr>
+        <tr><td><code>scopes</code></td><td><code>Registers</code> (hint <code>registers</code>), <code>Flags</code>, and <code>Zero page</code> (marked expensive, so VS Code reads it only when expanded).</td></tr>
+        <tr><td><code>variables</code></td><td>Registers: <code>PC</code>, <code>A</code>, <code>X</code>, <code>Y</code>, <code>SP</code>, <code>PS</code> (with a flag string such as <code>Nv-bdIzC</code>, upper case = set), <code>cycles</code>. Flags: <code>N V B D I Z C</code> as 0 or 1 (bit 5 is skipped). Zero page: 16 rows of 16 bytes. <code>PC</code>, <code>SP</code> (as <code>$0100+SP</code>) and each zero-page row carry a <code>memoryReference</code>, which opens VS Code's hex memory view.</td></tr>
+        <tr><td><code>continue</code></td><td>Clears temporary breakpoints, resumes.</td></tr>
+        <tr><td><code>next</code></td><td>If the opcode at the PC is <code>JSR</code> (<code>$20</code>): a temporary breakpoint at PC+3, then resume. Otherwise one <code>STEP</code>.</td></tr>
+        <tr><td><code>stepIn</code></td><td>One <code>STEP</code>.</td></tr>
+        <tr><td><code>stepOut</code></td><td>Best effort: reads the return address at <code>$0100+SP+1</code>/<code>+2</code>, adds 1, plants a temporary breakpoint there and resumes. Right while no <code>PHA</code> has been left on the stack.</td></tr>
+        <tr><td><code>pause</code></td><td><code>PAUSE</code>.</td></tr>
+        <tr><td><code>readMemory</code></td><td>Reads in chunks of 4096 bytes, clipped to <code>$0000-$FFFF</code>; returns base64 data and <code>unreadableBytes</code> for what lay past the end. A memory reference may be <code>0x1234</code>, <code>$1234</code> or decimal.</td></tr>
+        <tr><td><code>writeMemory</code></td><td>Writes in chunks of 4096 bytes; a write past <code>$FFFF</code> is refused, and the bridge's refusal (a write into ROM) is passed on. A <code>memory</code> event follows, so open memory views refresh.</td></tr>
+        <tr><td><code>evaluate</code></td><td>See <a href="#evaluate">below</a>.</td></tr>
+        <tr><td><code>winasm65.symbols</code></td><td>Custom request. Arguments <code>from</code>, <code>to</code> (default <code>0</code> and <code>$FFFF</code>); returns <code>symbols: [{ name, value }]</code>, every name of the build whose value lies in the range, sorted by value. The <a href="vscode.html#ram">RAM panel</a> uses it to name bytes.</td></tr>
+        <tr><td><code>terminate</code></td><td>Clears the breakpoints, closes the connection, kills the emulator if the adapter started it, sends <code>terminated</code>.</td></tr>
+        <tr><td><code>disconnect</code></td><td>Clears the breakpoints and closes the connection. The emulator is killed when <code>terminateDebuggee</code> says so, which defaults to “the adapter launched it”; an attached machine is resumed instead.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Any other command fails with “unsupported request”. In particular there is no <code>disassemble</code>, <code>setVariable</code>, <code>restart</code>, data breakpoints or conditional breakpoints. A <code>MonitorException</code> or an <code>IOException</code> from the bridge fails the request with its message rather than ending the session.</p>
+
+    <h3 id="breakpoints">Breakpoints</h3>
+    <ul>
+      <li><strong>Line to address.</strong> <code>SourceMap.TryNearestEmittingLine</code> moves a breakpoint set on a label, a comment or a blank line to the first line that emits code, at most 5 lines further down. <code>SourceMap.AtLine</code> then gives every address that line emitted (a macro or a repeat can emit several). With no build yet the message is “the project is not built yet”; with no code nearby, “no code at or after this line”.</li>
+      <li><strong>Reference counts.</strong> The adapter counts user breakpoints per address and keeps a separate set of temporary ones (step over, step out, entry). An address is set on the bridge (<code>BREAK SET exec</code>) when the first of them wants it, and removed (<code>BREAK REMOVE</code>) when the last one lets it go. Without single removal, the bridge is cleared and the remaining addresses are set again.</li>
+      <li><strong>Banks.</strong> Two banks can be assembled at the same CPU address. When a line's address is shared, the breakpoint is verified with the message “this address is shared with another bank; only this bank stops”. On a stop, the PRG offset the bridge reports is compared with the one the source map computed for the line: a stop in the other bank resumes the machine without telling VS Code.</li>
+    </ul>
+
+    <h3 id="stops">Interpreting a stop</h3>
+    <ol>
+      <li>Before <code>configurationDone</code> a stop is only remembered: it is the launch pause.</li>
+      <li>A stop on a temporary breakpoint that is not also a user breakpoint is reported as <code>step</code> (or <code>entry</code>), and the temporaries are removed.</li>
+      <li>A stop on a user breakpoint's address in another bank is resumed silently.</li>
+      <li>Otherwise the reason is <code>breakpoint</code> (with <code>hitBreakpointIds</code>), <code>step</code> or <code>pause</code>, with <code>allThreadsStopped</code>.</li>
+    </ol>
+    <p>A <code>RESUMED</code> the adapter did not cause (a click in Mesen2's own window) becomes a <code>continued</code> event. A one-second watchdog ends the session with <code>terminated</code> when the bridge connection drops, and the emulator's <code>Exited</code> event does the same when Mesen2 is closed.</p>
+
+    <h3 id="evaluate">Evaluate</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Input</th><th>Context</th><th>Answer</th></tr></thead>
+      <tbody>
+        <tr><td>A monitor verb (<code>HELP</code>, <code>READ</code>, <code>WRITE</code>, <code>DISASM</code>, <code>BREAK</code>, <code>CPU</code>, <code>STATE</code>, <code>ASSEMBLE</code>, <code>BUILD</code>, <code>ROM</code>, <code>LOAD</code>, <code>UNITS</code>, <code>PAUSE</code>, <code>RESUME</code>, <code>STEP</code>, <code>RESET</code>, <code>PING</code>, <code>?</code>) or any line starting with <code>&gt;</code></td><td>debug console only</td><td>Passed to <code>MonitorSession.Execute</code>; its output lines are the result. See the <a href="monitor.html">monitor</a> for the commands.</td></tr>
+        <tr><td><code>A</code>, <code>X</code>, <code>Y</code>, <code>SP</code>, <code>PS</code>, <code>PC</code></td><td>any</td><td>The register, as <code>$xx</code> (<code>$xxxx</code> for PC, with a memory reference).</td></tr>
+        <tr><td>A name of the build</td><td>any</td><td>Its value, and for an address the byte stored there: <code>$0060  [$01]</code>.</td></tr>
+        <tr><td><code>$0010</code> or <code>0x10</code></td><td>any</td><td>The byte at that address, with a memory reference.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Because <code>supportsEvaluateForHovers</code> is set, hovering a name in the editor while paused shows its value. In the console, anything else fails with “not a symbol, register, address or monitor command (HELP lists the commands)”.</p>
+
+    <h2 id="lsp">Language server</h2>
+    <p><code>LanguageServer</code> gives diagnostics as you type and a hover that shows what a line assembled to. It runs on one worker thread; the reader only queues. <code>initialize</code> answers these capabilities and the server name <code>winasm65</code>:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Capability or method</th><th>Implementation</th></tr></thead>
+      <tbody>
+        <tr><td><code>textDocumentSync</code></td><td>Open/close, full sync (<code>change: 1</code>: the whole text on each change), save without text.</td></tr>
+        <tr><td><code>textDocument/didOpen</code>, <code>didSave</code></td><td>Builds the whole project that governs the file and publishes its diagnostics.</td></tr>
+        <tr><td><code>textDocument/didChange</code></td><td>Keeps the new text; 250 ms after the last change, lists the unsaved text.</td></tr>
+        <tr><td><code>textDocument/didClose</code></td><td>Forgets the text; a file outside any project has its diagnostics cleared.</td></tr>
+        <tr><td><code>textDocument/hover</code> (<code>hoverProvider</code>)</td><td>A JSDoc-style card, below.</td></tr>
+        <tr><td><code>winasm65/listing</code></td><td>Custom request for the <a href="vscode.html#listing">listing column</a>, below.</td></tr>
+        <tr><td><code>initialized</code>, <code>shutdown</code>, <code>exit</code></td><td>The usual life cycle.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>An unknown request is answered with JSON-RPC error <code>-32601</code> (method not found); an unknown notification is ignored. There is no completion, go to definition, references, symbols or formatting. Errors inside a handler are sent as <code>window/logMessage</code>.</p>
+
+    <h3 id="governing">Which project governs a file</h3>
+    <ol>
+      <li>The <code>config.json</code> that lists the file as an input (<code>ProjectConfigLocator</code>, searched from the workspace root). The file is then a <strong>unit</strong>.</li>
+      <li>Otherwise the nearest <code>config.json</code> above the file, up to 8 levels. The file is then treated as an <strong>include</strong>: only a build knows the context it is read in.</li>
+      <li>Otherwise none: the file is assembled on its own, with an empty configuration.</li>
+    </ol>
+    <p>Each project is opened once (<code>ProjectSession.Open</code>) and kept. Its builds put the <code>.symb</code>, <code>.Unsolved</code> and <code>.UnsolvedExpr</code> side files in a scratch directory under the system temp folder, one per project, deleted when the server stops.</p>
+
+    <h3 id="diagnostics">Diagnostics: two sources of truth</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>When</th><th>What runs</th><th>Published to</th></tr></thead>
+      <tbody>
+        <tr><td>Open and save</td><td>The whole project is built with <code>CaptureListing</code>. Exact for every unit and every included file, because the build resolves names across units.</td><td>Every file the build reported on, every file it reported on last time (so a fixed error disappears from a file nobody has open), and the saved file.</td></tr>
+        <tr><td>Typing (250 ms debounce)</td><td>The unsaved text of a <strong>unit</strong> is listed by <code>ProjectSession.ListSourceText</code> against the names the last build saw. Until a build has succeeded, “Undefined symbol” is not reported: the name may be defined in another unit. An include is not analysed while typing.</td><td>That file only.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>A diagnostic covers its whole line; severity is error (1) or warning (2), source <code>winasm65</code>.</p>
+
+    <h3 id="hover">Hover cards</h3>
+    <p><code>HoverCard</code> lays the markdown out like a JSDoc card: the code in a block, a title and one sentence, then <code>@tag</code> lines, then a reference table. The line is listed from the unsaved text, with the CPU of the project's target (the NMOS 6502 when none resolves).</p>
+    <div class="grid-2">
+      <div class="card"><h4>On a mnemonic, or an instruction line</h4><p>The source line; <strong>LDA</strong> — Load A and its summary (<code>InstructionDescriptions</code>); <code>@mode</code> with the syntax of the assembled form; <code>@cycles</code>; <code>@bytes</code> with the bytes and address; <code>@flags</code>. Then every form of the mnemonic: syntax, mode, opcode, bytes, cycles (<code>+p</code> page cross, <code>+b</code> branch taken, <code>+d</code> decimal mode), the assembled form marked ◀.</p></div>
+      <div class="card"><h4>On a name</h4><p><code>NAME = $60</code>, <code>@value</code> in hex and decimal. If the line it is read on assembled to something, that line follows with its <code>@cycles</code> and <code>@bytes</code>. The value comes from the project's symbols, or from a label, constant or <code>.res</code> of the file itself.</p></div>
+    </div>
+    <p>The assembled form is found by matching the row's first byte and length against <code>InstructionDocs</code> and checking that the mnemonic is written on the line, so a <code>.byte $A9, $01</code> row is not mistaken for <code>LDA #$01</code>. Screenshots are on the <a href="vscode.html#hover">VS Code page</a>.</p>
+
+    <h3 id="listing">The <code>winasm65/listing</code> request</h3>
+<pre><code>→ { "textDocument": { "uri": "file:///c%3A/…/BMAN_BANK1.NAS" } }
+← { "rows": [ { "line": 29, "address": 49178, "bytes": "48", "more": false }, … ] }</code></pre>
+    <ul>
+      <li>One row per source line that emitted bytes: the zero-based <code>line</code>, the <code>address</code> and <code>bytes</code> of its first emission, and <code>more</code> when the line emitted several times (a macro, a repeat).</li>
+      <li>A <strong>unit</strong> (or a file outside any project) is listed from its unsaved text, so the column follows the edit.</li>
+      <li>An <strong>include</strong> only exists inside a unit: its rows come from the last successful build, and are empty until there is one.</li>
+    </ul>
+
+    <h3 id="uris">URIs</h3>
+    <p>VS Code escapes the drive colon (<code>file:///c%3A/x</code>), which <code>Uri.LocalPath</code> would leave as <code>/c:/x</code>. <code>PathOf</code> unescapes the path and drops the leading slash by hand; UNC paths keep their host. Diagnostics for an open file are published under the exact URI VS Code used for it.</p>
+
+    <h2 id="limits">Known limits</h2>
+    <ul>
+      <li><strong>One stack frame.</strong> The JSR chain is not reconstructed; the frame is named after the nearest label. <code>stepOut</code> assumes the top of the stack is the return address.</li>
+      <li><strong>No disassembly view.</strong> <code>disassemble</code> is not implemented.</li>
+      <li><strong>Mesen2 only.</strong> The MesenCE bridge does not report stops and is refused. Mesen2 runs as a single instance: close it before pressing F5.</li>
+      <li><strong>Banks.</strong> A stop in a bank is told apart only when both the bridge and the source map know the PRG offset.</li>
+    </ul>
+
+    <h2 id="tests">Tests</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>File</th><th>Covers</th></tr></thead>
+      <tbody>
+        <tr><td><code>DebugSessionTests</code></td><td>The adapter end to end against <code>FakeDebugMachine</code> and the real assembler: launch, breakpoints on labels, stops, step over, banks, shared addresses, memory, the RAM panel's requests, the console, build errors, an emulator that exits, disconnect.</td></tr>
+        <tr><td><code>LanguageServerTests</code></td><td>Diagnostics and their clearing, names from other units, errors in includes, both hover cards, the listing column for units and includes, URIs.</td></tr>
+        <tr><td><code>MessageStreamTests</code></td><td>The framing.</td></tr>
+        <tr><td><code>BuildModeTests</code></td><td><code>--build</code> output against the problem pattern read from <code>package.json</code>.</td></tr>
+        <tr><td><code>GrammarTests</code></td><td>The TextMate grammar colours exactly the mnemonics of the opcode tables and the directives the engine dispatches.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>What no unit test can check is run against the real Mesen2 by <code>tools/mesen2-bridge-check.py</code> (the bridge alone) and <code>tools/dap-smoke.py</code> (the adapter, driven as VS Code drives it). See <a href="testing.html">Tests and tools</a>.</p>
+
+    <footer>
+      <p>Screenshots are taken from the real programs by <code>tools/screenshots/shoot-all.ps1</code>; run it again after a UI change.</p>
+    </footer>
+  </main>
+
+  <aside class="toc" aria-label="On this page"></aside>
+</div>
+</body>
+</html>
