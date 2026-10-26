@@ -105,7 +105,7 @@ update_3d:
         jsr clear3d
 +       lda lives
         bne +
-        jmp enter_over
+        jmp enter_continue
 +       jmp draw3d
 
 ; The ship stays over the floor, all of it on screen.

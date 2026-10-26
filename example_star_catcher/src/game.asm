@@ -18,6 +18,7 @@ OAM         = $0200             ; sprite table, copied to the PPU every frame
 STATE_TITLE = 0
 STATE_PLAY  = 1
 STATE_OVER  = 2
+STATE_CONTINUE = 3              ; the last life went: CONTINUE?, counting down
 
 PHASE_WAVES = 0                 ; enemies come
 PHASE_BOSS  = 1                 ; WARNING, then the boss
@@ -30,6 +31,8 @@ SHIP_MIN_Y  = 112
 SHIP_MAX_Y  = 208
 SHIP_START_Y = 200
 HIT_FRAMES  = 64                ; the ship blinks, and nothing hurts it
+CONTINUE_FROM = 9               ; the countdown's first number
+CONTINUE_FRAMES = 60            ; frames a number shows
 
 MAX_SHOTS   = 3
 SHOT_SPEED  = 5
@@ -110,6 +113,8 @@ score        .res 4             ; four decimal digits, most significant first
 spawn_timer  .res 1
 spawn_delay  .res 1
 delay        .res 1             ; game over: frames before START is accepted
+cont_count   .res 1             ; the continue screen's number, 9 to 0
+cont_3d      .res 1             ; the last life went on the 3D stage
 hit_timer    .res 1
 fire_timer   .res 1
 tmp          .res 1
@@ -240,7 +245,7 @@ MainLoop:
         cmp #STATE_PLAY
         beq @play
         cmp #STATE_OVER
-        beq @over
+        bcs @over               ; STATE_OVER or STATE_CONTINUE
         jsr update_title
         jmp MainLoop
 @play:  jsr update_play
@@ -531,7 +536,7 @@ update_play:
         jsr update_clear
 +       lda lives
         bne +
-        jmp enter_over
+        jmp enter_continue
 +       jmp draw_sprites
 
 ; The sky moves down one line a frame: the picture's first line climbs the
@@ -1160,6 +1165,105 @@ add_point:
         rts
 
 ; ---------------------------------------------------------------------------
+; Continue
+
+; The last life went: a band of the sky, CONTINUE and PRESS START, and a
+; number that counts down from 9, one a second. START plays on, with three
+; lives and a new score, from the start of the level the ship was on; A or B
+; counts down faster; past 0, the game is over.
+enter_continue:
+        lda mode3d              ; screen_off forgets it
+        sta cont_3d
+        jsr screen_off
+        lda #0
+        jsr draw_sky
+        ppu_addr (NT+8*32)      ; rows 8 to 19 blank, their attributes palette 0
+        lda #' '
+        ldx #12*32/4
+-       sta PPUDATA
+        sta PPUDATA
+        sta PPUDATA
+        sta PPUDATA
+        dex
+        bne -
+        ppu_addr (NT+$3C0+2*8)
+        lda #0
+        ldx #3*8
+-       sta PPUDATA
+        dex
+        bne -
+        ppu_addr (NT+11*32+12)
+        ldx #<ContinueText
+        ldy #>ContinueText
+        jsr put_text
+        ppu_addr (NT+16*32+10)
+        ldx #<PressStartText
+        ldy #>PressStartText
+        jsr put_text
+        lda #CONTINUE_FROM
+        sta cont_count
+        lda #CONTINUE_FRAMES
+        sta delay
+        lda #STATE_CONTINUE
+        sta state
+        jsr hide_sprites
+        jmp screen_on
+
+; The text at Y:X into video memory, from where PPUADDR points; ended by 0.
+put_text:
+        stx ptr
+        sty ptr+1
+        ldy #0
+-       lda (ptr),y
+        beq +
+        sta PPUDATA
+        iny
+        bne -
++       rts
+
+update_continue:
+        lda pressed
+        and #BUTTON_START
+        bne @play
+        lda pressed             ; A or B: the next number now
+        and #BUTTON_A|BUTTON_B
+        bne @count
+        dec delay
+        bne @draw
+@count: lda #CONTINUE_FRAMES
+        sta delay
+        dec cont_count
+        bpl @draw
+        jmp enter_over
+@draw:  lda #0                  ; the score, the lives and the number
+        sta oam_index
+        jsr draw_hud_sprites
+        lda #124
+        sta ms_x
+        lda #108
+        sta ms_y
+        lda cont_count
+        clc
+        adc #'0'
+        jsr put_sprite
+        jmp hide_rest
+@play:  lda #3
+        sta lives
+        lda #0
+        sta hit_timer
+        sta fire_timer
+        ldx #3
+-       sta score,x
+        dex
+        bpl -
+        lda #STATE_PLAY
+        sta state
+        lda cont_3d
+        beq +
+        jmp enter_3d
++       jmp leave_3d            ; the vertical level, from its start
+
+; ---------------------------------------------------------------------------
 ; Game over
 
 enter_over:
@@ -1178,7 +1282,11 @@ enter_over:
         jmp screen_on
 
 update_over:
-        lda delay
+        lda state
+        cmp #STATE_CONTINUE
+        bne +
+        jmp update_continue
++       lda delay
         beq @ready
         dec delay
         rts
@@ -1811,3 +1919,5 @@ Wave:
 WarningText:  .asciiz "WARNING"
 LevelText:    .asciiz "LEVEL"
 ClearText:    .asciiz "CLEAR"
+ContinueText: .asciiz "CONTINUE"
+PressStartText: .asciiz "PRESS START"

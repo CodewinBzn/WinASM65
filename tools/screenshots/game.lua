@@ -1,5 +1,6 @@
--- Plays Star Catcher in Mesen2's test runner and saves five pictures: the
--- title, a moment of play, the boss, the 3D stage and the game over screen.
+-- Plays Star Catcher in Mesen2's test runner and saves six pictures: the
+-- title, a moment of play, the boss, the 3D stage, the continue screen and
+-- the game over screen.
 -- shoot-game.ps1 replaces __OUT__ with the folder to write to, and each
 -- __SYM_<name>__ with the address of that variable in src/game.symb.
 --
@@ -8,7 +9,7 @@
 -- nearest enemy. To show the later enemies it starts on level 5, and to reach
 -- the boss in seconds it moves the level's clock on; it takes the boss's life
 -- down to its last phase, and keeps its own lives until the 3D stage's
--- picture is taken. Then it lets them go.
+-- picture is taken. Then it lets them go, and lets the countdown run out.
 
 local out = "__OUT__"
 local frame = 0
@@ -23,6 +24,7 @@ local BOSS_X, BOSS_Y, BOSS_HP, BOSS_T2 = __SYM_boss_x__, __SYM_boss_y__, __SYM_b
 local BOMB_Y = __SYM_bomb_y__
 
 local played, bossAt, bossShot, stageAt, stageShot, overFrame = false, nil, false, nil, false, nil
+local continueFrame = nil
 
 local function rd(address) return emu.read(address, mem) end
 local function wr(address, value) emu.write(address, value, mem) end
@@ -127,6 +129,8 @@ emu.addEventCallback(function()
     end
     if stageShot then wr(LIVES, 0) end
   end
+  if rd(STATE) == 3 and continueFrame == nil then continueFrame = frame end
+  if continueFrame and frame == continueFrame + 90 then shot("game-continue") end
   if rd(STATE) == 2 and overFrame == nil then overFrame = frame end
   if overFrame and frame == overFrame + 30 then
     shot("game-over")

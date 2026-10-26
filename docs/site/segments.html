@@ -494,7 +494,7 @@
     <p>Other failures: a missing file (<code>Input file doesn't exist: …</code>), and a missing <code>ObjectFile</code> (<code>An output object file is required.</code>).</p>
 
     <h3>Why the sizes matter</h3>
-    <p>Each object file holds only the bytes its unit emitted, from its first <code>.org</code> onwards; the gaps between units do not exist on disk. <code>Size</code> recreates them. In the <code>star_catcher.nes</code> image, <code>header.o</code> is the 16-byte header; <code>game.o</code> holds 10,260 bytes of code and data from <code>$C000</code> to <code>$E813</code> and is padded to <code>$3FFA</code>, so <code>vectors.o</code> starts at the file offset that maps to <code>$FFFA</code>:</p>
+    <p>Each object file holds only the bytes its unit emitted, from its first <code>.org</code> onwards; the gaps between units do not exist on disk. <code>Size</code> recreates them. In the <code>star_catcher.nes</code> image, <code>header.o</code> is the 16-byte header; <code>game.o</code> holds 10,537 bytes of code and data from <code>$C000</code> to <code>$E928</code> and is padded to <code>$3FFA</code>, so <code>vectors.o</code> starts at the file offset that maps to <code>$FFFA</code>:</p>
 
     <div class="figure">
       <svg viewBox="0 0 900 170" role="img" aria-label="The star_catcher.nes image: 16-byte header at offset 0, game.o at offset $10 mapping to $C000 to $FFF9, vectors.o at $400A mapping to $FFFA to $FFFF, and 8 KB of tiles, tiles.chr at $4010 and floor.chr at $5010">

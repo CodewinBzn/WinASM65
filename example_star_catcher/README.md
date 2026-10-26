@@ -11,7 +11,9 @@ fire fans, giant meteors that break in two, and whole squadrons. Catch the
 stars for bonus points. After about forty seconds the level's boss comes down
 and fights in three phases: fans of bullets, aimed bursts, then a spiral and
 rings. Break it and a 3D stage follows, the ship seen from behind over a floor
-that runs at it; then the next level, harder. Three hits and the game is over.
+that runs at it; then the next level, harder. Three hits and a countdown
+asks whether to continue: START plays on from the start of the level
+reached, with three lives and a new score; past 0 the game is over.
 START begins a game.
 
 ## Build

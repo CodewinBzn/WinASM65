@@ -15,7 +15,7 @@
     <p class="breadcrumb"><a href="index.html">WinASM65</a> › Overview</p>
     <header class="page">
       <h1>Example game: Star Catcher</h1>
-      <p class="lede">A small NES game written for this documentation, code and graphics alike: a vertical shooter with a 3D stage between its levels, in about 3,250 lines of 6502 assembly, graphics drawn with the <a href="graphics.html">Graphics Designer</a>, and a <code>config.json</code> that puts them together into a 24,592-byte ROM. Every example on these pages comes from it. This page shows how to build and play it, how the project is laid out, how the graphics are made, and walks through the code.</p>
+      <p class="lede">A small NES game written for this documentation, code and graphics alike: a vertical shooter with a 3D stage between its levels, in about 3,400 lines of 6502 assembly, graphics drawn with the <a href="graphics.html">Graphics Designer</a>, and a <code>config.json</code> that puts them together into a 24,592-byte ROM. Every example on these pages comes from it. This page shows how to build and play it, how the project is laid out, how the graphics are made, and walks through the code.</p>
     </header>
 
     <aside class="sources">
@@ -38,7 +38,7 @@
     </aside>
 
     <h2 id="game">The game</h2>
-    <p>A vertical shooter. The starry sky scrolls down past the ship, and its top half ripples like a heat haze: fly with the d-pad, fire with A or B. Meteors fall, saucers zigzag, hunters dive at the ship; on later levels divers stalk it and swoop, turrets aim at it, weavers swing and fire fans, giant meteors break in two, and squadrons come in V and in line. Shoot them, and catch the stars for bonus points. After about forty seconds a warning blinks and the level's boss comes down; it fights in three phases, fans of bullets, then aimed bursts, then a spiral and rings. Break it and a 3D stage follows: the ship, seen from behind, flies over a floor that runs at it, and the enemies grow as they come from the horizon. Then the next vertical level starts, harder. Three hits and the game is over. The code and the graphics are original (no tile, sound or routine is borrowed from another game) and may be reused freely.</p>
+    <p>A vertical shooter. The starry sky scrolls down past the ship, and its top half ripples like a heat haze: fly with the d-pad, fire with A or B. Meteors fall, saucers zigzag, hunters dive at the ship; on later levels divers stalk it and swoop, turrets aim at it, weavers swing and fire fans, giant meteors break in two, and squadrons come in V and in line. Shoot them, and catch the stars for bonus points. After about forty seconds a warning blinks and the level's boss comes down; it fights in three phases, fans of bullets, then aimed bursts, then a spiral and rings. Break it and a 3D stage follows: the ship, seen from behind, flies over a floor that runs at it, and the enemies grow as they come from the horizon. Then the next vertical level starts, harder. Three hits and a countdown asks whether to continue: START plays on from the start of the level reached, with three new lives and the score back at zero; at the end of the countdown the game is over. The code and the graphics are original (no tile, sound or routine is borrowed from another game) and may be reused freely.</p>
     <figure class="shot">
       <a href="img/game-title.png"><img src="img/game-title.png" width="512" height="480" style="image-rendering: pixelated" alt="The title screen: STAR CATCHER, PRESS START, CATCH THE STARS, SHOOT THE INVADERS, A OR B TO FIRE and MADE WITH WINASM65 in white on a black starfield of white dots and yellow crosses, with the blue and red ship near the bottom"></a>
       <figcaption>The title screen, drawn in the designer's Screen editor. Every word is drawn with the game's own font; the starfield is made of two background tiles.</figcaption>
@@ -56,6 +56,10 @@
       <figcaption>The 3D stage, between two vertical levels. The floor is drawn once; turning three colours of its palette makes its bands run at the ship.</figcaption>
     </figure>
     <figure class="shot">
+      <a href="img/game-continue.png"><img src="img/game-continue.png" width="512" height="480" style="image-rendering: pixelated" alt="The continue screen: 0089 and a heart with 0 at the top, CONTINUE, the number 8 and PRESS START in white in the middle of the starfield, with two violet nebulae"></a>
+      <figcaption>The last life went: the number counts down from 9, and START plays on from the start of the level reached.</figcaption>
+    </figure>
+    <figure class="shot">
       <a href="img/game-over.png"><img src="img/game-over.png" width="512" height="480" style="image-rendering: pixelated" alt="The game over screen: SCORE 0009 and a heart with 0 at the top, GAME OVER and PRESS START in the middle of the starfield"></a>
       <figcaption>Game over. The pictures are taken by <code>tools/screenshots/shoot-game.ps1</code>: an autopilot written in Lua plays the game in Mesen2, firing all the time and steering under the lowest enemy or the boss, or on the 3D stage at the nearest enemy; it starts on level 5 and moves the clocks on to reach each picture in seconds (see <a href="testing.html#screenshots">tools/screenshots</a>).</figcaption>
     </figure>
@@ -65,14 +69,14 @@
 <pre><code>compile.bat                    # exports the graphics, deletes the previous outputs, then WinASM65 -l -c config.json
 WinASM65 -l -c config.json     # the same build by hand; -l also writes src\*.lst</code></pre>
     <p>Run the command line from the project folder: on the command line the paths of <code>config.json</code> are relative to the current directory (see <a href="segments.html#config">the config.json reference</a>). Open the ROM in Mesen2, or any NES emulator: mapper 0, 16 KB of program, 8 KB of tiles. <code>compile.bat</code> first runs <code>WinASM65.Designer export gfx</code> when the designer is on the <code>PATH</code>; without it, the exported graphics committed in <code>gfx/</code> are used.</p>
-    <p>In VS Code with the <a href="vscode.html">WinASM65 extension</a>, open the folder and press <strong>F5</strong>: the extension finds <code>config.json</code>, builds the project and starts Mesen2 with the debugger attached. The committed <code>config.json</code> names the emulator in its <code>Emulator</code> section, <code>mesen2</code> at an example path, <code>C:\Emulators\Mesen2\Mesen.exe</code>: point it at your Mesen2, or set the <code>winasm65.emulatorPath</code> setting (or <code>emulatorPath</code> in <code>launch.json</code>), which takes precedence. A breakpoint on line 254 of <code>src/game.asm</code>, the first instruction of <code>NMI</code>, stops at the start of every frame, as on the <a href="vscode.html#debug">VS Code page</a>.</p>
+    <p>In VS Code with the <a href="vscode.html">WinASM65 extension</a>, open the folder and press <strong>F5</strong>: the extension finds <code>config.json</code>, builds the project and starts Mesen2 with the debugger attached. The committed <code>config.json</code> names the emulator in its <code>Emulator</code> section, <code>mesen2</code> at an example path, <code>C:\Emulators\Mesen2\Mesen.exe</code>: point it at your Mesen2, or set the <code>winasm65.emulatorPath</code> setting (or <code>emulatorPath</code> in <code>launch.json</code>), which takes precedence. A breakpoint on line 259 of <code>src/game.asm</code>, the first instruction of <code>NMI</code>, stops at the start of every frame, as on the <a href="vscode.html#debug">VS Code page</a>.</p>
     <div class="table-wrap">
     <table>
       <thead><tr><th>Button</th><th>Does</th></tr></thead>
       <tbody>
-        <tr><td>START</td><td>On the title screen, starts a game. On the game over screen, after two seconds (120 frames), goes back to the title.</td></tr>
+        <tr><td>START</td><td>On the title screen, starts a game. On the continue screen, plays on. On the game over screen, after two seconds (120 frames), goes back to the title.</td></tr>
         <tr><td>D-pad</td><td>Moves the ship two pixels per frame, between x = 8 and x = 232 and between y = 112 and y = 208: the lower half of the screen. On the 3D stage, between x = 8 and x = 224 and between y = 144 and y = 184, over the near floor.</td></tr>
-        <tr><td>A or B</td><td>Fires at once; held, fires again every 8 frames. At most three shots are in the air.</td></tr>
+        <tr><td>A or B</td><td>Fires at once; held, fires again every 8 frames. At most three shots are in the air. On the continue screen, moves the countdown on.</td></tr>
         <tr><td>SELECT</td><td>Read, but not used.</td></tr>
       </tbody>
     </table>
@@ -168,20 +172,20 @@ WinASM65 -l -c config.json     # the same build by hand; -l also writes src\*.ls
 }</code></pre>
     <ul>
       <li><strong><code>Input</code></strong> lists the three units. Each is assembled on its own into an object file beside its source: <code>src/header.o</code>, <code>src/game.o</code>, <code>src/vectors.o</code>. <code>game.asm</code> also writes <code>src/game.symb</code>, the JSON table of its global names.</li>
-      <li><strong><code>Output</code></strong> puts five files end to end. <code>header.o</code> is already 16 bytes, so its <code>"Size": "$10"</code> only guards against a header that grows. <code>game.o</code> holds 10,260 bytes, assembled from <code>.org $C000</code> (the three 1,024-byte screens included); <code>"Size": "$3FFA"</code> (always hexadecimal) pads it with zeros to 16,378 bytes, so that the six bytes of <code>vectors.o</code> fall on <code>$FFFA</code>–<code>$FFFF</code>, the last six bytes of the 16 KB bank. <code>chr/tiles.chr</code> and <code>chr/floor.chr</code>, 4 KB each, are taken as they are: pattern tables 0 and 1.</li>
+      <li><strong><code>Output</code></strong> puts five files end to end. <code>header.o</code> is already 16 bytes, so its <code>"Size": "$10"</code> only guards against a header that grows. <code>game.o</code> holds 10,537 bytes, assembled from <code>.org $C000</code> (the three 1,024-byte screens included); <code>"Size": "$3FFA"</code> (always hexadecimal) pads it with zeros to 16,378 bytes, so that the six bytes of <code>vectors.o</code> fall on <code>$FFFA</code>–<code>$FFFF</code>, the last six bytes of the 16 KB bank. <code>chr/tiles.chr</code> and <code>chr/floor.chr</code>, 4 KB each, are taken as they are: pattern tables 0 and 1.</li>
       <li><strong><code>Emulator</code></strong> is used only to debug: the emulator the VS Code debugger and the monitor start, here Mesen2 at an example path to replace with your own. See <a href="bridges.html">Emulator bridges</a>.</li>
       <li>There is no <code>Target</code> section: the target is <code>raw</code> and the image is written exactly as concatenated, header included. The <a href="segments.html#config-example">complete config.json example</a> builds the same ROM with a <code>Target</code> section that writes the header instead.</li>
     </ul>
     <div class="figure">
-      <svg viewBox="0 0 900 200" role="img" aria-label="The ROM layout: header.o, 16 bytes at file offset $0000; game.o padded to $3FFA bytes at offset $0010, the CPU addresses $C000 to $FFF9, of which 10,260 bytes are code and data; vectors.o, 6 bytes at offset $400A, CPU addresses $FFFA to $FFFF; tiles.chr, 4 KB at offset $4010, and floor.chr, 4 KB at offset $5010. 24,592 bytes in all.">
+      <svg viewBox="0 0 900 200" role="img" aria-label="The ROM layout: header.o, 16 bytes at file offset $0000; game.o padded to $3FFA bytes at offset $0010, the CPU addresses $C000 to $FFF9, of which 10,537 bytes are code and data; vectors.o, 6 bytes at offset $400A, CPU addresses $FFFA to $FFFF; tiles.chr, 4 KB at offset $4010, and floor.chr, 4 KB at offset $5010. 24,592 bytes in all.">
         <text x="20" y="22" class="muted" font-size="12.5">star_catcher.nes: file offsets below the bar, what each part is inside it</text>
         <rect class="box-a" x="20" y="40" width="36" height="74" rx="3"/>
         <text x="38" y="81" text-anchor="middle" font-size="12" font-weight="600">H</text>
         <rect class="box-b" x="56" y="40" width="336" height="74"/>
         <rect class="box-b" x="392" y="40" width="200" height="74" fill-opacity="0.45"/>
         <text x="224" y="70" text-anchor="middle" font-size="12" font-weight="600">code + data</text>
-        <text x="224" y="88" text-anchor="middle" class="muted" font-size="11">$C000–$E813</text>
-        <text x="224" y="104" text-anchor="middle" class="muted" font-size="11">10,260 bytes</text>
+        <text x="224" y="88" text-anchor="middle" class="muted" font-size="11">$C000–$E928</text>
+        <text x="224" y="104" text-anchor="middle" class="muted" font-size="11">10,537 bytes</text>
         <text x="492" y="72" text-anchor="middle" font-weight="600">padded to $3FFA</text>
         <text x="492" y="92" text-anchor="middle" class="muted" font-size="12">zeros up to $FFF9</text>
         <rect class="box-c" x="592" y="40" width="22" height="74"/>
@@ -331,7 +335,7 @@ obj_sx       .res MAX_OBJECTS   ; the 3D stage: an object's middle on screen,
 bomb_x       .res MAX_BOMBS     ; bullets, in 8.8 fixed point:
 bomb_xf      .res MAX_BOMBS     ;   the pixel and its fraction
 …</code></pre>
-    <p><code>.res</code> emits nothing: the names are only addresses, <code>$00</code> to <code>$AA</code> in the zero page. The objects and shots are tables, one byte per slot in each, indexed by X. <code>obj_speed</code> is <code>$72</code>, which is why <code>adc obj_speed,x</code> assembles to the two-byte zero page,X form <code>75 72</code> (<a href="vscode.html#hover">the hover card</a> shows that form). What does not fit, the bullets' eight tables of twelve bytes and the objects' places on the 3D stage, goes to a second <code>.memarea</code> at <code>$0300</code>, after the stack (<code>$0100</code>) and the sprite table (<code>$0200</code>). <code>stage3d.asm</code> gives some of these tables a second name for its own use (<code>obj_z = obj_base</code>, <code>b3_z = bomb_y</code>…): the 3D stage and the vertical levels never run at once.</p>
+    <p><code>.res</code> emits nothing: the names are only addresses, <code>$00</code> to <code>$AC</code> in the zero page. The objects and shots are tables, one byte per slot in each, indexed by X. <code>obj_speed</code> is <code>$74</code>, which is why <code>adc obj_speed,x</code> assembles to the two-byte zero page,X form <code>75 74</code> (<a href="vscode.html#hover">the hover card</a> shows that form). What does not fit, the bullets' eight tables of twelve bytes and the objects' places on the 3D stage, goes to a second <code>.memarea</code> at <code>$0300</code>, after the stack (<code>$0100</code>) and the sprite table (<code>$0200</code>). <code>stage3d.asm</code> gives some of these tables a second name for its own use (<code>obj_z = obj_base</code>, <code>b3_z = bomb_y</code>…): the 3D stage and the vertical levels never run at once.</p>
 
     <h3 id="startup">Start-up</h3>
     <p><code>RESET</code>, at <code>$C000</code>, is where the console starts. It masks interrupts, turns decimal mode off (the NES's 6502 has none anyway), stops the APU frame interrupt, sets the stack, turns the picture and the NMI off, and then waits for the PPU to warm up, which takes two vertical blanks. Between the two waits it clears the 2 KB of RAM:</p>
@@ -350,33 +354,42 @@ bomb_xf      .res MAX_BOMBS     ;   the pixel and its fraction
     <p>Then <code>RESET</code> hides every sprite, loads the palettes, enables the pulse 1 and noise channels (<code>APU_STATUS = %00001001</code>), seeds the random generator and draws the title screen.</p>
 
     <h3 id="loop">Main loop, states and phases</h3>
-    <p>The game is in one of three states. Each has an <code>enter_</code> routine, which draws its screen once, and an <code>update_</code> routine, called once per frame:</p>
+    <p>The game is in one of four states. Each has an <code>enter_</code> routine, which draws its screen once, and an <code>update_</code> routine, called once per frame:</p>
     <div class="figure">
-      <svg viewBox="0 0 900 220" role="img" aria-label="The state machine: STATE_TITLE goes to STATE_PLAY when START is pressed; STATE_PLAY goes to STATE_OVER when lives reach 0; STATE_OVER goes back to STATE_TITLE when START is pressed after 120 frames.">
+      <svg viewBox="0 0 900 370" role="img" aria-label="The state machine: STATE_TITLE goes to STATE_PLAY when START is pressed; STATE_PLAY goes to STATE_CONTINUE when lives reach 0; STATE_CONTINUE goes back to STATE_PLAY when START is pressed, and to STATE_OVER when its countdown goes past 0; STATE_OVER goes back to STATE_TITLE when START is pressed after 120 frames.">
         <defs>
           <marker id="ex-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
           </marker>
         </defs>
-        <rect class="box-a" x="30" y="40" width="200" height="70" rx="10"/>
-        <text x="130" y="68" text-anchor="middle" font-weight="600">Title</text>
-        <text x="130" y="88" text-anchor="middle" class="muted" font-size="12">STATE_TITLE = 0 · update_title</text>
-        <rect class="box-c" x="350" y="40" width="200" height="70" rx="10"/>
-        <text x="450" y="68" text-anchor="middle" font-weight="600">Play</text>
-        <text x="450" y="88" text-anchor="middle" class="muted" font-size="12">STATE_PLAY = 1 · update_play</text>
-        <rect class="box-d" x="670" y="40" width="200" height="70" rx="10"/>
-        <text x="770" y="68" text-anchor="middle" font-weight="600">Game over</text>
-        <text x="770" y="88" text-anchor="middle" class="muted" font-size="12">STATE_OVER = 2 · update_over</text>
-        <path class="line" d="M230,75 L350,75" marker-end="url(#ex-arrow)"/>
-        <text x="290" y="64" text-anchor="middle" font-size="12">START</text>
-        <text x="290" y="96" text-anchor="middle" class="muted" font-size="11">enter_play</text>
-        <path class="line" d="M550,75 L670,75" marker-end="url(#ex-arrow)"/>
-        <text x="610" y="64" text-anchor="middle" font-size="12">lives = 0</text>
-        <text x="610" y="96" text-anchor="middle" class="muted" font-size="11">enter_over</text>
-        <path class="line" d="M770,110 L770,160 L130,160 L130,110" marker-end="url(#ex-arrow)"/>
-        <text x="450" y="152" text-anchor="middle" font-size="12">START, once 120 frames have passed · enter_title</text>
-        <text x="20" y="20" class="muted" font-size="12.5">RESET calls enter_title; MainLoop dispatches on state every frame.</text>
-        <text x="20" y="200" class="muted" font-size="12.5">Each enter_ routine turns the picture off, draws its screen, sets state and turns the picture back on.</text>
+        <rect class="box-a" x="30" y="50" width="200" height="70" rx="10"/>
+        <text x="130" y="78" text-anchor="middle" font-weight="600">Title</text>
+        <text x="130" y="98" text-anchor="middle" class="muted" font-size="12">STATE_TITLE = 0 · update_title</text>
+        <rect class="box-c" x="350" y="50" width="220" height="70" rx="10"/>
+        <text x="460" y="78" text-anchor="middle" font-weight="600">Play</text>
+        <text x="460" y="98" text-anchor="middle" class="muted" font-size="12">STATE_PLAY = 1 · update_play</text>
+        <rect class="box-b" x="350" y="200" width="220" height="70" rx="10"/>
+        <text x="460" y="228" text-anchor="middle" font-weight="600">Continue</text>
+        <text x="460" y="248" text-anchor="middle" class="muted" font-size="12">STATE_CONTINUE = 3 · update_continue</text>
+        <rect class="box-d" x="670" y="200" width="200" height="70" rx="10"/>
+        <text x="770" y="228" text-anchor="middle" font-weight="600">Game over</text>
+        <text x="770" y="248" text-anchor="middle" class="muted" font-size="12">STATE_OVER = 2 · update_over</text>
+        <path class="line" d="M230,85 L350,85" marker-end="url(#ex-arrow)"/>
+        <text x="290" y="74" text-anchor="middle" font-size="12">START</text>
+        <text x="290" y="106" text-anchor="middle" class="muted" font-size="11">enter_play</text>
+        <path class="line" d="M410,120 L410,200" marker-end="url(#ex-arrow)"/>
+        <text x="400" y="156" text-anchor="end" font-size="12">lives = 0</text>
+        <text x="400" y="172" text-anchor="end" class="muted" font-size="11">enter_continue</text>
+        <path class="line" d="M510,200 L510,120" marker-end="url(#ex-arrow)"/>
+        <text x="520" y="156" font-size="12">START: 3 lives, same level</text>
+        <text x="520" y="172" class="muted" font-size="11">leave_3d or enter_3d</text>
+        <path class="line" d="M570,235 L670,235" marker-end="url(#ex-arrow)"/>
+        <text x="620" y="224" text-anchor="middle" font-size="12">past 0</text>
+        <text x="620" y="256" text-anchor="middle" class="muted" font-size="11">enter_over</text>
+        <path class="line" d="M770,270 L770,310 L130,310 L130,120" marker-end="url(#ex-arrow)"/>
+        <text x="450" y="302" text-anchor="middle" font-size="12">START, once 120 frames have passed · enter_title</text>
+        <text x="20" y="24" class="muted" font-size="12.5">RESET calls enter_title; MainLoop dispatches on state every frame.</text>
+        <text x="20" y="350" class="muted" font-size="12.5">Each enter_ routine turns the picture off, draws its screen, sets state and turns the picture back on.</text>
       </svg>
     </div>
 <pre><code>MainLoop:
@@ -386,13 +399,14 @@ bomb_xf      .res MAX_BOMBS     ;   the pixel and its fraction
         cmp #STATE_PLAY
         beq @play
         cmp #STATE_OVER
-        beq @over
+        bcs @over               ; STATE_OVER or STATE_CONTINUE
         jsr update_title
         jmp MainLoop
 @play:  jsr update_play
         jmp MainLoop
 @over:  jsr update_over
         jmp MainLoop</code></pre>
+    <p><code>bcs</code> takes the two states from 2 up; <code>update_over</code> sends the continue screen on to <code>update_continue</code>. When the last life goes, <code>enter_continue</code> shows a band of the sky with <code>CONTINUE</code>, a number and <code>PRESS START</code>, written into the nametable with the picture off, the number in a sprite. The number counts down from 9, one a second; A or B moves it on at once. START gives three lives and a new score, and starts again the level the ship was on, from its beginning: a vertical one through <code>leave_3d</code>, the 3D stage through <code>enter_3d</code>, depending on <code>cont_3d</code>, which <code>enter_continue</code> saved from <code>mode3d</code> before <code>screen_off</code> cleared it. Past 0, <code>enter_over</code>.</p>
     <p><code>@play</code> and <code>@over</code> are local labels: they belong to <code>MainLoop</code>, and other routines reuse the same names (<code>@loop</code> appears in fourteen of them). Within play, a level goes through three phases, in <code>phase</code>: <code>PHASE_WAVES</code>, while enemies come; <code>PHASE_BOSS</code>, the warning then the boss; <code>PHASE_CLEAR</code>, after it broke. On the 3D stage, <code>mode3d</code> is set and <code>update_3d</code> runs instead, with only the first and the last phase. <code>update_play</code> runs the frame:</p>
 <pre><code>update_play:
         lda mode3d
@@ -740,7 +754,7 @@ SkyNametable: .byte &gt;NT, &gt;NT_LOW</code></pre>
       <tbody>
         <tr><td><code>.include</code></td><td><code>.include "nes.inc"</code>, line 9 of <code>game.asm</code>: registers, buttons and macros; <code>bullets.asm</code>, <code>mutants.asm</code> and <code>stage3d.asm</code>, parts of the same unit; the seven exports of <code>../gfx</code> in the data.</td><td><a href="syntax.html#directives">Directives</a></td></tr>
         <tr><td>Macros with and without a parameter</td><td><code>wait_vblank</code> (start-up, <code>screen_off</code>, <code>screen_on</code>); <code>ppu_addr address</code> (<code>load_palette_set</code>, <code>load_nametable</code>, <code>draw_hud</code>).</td><td><a href="syntax.html#macros">Macros</a></td></tr>
-        <tr><td><code>.memarea</code> and <code>.res</code></td><td>The zero-page variables, <code>frame_ready</code> at <code>$00</code> to <code>shot_h</code> at <code>$A8</code>–<code>$AA</code>, tables of <code>MAX_OBJECTS</code> and <code>MAX_SHOTS</code> bytes among them; a second area at <code>$0300</code> for the bullets' tables.</td><td><a href="syntax.html#directives">Directives › Placement</a></td></tr>
+        <tr><td><code>.memarea</code> and <code>.res</code></td><td>The zero-page variables, <code>frame_ready</code> at <code>$00</code> to <code>shot_h</code> at <code>$AA</code>–<code>$AC</code>, tables of <code>MAX_OBJECTS</code> and <code>MAX_SHOTS</code> bytes among them; a second area at <code>$0300</code> for the bullets' tables.</td><td><a href="syntax.html#directives">Directives › Placement</a></td></tr>
         <tr><td><code>.align</code></td><td><code>.align 256</code> before <code>raster_wave</code> and <code>Wave</code>, so that the timed loop never crosses a page.</td><td><a href="syntax.html#directives">Directives › Placement</a></td></tr>
         <tr><td><code>.org</code></td><td><code>$0000</code> in <code>header.asm</code>, <code>$C000</code> in <code>game.asm</code>, <code>$FFFA</code> in <code>vectors.asm</code>.</td><td><a href="syntax.html#directives">Directives › Placement</a></td></tr>
         <tr><td>Local labels <code>@name</code></td><td><code>@clear</code>, <code>@play</code>, <code>@over</code>, <code>@bit</code>, <code>@shoot</code>, <code>@find</code>, <code>@carry</code>, and <code>@loop</code> in fourteen routines.</td><td><a href="syntax.html#labels">Labels</a></td></tr>
@@ -756,7 +770,7 @@ SkyNametable: .byte &gt;NT, &gt;NT_LOW</code></pre>
         <tr><td>Names that differ only in case are the same name</td><td>Why <code>stage3d.asm</code> has <code>SHOT_START_Z</code> beside the table <code>shot_z</code>, and <code>SizeHalf</code> beside the routine <code>half</code> of <code>bullets.asm</code>.</td><td><a href="syntax.html#line">Lines</a></td></tr>
         <tr><td>Indirect <code>jmp (ptr)</code> and <code>.word</code> tables of labels</td><td><code>MoveKind</code>, each kind's move, called through <code>jsr @call</code>.</td><td><a href="syntax.html#modes">Addressing modes</a></td></tr>
         <tr><td>Forward references</td><td><code>lda #SPR_MS_SHIP</code>, <code>cpy #BG_PLAY_WIDTH</code> and the <code>KindSprite</code> table, constants defined by the exports included further down; <code>jsr</code> to routines further down.</td><td><a href="syntax.html#constants">Constants</a>, <a href="assembler.html">Assembly pipeline</a></td></tr>
-        <tr><td>Zero page addressing chosen automatically</td><td><code>adc obj_speed,x</code> → <code>75 72</code> (2 bytes) rather than the absolute,X form <code>7D 72 00</code>; <code>lda bomb_y,x</code>, at <code>$0300</code> and up, keeps the absolute form.</td><td><a href="syntax.html#modes">Addressing modes</a></td></tr>
+        <tr><td>Zero page addressing chosen automatically</td><td><code>adc obj_speed,x</code> → <code>75 74</code> (2 bytes) rather than the absolute,X form <code>7D 74 00</code>; <code>lda bomb_y,x</code>, at <code>$0300</code> and up, keeps the absolute form.</td><td><a href="syntax.html#modes">Addressing modes</a></td></tr>
         <tr><td>Units, <code>Dependencies</code> and <code>.symb</code></td><td><code>vectors.asm</code> takes <code>NMI</code>, <code>RESET</code> and <code>IRQ</code> from <code>game.symb</code>.</td><td><a href="segments.html#config-input">Input[]</a>, <a href="segments.html#order">How units are resolved</a></td></tr>
         <tr><td><code>Size</code> padding in <code>Output</code></td><td><code>"$10"</code> for the header, <code>"$3FFA"</code> for the program; the two CHR files taken as they are.</td><td><a href="segments.html#combine">Combining files</a></td></tr>
       </tbody>

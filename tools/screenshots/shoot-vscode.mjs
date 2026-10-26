@@ -104,18 +104,18 @@ const editorPart = '.part.editor';
 
 try {
   await step('editor', async () => {
-    await openFile(page, 'game.asm', 721);
+    await openFile(page, 'game.asm', 726);
     await page.waitForTimeout(4000); // the language server's first assembly
     await shot(page, 'vscode-editor');
   });
 
   await step('hover on an instruction', async () => {
-    await hoverAt(page, 725, 10);
+    await hoverAt(page, 730, 10);
     await shot(page, 'vscode-hover-instruction', await box(page, editorPart), true);
   });
 
   await step('hover on a name', async () => {
-    await hoverAt(page, 725, 14);
+    await hoverAt(page, 730, 14);
     await shot(page, 'vscode-hover-symbol', await box(page, editorPart), true);
     await page.keyboard.press('Escape');
   });
@@ -140,7 +140,7 @@ try {
 
   await step('diagnostics', async () => {
     await page.keyboard.press('Control+G');
-    await page.keyboard.type('724');
+    await page.keyboard.type('729');
     await page.keyboard.press('Enter');
     await page.keyboard.press('Home');
     await page.keyboard.press('Home');
@@ -167,7 +167,7 @@ try {
 
   if (mesen) {
     await step('debug session', async () => {
-      await openFile(page, 'game.asm', 254); // the first instruction of NMI
+      await openFile(page, 'game.asm', 259); // the first instruction of NMI
       await page.keyboard.press('F9');
       await page.keyboard.press('F5');
       await page.getByText(/Paused on breakpoint/i).first().waitFor({ timeout: 90000 });
