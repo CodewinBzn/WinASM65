@@ -95,7 +95,7 @@ code --install-extension winasm65-win32-x64-0.4.2.vsix --force</code></pre>
 
     <h2 id="diagnostics">Diagnostics</h2>
     <figure class="shot">
-      <a href="img/vscode-diagnostics.png"><img src="img/vscode-diagnostics.png" alt="Three lines inserted at line 738 of game.asm, unsaved and underlined: LDX ($10),Y, LDA #(1+ and BNE NOWHERE; the Problems panel lists LDX does not support indirect indexed (zp),Y addressing (Ln 738), Malformed expression '(1+' (Ln 739), Undefined symbol: NOWHERE (Ln 740) and a syntax error on the line the unclosed parenthesis runs into"></a>
+      <a href="img/vscode-diagnostics.png"><img src="img/vscode-diagnostics.png" alt="Three lines inserted at line 738 of game.asm, unsaved and underlined: LDX ($10),Y, LDA #(1+ and BNE NOWHERE; the Problems panel lists LDX does not support indirect indexed (zp),Y addressing (Ln 738), Malformed expression '(1+' (Ln 739), Undefined symbol: NOWHERE (Ln 740)"></a>
       <figcaption>Errors appear as you type, before the file is saved. Each names the rule that was broken.</figcaption>
     </figure>
     <ul>
@@ -113,7 +113,7 @@ code --install-extension winasm65-win32-x64-0.4.2.vsix --force</code></pre>
         <figcaption>Right-click → <strong>WinASM65</strong> → <strong>Show Listing</strong>. The same submenu is in the Explorer and the line-number margin; a button in the editor title bar does the same.</figcaption>
       </figure>
       <figure class="shot">
-        <a href="img/vscode-listing.png"><img src="img/vscode-listing.png" alt="game.asm, lines 728 to 766, with a grey column left of the source: C4EB 9D 0C 03, C4EE 60, C4EF A2 05 and so on, C4FC 79 43 8A on line 739, blank on the label move_rocks, on comments and on empty lines"></a>
+        <a href="img/vscode-listing.png"><img src="img/vscode-listing.png" alt="game.asm, lines 732 to 772, with a grey column left of the source: C4F1 BD 06 03, C4F4 F0 12, C4F6 FE 0C 03 and so on, C4FC 79 43 8A on line 739, blank on the label move_rocks, on comments and on empty lines"></a>
         <figcaption>Each line shows the address and the bytes it assembled to, as in a <code>.lst</code> file. Lines without code get a blank column, so the source stays aligned.</figcaption>
       </figure>
     </div>
@@ -184,7 +184,7 @@ code --install-extension winasm65-win32-x64-0.4.2.vsix --force</code></pre>
     <h2 id="ram">Memory panel</h2>
     <div class="grid-2">
       <figure class="shot">
-        <a href="img/vscode-ram.png"><img src="img/vscode-ram.png" alt="The Memory panel on its RAM view: Refresh button, Live checkbox, status stopped · SP=$FA · 0 byte(s) changed, a legend, then the zero page (5A 78 C8 at $0006, E1 C9 at $0015) and the stack in hex rows"></a>
+        <a href="img/vscode-ram.png"><img src="img/vscode-ram.png" alt="The Memory panel on its RAM view: Refresh button, Live checkbox, status stopped · SP=$FA · 0 byte(s) changed, a legend, then the zero page (20 84 at $0005, 80 at $000E) and the stack in hex rows"></a>
         <figcaption>The RAM view, <code>$0000-$07FF</code> of the CPU's memory, in hex and ASCII, the zero page and stack shaded.</figcaption>
       </figure>
       <div>
@@ -199,7 +199,7 @@ code --install-extension winasm65-win32-x64-0.4.2.vsix --force</code></pre>
       </div>
     </div>
     <figure class="shot">
-      <a href="img/vscode-memory-palettes.png"><img src="img/vscode-memory-palettes.png" alt="The Memory panel titled Memory — Nintendo Entertainment System, its list set to Palettes (PAL) $0000-$001F, Refresh and Live; status stopped, 0 byte(s) changed; two rows of 16 bytes: 0F 30 16 28 four times, then 0F 30 11 16, 0F 28 38 30, 0F 07 17 27, 0F 27 37 30"></a>
+      <a href="img/vscode-memory-palettes.png"><img src="img/vscode-memory-palettes.png" alt="The Memory panel titled Memory — Nintendo Entertainment System, its list set to Palettes (PAL) $0000-$001F, Refresh and Live; status stopped, 0 byte(s) changed; two rows of 16 bytes: 0F 30 10 00, 0F 00 10 30, 0F 07 17 27, 0F 30 10 00, then 0F 30 21 11, 0F 16 27 38, 0F 07 17 27, 0F 16 27 37"></a>
       <figcaption>Another memory of the same machine: Rock Patrol's palettes, read from the PPU's palette RAM through the bridge's <code>PAL</code> space. Four background palettes, then the ship's, the shot's, the rock's and the burst's.</figcaption>
     </figure>
     <p>The panel talks only to the debug adapter, through <code>session.customRequest</code>:</p>
