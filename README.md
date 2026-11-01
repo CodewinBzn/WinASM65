@@ -1,1 +1,578 @@
-(removed: private content)
+# WinASM65
+
+  Assembler for 6502 based systems
+by CodewinBzn.
+
+Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
+
+**Documentation:** open [docs/site/index.html](docs/site/index.html), a website that explains every module of the solution, with screenshots (retaken by `tools/screenshots/shoot-all.ps1`).
+
+**Example:** [`example_rock_patrol/`](example_rock_patrol/README.md) is a small original NES game, code and graphics, built with WinASM65 and used throughout the documentation.
+
+------------------------------
+## Build
+
+```bash
+dotnet build          # compile the solution
+dotnet test           # run the test suite
+dotnet run --project WinASM65 -- -h
+```
+
+`dotnet publish -c Release -r win-x64 --self-contained true -o build/`
+produces a standalone `WinASM65.exe` that runs without a .NET install.
+
+------------------------------
+## Monitor
+
+`WinASM65.Monitor` assembles a source, places it in a running emulator, reads it
+back, and places it again elsewhere without reassembling. The emulator is any one
+with a bridge (Mesen2 and MesenCE are built in); see the documentation's Monitor
+and Emulator bridges pages.
+
+```bash
+dotnet run --project WinASM65.Monitor -- --tui --emulator-path "C:\...\Mesen.exe" --rom game.nes
+```
+
+------------------------------
+## VS Code
+
+`vscode-extension/` is a VS Code extension for WinASM65 projects:
+- Press F5 to build the project, start the emulator `config.json` names (Mesen2 2.1.1 for the NES examples), and debug in the sources: breakpoints, step, registers, and the Memory panel, whose views (RAM, and on the NES the palettes, nametables, OAM and tiles) come from the machine.
+- Errors are reported as you type; hovers describe instructions and names, with their cycles.
+- A build task fills the Problems panel.
+- Sources get syntax highlighting.
+- AI agents in VS Code get the WinASM65 tools (below).
+
+The extension starts `WinASM65.Tooling` in one of these modes:
+- `--dap` for the debug adapter
+- `--lsp` for the language server
+- `--build <config.json>` for the build task
+- `--mcp` for the MCP server
+
+```bash
+cd vscode-extension
+npm install
+npm run package        # publishes WinASM65.Tooling into bin/ and builds the .vsix
+code --install-extension winasm65-win32-x64-0.4.2.vsix
+```
+
+To try the extension from the repository without packaging it, open `vscode-extension/` in VS Code and press F5. It uses the debug build of `WinASM65.Tooling`.
+
+Two scripts check the parts that only a real emulator can test. Close any open Mesen2 first, because it runs as a single instance:
+
+```bash
+python tools/mesen2-bridge-check.py <Mesen.exe> example_rock_patrol/rock_patrol.nes C0DF   # the NMI of the built game
+python tools/dap-smoke.py WinASM65.Tooling/bin/Debug/net8.0/WinASM65.Tooling.dll <config.json> <source> <line>
+```
+
+------------------------------
+## Graphics Designer
+
+`graphics-extension/` is a second extension, the WinASM65 Graphics Designer: tile
+sets, palettes, screens, metatile maps, metasprites and animations drawn in VS Code,
+exported as sources and binaries the assembler includes, shown in hovers of the
+code, and written live into the running game. `WinASM65.Designer` exports, renders
+and imports the same assets from the command line:
+
+```bash
+dotnet run --project WinASM65.Designer -- export example_rock_patrol/gfx
+cd graphics-extension
+npm install
+npm run package        # publishes WinASM65.Designer into bin/ and builds the .vsix
+code --install-extension winasm65-graphics-win32-x64-0.2.0.vsix
+```
+
+------------------------------
+## AI assistants
+
+`WinASM65.Tooling --mcp` is a Model Context Protocol server: an assistant (Claude
+Code, VS Code's agents, Continue, Claude Desktop…) can build, assemble, debug in
+the emulator, read and write memory, and draw and export graphics with it.
+
+```bash
+claude mcp add winasm65 -- C:\...\WinASM65.Tooling.exe --mcp
+```
+
+------------------------------
+## Command line 
+
+### Usage 
+
+		WinASM65 [-f source] [-o object] [-t system] [-cpu cpu] [-format fmt] [-l] [-c config] [-h]
+
+### Options
+		-h, -help		Show help
+		-l 			Create listing (don't specify the file name)
+		-c 			Assemble one or multiple segments
+					Combine assembled segments/binary files
+		-f			Source file
+		-o			Object file
+
+### Target system options
+
+		-t <system>		Target system (nes, c64, apple2, atari8, bbc, ...).
+				Use `-t list` to enumerate every known system.
+		-cpu <cpu>		CPU override: 6502, 6502x (stable illegal opcodes), 65c02, r65c02 (Rockwell bit instructions), w65c02 (+ STP, WAI).
+				Defaults to the target system's CPU.
+		-format <fmt>		Output format override: bin, ines, prg, xex,
+				a2bin, rom, o65, ihex, srec.
+				Defaults to the target system's format.
+
+A target selects three things at once: the CPU variant, the default assembly
+address, and the executable container that gets written. When no target is
+given, WinASM65 behaves as `raw`: CPU 6502, no load address, plain binary.
+
+```bash
+WinASM65 -t c64  -f game.asm -o game.prg
+WinASM65 -t nes  -f game.asm -o game.nes
+WinASM65 -t apple2e -f game.asm -o game.bin
+WinASM65 -t c64 -format ihex -f game.asm -o game.ihex
+WinASM65 -t list
+```
+
+Each target also predefines that system's hardware registers, so you can use
+them as symbols without declaring them yourself:
+
+```asm
+        lda PPUCTRL        ; NES
+        lda #<PPU_SCROLL
+```
+
+The same values can be set from a configuration file via the `Target` section.
+The `-t`, `-cpu` and `-format` flags win over the corresponding `Target` fields,
+so you can keep one config file and switch systems from the command line.
+
+Note that `LoadAddress` and `RunAddress` have no command-line equivalent, so a
+value set in `Target` always applies, even when `-t` selects a different system.
+
+### Other verbs
+
+| Verb | What it does |
+|---|---|
+| `WinASM65 link <module.w65>...` | Links modules into a flat image. |
+| `WinASM65 archive` | Builds a `.w65a` archive out of modules. |
+| `WinASM65 view <module.w65>` | Writes an offline HTML view of segments and relocations. |
+| `WinASM65 geos <module.w65>...` | Links modules into a GEOS application on a D64 image. |
+| `WinASM65 basic -f <program.bas>` | Tokenises a BASIC program, bare or in a container. |
+
+------------------------------
+## BASIC programs
+
+These systems have no executable to produce. What a person writes is a
+program, and what the interpreter reads is a file of tokens, so the verb is not
+"assemble" but "tokenise":
+
+```bash
+WinASM65 basic -f game.bas -o game.bin                      # the program, as it sits in memory
+WinASM65 basic -f game.bas -o game.po  -format prodos       # a ProDOS text file
+WinASM65 basic -f game.bas -o game.dsk -format dos33        # an Apple II DOS 3.3 disk image
+WinASM65 basic -f game.bas -o game.bin -dialect waterloo
+WinASM65 basic -f game.bas -o game.bin -dialect bbc -list game.lst
+```
+
+`-dialect` takes `applesoft`, `waterloo` or `bbc`, and defaults to `applesoft`.
+`-format` takes `bin`, `prodos`, `dos32` or `dos33`, and defaults to `bin`:
+the program itself, which is what sits in memory at the load address. The
+ProDOS and DOS containers hold an Applesoft program, so they are refused for
+the other two dialects rather than producing a file the machine rejects.
+
+`-list` writes the program back as text, read out of the file that was written.
+That is the round trip, and it is the only proof the file is right. Note that
+the listing is the program's bytes rather than the original source: an
+Applesoft string comes back as its length and its characters, a BBC BASIC line
+reference as its three bytes, because that is how the files hold them.
+
+------------------------------
+## Output formats
+
+| Format  | Container                                                        |
+|---------|------------------------------------------------------------------|
+| `bin`   | Raw bytes, no header. Default.                                    |
+| `ines`  | iNES ROM: 16-byte header, padded PRG and CHR banks.              |
+| `prg`   | Commodore PRG: little-endian load address, then the code.        |
+| `xex`   | Atari XEX: segment with start/end addresses, optional run address.|
+| `a2bin` | Apple II binary: load address and length, then the code.         |
+| `rom`   | ROM padded to a fixed size.                                       |
+| `o65`   | o65 object header with one text segment.                          |
+| `ihex`  | Intel HEX, for programmers and EPROM burners.                     |
+| `srec`  | Motorola S-record, for programmers and EPROM burners.             |
+| `bbc`   | BBC Micro binary: code header, then the code.                     |
+| `tube`  | 6502 second processor: the code, for the Tube address space.     |
+| `prodos`| ProDOS load file on a volume, 512-byte blocks.                    |
+| `dos32` | Apple II disk image in DOS 3.2 order, 13 sectors per track.      |
+| `dos33` | Apple II disk image in DOS 3.3 order, 16 sectors per track.      |
+
+### Load address and `.org`
+
+Formats that carry a load address prefer the address the code was actually
+assembled at over the target's default. So `.org` always wins:
+
+```asm
+        .org $0800        ; C64 PRG header will contain $0800
+        lda #$00
+        rts
+```
+
+If you omit `.org`, the assembler starts at the target's load address, which is
+usually what you want:
+
+```asm
+        lda #$00         ; C64, assembles at $0801
+        rts
+```
+
+## Assemble segments
+
+### JSON File format 
+```
+{
+	"Target": {
+		"System": "c64",
+		"Cpu": "6502",
+		"Format": "prg",
+		"LoadAddress": "$0801",
+		"RunAddress": "$0801",
+		"DefineHardwareSymbols": true
+	},
+	"Input": [
+		  	{
+				"FileName": "path_to_main_file_seg1",
+				"OutputFile": "path_to_seg1_output_file",
+				"Dependencies": ["path_to_main_file_seg2"]
+		  	},
+		  	{
+				"FileName": "path_to_main_file_seg2",*
+				"OutputFile": "path_to_seg2_output_file",
+				"Dependencies": ["path_to_main_file_seg1"]			
+		  	},
+	          	{
+				"FileName": "path_to_main_file_seg3",
+				"OutputFile": "path_to_seg3_output_file",
+				"Dependencies": []			
+		  	},
+		   	......
+		]
+}
+
+```
+
+The `Target` section is optional. Every field is optional too, and each one
+overrides the value coming from the named system. Addresses accept the same
+number formats as source code, so `"$0801"` and `2049` are equivalent.
+
+The `-t`, `-cpu` and `-format` flags override whatever the `Target` section
+says, so you can keep one config file and switch systems from the command line.
+
+### iNES options
+
+When the target or format is `ines`, the header can be tuned in the same
+section:
+
+```
+{
+	"Target": {
+		"System": "nes",
+		"Ines": {
+			"PrgBanks": 2,
+			"ChrBanks": 1,
+			"Mapper": 0,
+			"Mirroring": "vertical",
+			"Battery": false
+		}
+	}
+}
+```
+
+### Dependencies
+If a segment refers to labels, variables ... or to routines declared in other segments 
+then it must mention them in this array as ["path_to_main_file_seg1", .....].
+
+### OutputFile
+The OutputFile is optional.
+
+## Combine assembled segments / Binary files
+### JSON File format:
+```
+{
+	"Output": { 	
+			"ObjectFile": "final_object_file",
+			"Files": 
+			[
+				{
+					"FileName": "path_to_seg1_output_file",
+					"Size": "$hex"
+				},
+				{
+					"FileName": "path_to_seg2_output_file",
+					"Size": "$hex"
+				},
+				{
+					"FileName": "path_to_seg3_output_file"			
+				},
+				....
+			]
+		}
+}
+```
+
+The Segments are declared in the order of their insertion in the final object file.
+
+### Size
+The size of the segment object file.
+If the size of the assembled segment is less then the declared size then the assembler will 
+fill the rest of bytes with the value $00 .
+
+
+## Syntax
+
+The complete reference is [docs/site/syntax.html](docs/site/syntax.html). Besides what this section describes, the assembler accepts:
+- character literals `'A'` with escapes, and strings with `\n \t \0 \" \xNN`, commas and semicolons;
+- `ASL A` as well as `ASL`, and `*` as the program counter (`jmp *`, `*= $C000`);
+- local labels `@loop` (scoped to the previous global label) and asm6-style anonymous labels `-` / `+`;
+- `NAME EQU value`, `NAME .equ value` (constant), `NAME .set value` (redefinable);
+- `.db .dw .addr .asciiz .lobytes .hibytes .dsb .dsw .pad .align .elseif .error .warning .assert`, and `.incbin "f", offset, length`;
+- the CPUs `6502x` (stable illegal opcodes), `r65c02` (BBR/BBS/RMB/SMB) and `w65c02` (+ STP/WAI).
+
+Errors that used to be silent are reported: unknown instruction, mode or directive, invalid expression, division by zero.
+
+- Comments begin with a semicolon (;), or run from /* to */, inside a line or over several.
+```
+lda #$00 	; this is a comment
+/* this one
+   spans lines */
+```
+
+- Labels are declared in two ways. 
+
+- before an instruction 
+```
+			ldx #$00
+	label 	        lda $4000, x
+			cpx #$10
+			bne label
+```			
+- Alone in a line, A colon (:) following a label is mandatory
+```
+		ldx #$00
+label:
+	 	lda $4000, x
+		cpx #$10
+		bne label
+```		
+
+### Numbers
+- Hexadecimal numbers begin with '$'.
+- Binary numbers begin with '%'.
+- Decimal.
+
+### Operand range
+
+Instruction operands must fit the field they are encoded in. Values outside that range are a
+hard error: the assembler reports it and the build fails, instead of silently truncating the
+value as it did before.
+
+- One-byte operand: -128 to 255 (`lda #$ff`, `lda #$7F`, `lda #$80`)
+- Two-byte operand: -32768 to 65535 (`jmp $C000`)
+
+Negative values are accepted and encoded in two's complement, so `lda #-1` still assembles to
+`A9 FF`. Sources that relied on the old truncation (for example `lda #300` silently becoming
+`lda #$2C`) no longer assemble and must be corrected.
+
+### Assembler directives
+
+#### .ORG / .org
+
+- Set the starting address of a segment.
+- To use only once in each segment.
+- Accepts expressions.
+```
+	.org $c000
+lda #$00	
+```
+
+#### .MEMAREA / .memarea  
+
+- Set the starting address of a memory area for 
+memory reservation (accepts expressions).
+
+#### .RES / .res 
+Reserve a number of bytes (accepts expressions).
+
+```
+	.memarea $00  ; zero page
+player_posx  .res 1
+player_pos_y .res 1
+
+ram = $0400
+	.memarea ram
+nbr_coins = 15	
+coins_pos_x .res nbr_coins  ; to store posx of coins  
+coins_pos_y .res nbr_coins  ; to store posy of coins
+```
+
+#### .INCBIN / .incbin
+- Add the content of a binary file to the assembly output.
+```
+.incbin "path_to_binary_file"
+```
+#### .INCLUDE / .include
+- Assemble another source file as if it were part of the current source.
+```
+.include "path_to_source_file"
+```
+
+#### .BYTE/.byte, .WORD/.word
+- Emit byte(s) or word(s).
+- Multiple arguments are separated by commas.
+- Accept expressions.
+```
+RED = $06
+palette:
+.byte $00, $10, RED + 4, $5d
+```
+
+#### Strings
+```
+lda #"A"
+
+.byte "A", "B"
+.byte "NES"
+myString: 
+	.byte "Hello World"		
+```
+#### .IFDEF/.ifdef,  .IFNDEF/.ifndef
+Conditional assembly
+- Process a block of code if a symbol has been defined / not defined.
+```
+.ifdef _debug_
+	.
+	.
+	.
+.else 
+	.
+	.
+	.
+.endif
+
+```
+#### .IF/.if
+Conditional assembly
+- Process a block of code if the logical expression is evaluated to true.
+- The expression must be a constant expression, that is, all operands must be defined.
+```
+.if expression
+	.
+	.
+	.
+.else 
+	.
+	.
+	.
+.endif
+
+```
+
+
+#### .MACRO/.macro
+-  Define a macro.  Macro arguments are comma separated.
+- .macro name args...
+```
+.macro add @a, @b
+	clc 
+	lda @a
+	adc @b
+.endmacro
+
+red_color = $85
+add #red_color, #$00	
+```
+
+#### .REP/.ENDREP
+-  Repeat a block of code constant number of times.
+- The command is followed by a constant expression that tells how many times the commands in the body should get repeated.
+```
+;clear memory
+clrmem:
+  LDA #$00
+  {
+    mem = $0000
+    .rep 8
+      STA mem, x
+      mem = mem + $0100
+    .endrep  
+  }
+  INX
+  BNE clrmem
+
+;fill the remaining bytes of the bank
+lastbyte:
+.rep $2000 - (lastbyte - $c000) 
+	.byte $ff
+.endrep
+```
+
+#### .END/.end
+-  Forced end of assembly. Assembly stops at this point, even if the command is read from an include file.
+
+### Expressions
+#### Supported operators (listed by precedence)
+```
+ - ()
+ - + - ~ ! < > (The unary < and > give respectively the lower and the upper byte of a value)
+ - * / %
+ - + -
+ - << >>
+ - < > <= >=
+ - = == != <> 
+ - &
+ - ^
+ - |
+ - &&
+ - ||
+ - #   	    	 Immidate addressing.
+
+```
+ 
+ ### Local lexical level
+ ```
+ .macro vblank label, register
+	label: 
+		BIT register
+		BPL label
+.endmacro
+.
+.
+.
+ { ; All new symbols from now on are in the local lexical level and are not accessible from outside.
+   ; Symbols defined outside this local level may be accessed as long as their names are not used for new symbols inside the level.
+   ; Macro names are always in the global level.
+   
+   vblank vblankwait, $2002
+ }
+ .
+ .
+ .
+ {   
+	vblank vblankwait, $2002   ; Second wait for vblank, PPU is ready after this
+ }
+ ```
+ 
+
+ 	
+
+
+	
+	
+
+
+
+
+
+
+	
+
+
+
+
+
+
