@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "system": "nes",
+  "name": "game",
+  "prefix": "",
+  "palettes": [
+    {
+      "name": "text",
+      "colors": [
+        15,
+        48,
+        16,
+        0
+      ]
+    },
+    {
+      "name": "sky",
+      "colors": [
+        15,
+        0,
+        16,
+        48
+      ]
+    },
+    {
+      "name": "moon",
+      "colors": [
+        15,
+        7,
+        23,
+        39
+      ]
+    },
+    {
+      "name": "unused",
+      "colors": [
+        15,
+        48,
+        16,
+        0
+      ]
+    },
+    {
+      "name": "ship",
+      "colors": [
+        15,
+        48,
+        33,
+        17
+      ]
+    },
+    {
+      "name": "shot",
+      "colors": [
+        15,
+        22,
+        39,
+        56
+      ]
+    },
+    {
+      "name": "rock",
+      "colors": [
+        15,
+        7,
+        23,
+        39
+      ]
+    },
+    {
+      "name": "burst",
+      "colors": [
+        15,
+        22,
+        39,
+        55
+      ]
+    }
+  ]
+}
