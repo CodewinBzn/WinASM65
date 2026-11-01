@@ -108,19 +108,35 @@ namespace WinASM65.Tests
         {
             // Le decalage ne doit pas avoir bouge le golden du depot : la validation
             // par emulateur ne vaut que si elle n'a pas change la sortie de reference.
-            string golden = Path.Combine(FindRepositoryRoot(), "example_bomberman-nes", "bomber.nes");
-            if (!File.Exists(golden))
-                Assert.Inconclusive("le golden n'est pas dans l'arborescence construite");
+            // Le golden est l'image du jeu d'exemple, example_rock_patrol, construite
+            // dans une copie temporaire pour ne rien laisser dans l'arborescence.
+            string source = Path.Combine(FindRepositoryRoot(), "example_rock_patrol");
+            if (!File.Exists(Path.Combine(source, "config.json")))
+                Assert.Inconclusive("example_rock_patrol n'est pas dans l'arborescence construite");
 
-            string hash;
-            using (SHA256 sha = SHA256.Create())
+            using (TemporaryDirectory temp = new TemporaryDirectory())
             {
-                using (FileStream stream = File.OpenRead(golden))
-                    hash = BytesToHex(sha.ComputeHash(stream));
-            }
+                CopyTree(source, temp.Path);
+                WinASM65.Projects.ProjectBuildResult build = WinASM65.Projects.ProjectSession
+                    .Open(Path.Combine(temp.Path, "config.json")).Build();
+                Assert.IsTrue(build.Success, string.Join(" | ", build.Diagnostics));
 
-            Assert.AreEqual("4E57F08754A2FF7EC788245629FB70F99D4E003F66F86742566BCA99C810A244", hash,
-                "le golden NES a change");
+                string hash;
+                using (SHA256 sha = SHA256.Create())
+                    hash = BytesToHex(sha.ComputeHash(build.Image));
+
+                Assert.AreEqual("F99BB587D623D0B88523424771359E6D94CE58622D69DF51F512CC4276EE0B25", hash,
+                    "le golden NES a change");
+            }
+        }
+
+        private static void CopyTree(string source, string target)
+        {
+            Directory.CreateDirectory(target);
+            foreach (string file in Directory.GetFiles(source))
+                File.Copy(file, Path.Combine(target, Path.GetFileName(file)));
+            foreach (string dir in Directory.GetDirectories(source))
+                CopyTree(dir, Path.Combine(target, Path.GetFileName(dir)));
         }
 
         private static void RunOnEmulator(int shift, byte expectedRoutineHigh)
@@ -226,6 +242,15 @@ namespace WinASM65.Tests
             Directory.CreateDirectory(path);
             return path;
         });
+
+        /// <summary>Deletes the modules' directory, once the class's tests are done.</summary>
+        [ClassCleanup]
+        public static void DeleteLinkDirectory()
+        {
+            if (!_linkDirectory.IsValueCreated)
+                return;
+            try { Directory.Delete(_linkDirectory.Value, true); } catch (IOException) { }
+        }
 
         /// <summary>
         /// Turns the linked image into a 32 KB PRG NES ROM, mapper 0, and publishes

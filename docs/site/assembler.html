@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assembly pipeline</title>
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<div class="layout">
+  <nav class="site-nav" aria-label="Pages"></nav>
+
+  <main>
+    <p class="breadcrumb"><a href="index.html">WinASM65</a> › Assembler</p>
+    <header class="page">
+      <h1>The assembly pipeline</h1>
+      <p class="lede">How one source file becomes bytes: the entry points, the engine that reads the source line by line, the regex dispatcher that decides what each line is, the expression evaluator, the directives, the fixups that patch forward references, and what comes out at the end. Written for a developer who is about to change the assembler.</p>
+    </header>
+
+    <aside class="sources">
+      <h4>Source files</h4>
+      <ul>
+        <li><a href="../../WinASM65/src/Program.cs"><code>Program.cs</code></a></li>
+        <li><a href="../../WinASM65/src/CommandLineApplication.cs"><code>CommandLineApplication.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Core/AssemblerFactory.cs"><code>Core/AssemblerFactory.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Core/ConfigurationReader.cs"><code>Core/ConfigurationReader.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Core/AssemblerEngine.cs"><code>Core/AssemblerEngine.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Core/SourceText.cs"><code>Core/SourceText.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Core/StringLiteral.cs"><code>Core/StringLiteral.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Core/Value.cs"><code>Core/Value.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Core/Diagnostic.cs"><code>Core/Diagnostic.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Core/SideFiles.cs"><code>Core/SideFiles.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Symbols/ScopeManager.cs"><code>Symbols/ScopeManager.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Symbols/SymbolTypes.cs"><code>Symbols/SymbolTypes.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Expressions/Tokenizer.cs"><code>Expressions/Tokenizer.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Expressions/ExpressionEvaluator.cs"><code>Expressions/ExpressionEvaluator.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Expressions/ExpressionResult.cs"><code>Expressions/ExpressionResult.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Directives/IDirectiveHandler.cs"><code>Directives/IDirectiveHandler.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Directives/StandardDirectives.cs"><code>Directives/StandardDirectives.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Directives/ExtendedDirectives.cs"><code>Directives/ExtendedDirectives.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Directives/DataEmitter.cs"><code>Directives/DataEmitter.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Modules/ModuleDirectives.cs"><code>Modules/ModuleDirectives.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Output/BinaryEmitter.cs"><code>Output/BinaryEmitter.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Output/RelocationRecord.cs"><code>Output/RelocationRecord.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Output/ListingService.cs"><code>Output/ListingService.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Output/ListingRow.cs"><code>Output/ListingRow.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Output/ListingRowBuilder.cs"><code>Output/ListingRowBuilder.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Output/InMemoryListingService.cs"><code>Output/InMemoryListingService.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Output/SourceListing.cs"><code>Output/SourceListing.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Output/SourceListingService.cs"><code>Output/SourceListingService.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Segments/MultiSegmentOrchestrator.cs"><code>Segments/MultiSegmentOrchestrator.cs</code></a></li>
+      </ul>
+    </aside>
+
+    <p>This page is about the machinery. The language it accepts (label forms, number formats, every directive with examples) is described in the <a href="syntax.html">syntax reference</a>; the instruction sets and how an addressing mode is picked are on <a href="cpus.html">CPUs and emulation core</a>.</p>
+
+    <h2 id="overview">The pipeline at a glance</h2>
+    <p>WinASM65 reads a source <strong>once</strong>, top to bottom. Each line is classified by a chain of regular expressions and handed to a handler that emits bytes, defines a name, or both. A value that is not known yet (a forward reference) is written as a zero placeholder and recorded; it is patched as soon as the name it waits for is defined, and once more at the end of the source. There is no second reading of the text: the "second pass" is the resolution of those recorded fixups.</p>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 320" role="img" aria-label="Pipeline: CommandLineApplication creates options, AssemblerFactory builds an AssemblerEngine, whose Assemble method reads the source line by line through ProcessFileStack, ParseLine and the handlers, then runs Complete to resolve pending fixups, check undefined names and write the files, and returns an AssemblyResult">
+        <defs>
+          <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <rect class="box-c" x="10" y="20" width="185" height="58" rx="8"/>
+        <text x="102" y="44" text-anchor="middle" font-weight="600" font-size="14">CommandLineApplication</text>
+        <text x="102" y="64" text-anchor="middle" class="muted" font-size="12">arguments, target, CPU</text>
+
+        <rect class="box-c" x="225" y="20" width="165" height="58" rx="8"/>
+        <text x="307" y="44" text-anchor="middle" font-weight="600" font-size="14">AssemblerFactory</text>
+        <text x="307" y="64" text-anchor="middle" class="muted" font-size="12">AssemblerOptions → engine</text>
+
+        <rect class="box-a" x="420" y="20" width="205" height="58" rx="8"/>
+        <text x="522" y="44" text-anchor="middle" font-weight="600" font-size="14">AssemblerEngine</text>
+        <text x="522" y="64" text-anchor="middle" class="muted" font-size="12">Assemble / AssembleSource</text>
+
+        <rect class="box-d" x="655" y="20" width="235" height="58" rx="8"/>
+        <text x="772" y="44" text-anchor="middle" font-weight="600" font-size="14">AssemblyResult</text>
+        <text x="772" y="64" text-anchor="middle" class="muted" font-size="12">bytes, diagnostics, relocations</text>
+
+        <path class="line" d="M195,49 L225,49" marker-end="url(#a1)"/>
+        <path class="line" d="M390,49 L420,49" marker-end="url(#a1)"/>
+
+        <rect class="frame" x="200" y="96" width="510" height="214" rx="10"/>
+        <text x="212" y="114" class="muted" font-size="12">inside Assemble()</text>
+        <path class="line" d="M522,78 L522,96"/>
+
+        <rect class="box-b" x="215" y="124" width="150" height="56" rx="8"/>
+        <text x="290" y="147" text-anchor="middle" font-weight="600" font-size="14">ProcessFileStack</text>
+        <text x="290" y="166" text-anchor="middle" class="muted" font-size="12">one line at a time</text>
+
+        <rect class="box-b" x="385" y="124" width="140" height="56" rx="8"/>
+        <text x="455" y="147" text-anchor="middle" font-weight="600" font-size="14">ParseLine</text>
+        <text x="455" y="166" text-anchor="middle" class="muted" font-size="12">regex dispatch</text>
+
+        <rect class="box-b" x="545" y="124" width="150" height="56" rx="8"/>
+        <text x="620" y="147" text-anchor="middle" font-weight="600" font-size="14">handlers</text>
+        <text x="620" y="166" text-anchor="middle" class="muted" font-size="12">emit · define · defer</text>
+
+        <path class="line" d="M365,152 L385,152" marker-end="url(#a1)"/>
+        <path class="line" d="M525,152 L545,152" marker-end="url(#a1)"/>
+        <path class="line" d="M620,180 L620,196 L300,196 L300,180" marker-end="url(#a1)"/>
+        <text x="460" y="212" text-anchor="middle" class="muted" font-size="12">next line</text>
+
+        <path class="line" d="M232,180 L232,232" marker-end="url(#a1)"/>
+        <text x="240" y="214" class="muted" font-size="12">end</text>
+
+        <rect class="box-a" x="215" y="232" width="480" height="62" rx="8"/>
+        <text x="455" y="256" text-anchor="middle" font-weight="600" font-size="14">Complete()</text>
+        <text x="455" y="278" text-anchor="middle" class="muted" font-size="12">resolve fixups · deferred .assert · undefined names · write .o, .lst, side files</text>
+
+        <path class="line" d="M695,263 L772,263 L772,78" marker-end="url(#a1)"/>
+      </svg>
+    </div>
+
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Stage</th><th>Class / method</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td>Entry</td><td><code>CommandLineApplication.Run</code></td><td>Parses the arguments, resolves the target and the CPU, builds the predefined symbols, creates an engine and calls it.</td></tr>
+        <tr><td>Construction</td><td><code>AssemblerFactory.Create(AssemblerOptions)</code></td><td>Turns options into an <code>AssemblerEngine</code> with its collaborators.</td></tr>
+        <tr><td>Reading</td><td><code>AssemblerEngine.ProcessFileStack</code></td><td>Reads lines from a stack of files (<code>.include</code> pushes one), strips comments, captures macro bodies.</td></tr>
+        <tr><td>Classification</td><td><code>ParseLine</code> → <code>ParseLineBody</code></td><td>Filters lines in a dead <code>.if</code> branch or inside <code>.rep</code>, then tries one regex after another.</td></tr>
+        <tr><td>Handling</td><td><code>HandleInstruction</code>, <code>HandleLabel</code>, <code>HandleConstant</code>, <code>DispatchDirective</code>…</td><td>Evaluate expressions, emit bytes into <code>BinaryEmitter</code>, record relocations and pending fixups, report listing fragments.</td></tr>
+        <tr><td>Completion</td><td><code>Complete</code></td><td>Last fixup resolution, deferred assertions, undefined-name errors, object file, listing, symbol side files.</td></tr>
+        <tr><td>Result</td><td><code>AssemblyResult</code></td><td><code>Success</code>, <code>OutputBytes</code>, <code>Diagnostics</code>, <code>OriginAddress</code>, <code>Relocations</code>, <code>Module</code>.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2 id="entry">Entry points</h2>
+    <p><code>Program.Main</code> wires the command line application with its five collaborators, all behind interfaces so tests can replace them:</p>
+<pre><code>CommandLineApplication application = new CommandLineApplication(
+    new AssemblerFactory(),
+    new JsonConfigurationReader(),
+    new BinaryCombiner(),
+    new SystemConsoleOutput(),
+    new ExecutablePublisher());
+return application.Run(args);</code></pre>
+
+    <h3>CommandLineApplication.Run</h3>
+    <p>The first argument may be a verb (<code>link</code>, <code>archive</code>, <code>view</code>, <code>geos</code>, <code>basic</code>), each with its own method; see <a href="modules.html">Modules, linker, viewer</a> and <a href="targets.html">Targets</a>. Otherwise the run is an assembly, driven by <code>-f</code>, <code>-o</code>, <code>-l</code>, <code>-t</code>/<code>-target</code>, <code>-cpu</code>, <code>-format</code> and <code>-c</code>. In order, it:</p>
+    <ol>
+      <li>reads the configuration (<code>-c</code>) through <code>IConfigurationReader</code>; <code>JsonConfigurationReader</code> deserializes a <code>ConfigFile</code> with Newtonsoft.Json and throws on a missing path, which <code>Run</code> turns into a configuration error and exit code 1;</li>
+      <li>resolves the target with <code>TargetResolver.Resolve</code> (configuration, then <code>-t</code>, <code>-cpu</code>, <code>-format</code>) and creates the CPU with <code>CpuFactory.Create(target.CpuName)</code>;</li>
+      <li>collects the predefined symbols: the target's hardware names (when <code>DefineHardwareSymbols</code> is set) plus the names of declared memory regions, and activates the memory map (<code>MemoryMapScope.Activate</code>) so <code>.org</code> and <code>.res</code> can be checked against it (<a href="segments.html">Projects and segments</a>);</li>
+      <li>with <code>-f</code>: assembles that file, then writes it as a <code>.w65</code> module or hands the bytes to <code>ExecutablePublisher</code> unless the format is raw <code>bin</code>;</li>
+      <li>with a configuration that lists <code>Input</code> units: runs <code>MultiSegmentOrchestrator</code> over them, then combines and publishes <code>Output</code>.</li>
+    </ol>
+    <p>Any failing step prints its diagnostics to standard error and returns 1.</p>
+
+    <h3>AssemblerOptions and AssemblerFactory</h3>
+    <p>Every caller (the CLI, <code>ProjectSession</code>, <code>SourceListingService</code>, tests) builds an engine through <code>IAssemblerFactory</code>:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Option</th><th>Default</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>Cpu</code></td><td>null → <code>Cpu6502</code></td><td>The <code>ICpuInstructionSet</code> used to encode instructions.</td></tr>
+        <tr><td><code>PredefinedSymbols</code></td><td>null</td><td>Names defined before the first line. A source may redefine one of them once without a "Label already declared" error.</td></tr>
+        <tr><td><code>DefaultOrigin</code></td><td>null (address 0)</td><td>Address of bytes emitted before the first <code>.org</code>. The CLI passes the target's load address.</td></tr>
+        <tr><td><code>EnableListing</code></td><td>false</td><td>Writes a <code>.lst</code> file (the <code>-l</code> switch).</td></tr>
+        <tr><td><code>ListingService</code></td><td>null → <code>ListingService</code></td><td>Replace it with an <code>InMemoryListingService</code> to get rows instead of a file.</td></tr>
+        <tr><td><code>ReportUndefinedSymbols</code></td><td>true</td><td>Whether a name nobody defines is an error at the end of the unit. Turned off for the units of a multi-file build, whose orchestrator checks after loading every symbol file.</td></tr>
+        <tr><td><code>SideFileDirectory</code></td><td>null (beside the source)</td><td>Where <code>.symb</code>, <code>.Unsolved</code> and <code>.UnsolvedExpr</code> are written.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Other ways in</h3>
+    <ul>
+      <li><code>IAssembler.AssembleSource(text, outputFile, sourceName)</code> assembles text held in memory. Same pipeline; no side files are written, and <code>outputFile</code> may be null.</li>
+      <li><code>SourceListingService</code> and <code>ProjectSession.ListSourceText</code> wrap <code>AssembleSource</code> with an <code>InMemoryListingService</code> and return a <code>SourceListing</code> (result + rows). The language server and the monitor use these; see <a href="tooling.html">Tooling</a>.</li>
+      <li><code>MultiSegmentOrchestrator</code> assembles each unit of a configuration with its own engine, then resolves cross-unit references (<a href="#fixups">below</a>).</li>
+    </ul>
+
+    <h2 id="engine">Inside AssemblerEngine</h2>
+    <p><code>AssemblerEngine</code> implements <code>IAssembler</code> (for callers) and <code>IAssemblyContext</code> (for directive handlers). All of its collaborators are constructor parameters with defaults, so a test can inject any of them:</p>
+<pre><code>public AssemblerEngine(
+    ICpuInstructionSet cpu = null,             // Cpu6502
+    ITokenizer tokenizer = null,               // Tokenizer
+    IExpressionEvaluator evaluator = null,     // ExpressionEvaluator
+    IScopeManager scopeManager = null,         // ScopeManager
+    IBinaryEmitter emitter = null,             // BinaryEmitter
+    IListingService listingService = null,     // ListingService
+    IDiagnosticReporter diagnostics = null,    // DiagnosticReporter
+    IDirectiveDispatcher directiveDispatcher = null, // CreateDefaultDispatcher()
+    IDictionary&lt;string, long&gt; predefinedSymbols = null,
+    ushort? defaultOrigin = null,
+    bool reportUndefinedSymbols = true,
+    string sideFileDirectory = null)</code></pre>
+    <p><code>Assemble</code> calls <code>Reset()</code> first, so one engine can assemble repeatedly. It then applies the default origin and predefined symbols, pushes the file's lines and runs <code>ProcessFileStack</code>. The loop reads from the current <code>SourceFileState</code> (a path and a line counter); <code>.include</code> calls <code>PushSourceFile</code>, which stacks the current file and continues in the new one, and the outer loop pops back when it runs out. <code>.end</code> calls <code>StopAssembling()</code>.</p>
+    <p>For each raw line, <code>ProcessFileStack</code>:</p>
+    <ol>
+      <li>sends the raw text to the listing (<code>PrintLine</code>) and increments the line number;</li>
+      <li>trims it and removes the comment with <code>SourceText.StripComment</code>; a blank result ends the line;</li>
+      <li>while a macro is being defined, appends the line to the macro body instead of parsing it (unless it is <code>.endmacro</code>/<code>.endm</code> or another <code>.macro</code>);</li>
+      <li>otherwise calls <code>ParseLine</code>.</li>
+    </ol>
+
+    <h2 id="dispatch">The line dispatcher</h2>
+    <p><code>ParseLine</code> records the line's start address (what <code>*</code> means in an expression), drops lines of an inactive conditional branch (except the conditional directives themselves), buffers lines inside a <code>.rep</code> block, and passes the rest to <code>ParseLineBody</code>. There, the line is tested against a fixed sequence of patterns. <strong>The first match wins</strong>, so the order is part of the language.</p>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 600" role="img" aria-label="The dispatcher: comment stripping and macro capture in ProcessFileStack, then dead-branch and .rep filtering in ParseLine, then fourteen patterns tried in order in ParseLineBody, each with its handler, ending with a syntax error">
+        <defs>
+          <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <text x="20" y="18" class="muted" font-size="12">ProcessFileStack</text>
+        <rect class="box-c" x="60" y="26" width="820" height="28" rx="6"/>
+        <text x="74" y="45" font-size="13">strip comment · skip blank line · inside .macro: store the line in the macro body</text>
+        <text x="20" y="74" class="muted" font-size="12">ParseLine</text>
+        <rect class="box-c" x="60" y="82" width="820" height="28" rx="6"/>
+        <text x="74" y="101" font-size="13">inactive .if branch: skip (unless .if/.ifdef/.ifndef/.elseif/.else/.endif) · inside .rep: buffer</text>
+        <text x="20" y="130" class="muted" font-size="12">ParseLineBody — first match wins</text>
+
+        <g font-size="13">
+          <rect class="box-a" x="60" y="138" width="820" height="26" rx="6"/>
+          <text x="72" y="156">1  AnonLabelRegex</text><text x="290" y="156" font-family="Consolas, monospace">-  --  +  ++ [rest]</text>
+          <text x="868" y="156" text-anchor="end" class="muted">DefineAnonymous, rest dispatched again</text>
+
+          <rect class="box-a" x="60" y="170" width="820" height="26" rx="6"/>
+          <text x="72" y="188">2  StartLocalScopeRegex</text><text x="290" y="188" font-family="Consolas, monospace">{</text>
+          <text x="868" y="188" text-anchor="end" class="muted">ScopeManager.EnterLocalScope</text>
+
+          <rect class="box-a" x="60" y="202" width="820" height="26" rx="6"/>
+          <text x="72" y="220">3  EndLocalScopeRegex</text><text x="290" y="220" font-family="Consolas, monospace">}</text>
+          <text x="868" y="220" text-anchor="end" class="muted">ScopeManager.ExitLocalScope</text>
+
+          <rect class="box-a" x="60" y="234" width="820" height="26" rx="6"/>
+          <text x="72" y="252">4  OrgStarRegex</text><text x="290" y="252" font-family="Consolas, monospace">*= expr</text>
+          <text x="868" y="252" text-anchor="end" class="muted">DispatchDirective(".org")</text>
+
+          <rect class="box-a" x="60" y="266" width="820" height="26" rx="6"/>
+          <text x="72" y="284">5  EquRegex</text><text x="290" y="284" font-family="Consolas, monospace">NAME [:] [.]equ value</text>
+          <text x="868" y="284" text-anchor="end" class="muted">HandleConstant, strict</text>
+
+          <rect class="box-a" x="60" y="298" width="820" height="26" rx="6"/>
+          <text x="72" y="316">6  SetRegex</text><text x="290" y="316" font-family="Consolas, monospace">NAME .set value</text>
+          <text x="868" y="316" text-anchor="end" class="muted">HandleConstant, redefinable</text>
+
+          <rect class="box-a" x="60" y="330" width="820" height="26" rx="6"/>
+          <text x="72" y="348">7  MemReserveRegex</text><text x="290" y="348" font-family="Consolas, monospace">label .res n</text>
+          <text x="868" y="348" text-anchor="end" class="muted">HandleMemReserve</text>
+
+          <rect class="box-a" x="60" y="362" width="820" height="26" rx="6"/>
+          <text x="72" y="380">8  LabelDirectiveRegex</text><text x="290" y="380" font-family="Consolas, monospace">label[:] .dir args</text>
+          <text x="868" y="380" text-anchor="end" class="muted">HandleLabel, then DispatchDirective</text>
+
+          <rect class="box-a" x="60" y="394" width="820" height="26" rx="6"/>
+          <text x="72" y="412">9  DirectiveRegex</text><text x="290" y="412" font-family="Consolas, monospace">.dir args</text>
+          <text x="868" y="412" text-anchor="end" class="muted">DispatchDirective</text>
+
+          <rect class="box-a" x="60" y="426" width="820" height="26" rx="6"/>
+          <text x="72" y="444">10  LabelDeclareRegex</text><text x="290" y="444" font-family="Consolas, monospace">label:</text>
+          <text x="868" y="444" text-anchor="end" class="muted">HandleLabel</text>
+
+          <rect class="box-a" x="60" y="458" width="820" height="26" rx="6"/>
+          <text x="72" y="476">11  ConstantRegex</text><text x="290" y="476" font-family="Consolas, monospace">label = expr</text>
+          <text x="868" y="476" text-anchor="end" class="muted">HandleConstant, redefinable</text>
+
+          <rect class="box-a" x="60" y="490" width="820" height="26" rx="6"/>
+          <text x="72" y="508">12  InstructionRegex</text><text x="290" y="508" font-family="Consolas, monospace">[label[:]] opc [operands]</text>
+          <text x="868" y="508" text-anchor="end" class="muted">HandleInstruction (or a macro)</text>
+
+          <rect class="box-a" x="60" y="522" width="820" height="26" rx="6"/>
+          <text x="72" y="540">13  MacroCallRegex</text><text x="290" y="540" font-family="Consolas, monospace">name [args]</text>
+          <text x="868" y="540" text-anchor="end" class="muted">HandleMacroCall</text>
+
+          <rect class="box-d" x="60" y="554" width="820" height="26" rx="6"/>
+          <text x="72" y="572">14  anything else</text>
+          <text x="868" y="572" text-anchor="end" class="muted">ErrorCodes.SYNTAX</text>
+        </g>
+        <path class="line" d="M40,40 L40,568" marker-end="url(#a2)"/>
+      </svg>
+    </div>
+
+    <p>Why the order matters:</p>
+    <ul>
+      <li><strong>Anonymous labels first.</strong> A line of only <code>-</code> or <code>+</code> characters, optionally followed by a statement (<code>- lda #1</code>), defines an anonymous label; the rest of the line is fed back into <code>ParseLineBody</code>.</li>
+      <li><strong><code>EQU</code> before instructions.</strong> <code>COUNT EQU 4</code> would otherwise look like a label followed by a three-letter mnemonic.</li>
+      <li><strong><code>label .res n</code> before directives.</strong> It is a reservation that names the space, not a label in front of a directive (<code>HandleMemReserve</code> advances <code>CurrentScope.MemArea</code> and emits nothing).</li>
+      <li><strong>Label + directive before directive.</strong> <code>Data: .byte $AA</code> has to define <code>Data</code> at the address the bytes go to, then run the directive; the label is defined first.</li>
+      <li><strong>Bare labels are anchored.</strong> <code>LabelDeclareRegex</code> only matches a label alone on its line, so <code>Loop: nop</code> reaches <code>InstructionRegex</code>, whose optional label group defines <code>Loop</code>.</li>
+      <li><strong>Macro calls last.</strong> <code>MacroCallRegex</code> accepts any identifier with arguments. A macro whose name fits <code>InstructionRegex</code> (three letters plus an optional digit) is caught there: <code>HandleInstruction</code> looks the name up in the macro table before treating it as a mnemonic.</li>
+    </ul>
+    <div class="callout">
+      <p><strong>The three-letter ambiguity.</strong> <code>InstructionRegex</code>'s label group is greedy, so <code>lda Mid</code> parses as label <code>lda</code>, mnemonic <code>Mid</code>. <code>HandleInstruction</code> checks whether the "label" is a mnemonic of the current CPU and swaps the two back, keeping the operand as written.</p>
+    </div>
+
+    <h2 id="text">Source text and string literals</h2>
+    <p>Two small static classes keep the parser from looking inside literals:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Method</th><th>Used by</th><th>Rule</th></tr></thead>
+      <tbody>
+        <tr><td><code>SourceText.StripComment</code></td><td>every line</td><td>Cuts at the first <code>;</code> outside a <code>"string"</code> or a complete character literal (<code>'c'</code>, <code>'\c'</code>, <code>'\xNN'</code>). A lone apostrophe, as in <code>; VBlank's</code>, is an ordinary character.</td></tr>
+        <tr><td><code>SourceText.SplitArguments</code></td><td>data directives, macro arguments, <code>.incbin</code>, <code>.assert</code>, <code>BBRn</code></td><td>Splits on commas outside literals and parentheses, trimming each part: <code>($10),y</code> stays one argument.</td></tr>
+        <tr><td><code>SourceText.RemoveWhitespaceOutsideQuotes</code></td><td><code>Cpu6502.ParseOperand</code></td><td>Removes blanks except inside literals; a run between two word characters becomes one space, so <code>TRUE or FALSE</code> survives.</td></tr>
+        <tr><td><code>StringLiteral.TryDecode</code> / <code>TryDecodeBody</code></td><td>strings in data directives, character constants in expressions</td><td>Decodes <code>\n \r \t \0 \\ \" \' \xNN</code>. Any other escape, or a character above $FF, is an error.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2 id="symbols">Labels, scopes and names</h2>
+    <h3>The symbol table</h3>
+    <p><code>ScopeManager</code> keeps a list of <code>LexicalScopeData</code>, index 0 being the global scope. Each holds a <code>SymbolTable</code> (name → <code>long</code>), the <code>UnsolvedSymbols</code> waiting in that scope, and the <code>MemArea</code> counter used by <code>.res</code>. Both dictionaries compare names with <code>StringComparer.OrdinalIgnoreCase</code>: symbols are case-insensitive, and the spelling the source used is kept for relocations.</p>
+    <ul>
+      <li><code>{</code> and <code>}</code> push and pop a scope (at most 255 levels). <code>TryResolveSymbol</code> walks from the current scope down to the global one. When a scope closes, its unsolved entries are merged into the parent.</li>
+      <li><code>AddSymbol(label, value, replaceIfExist, out error)</code> refuses a duplicate with <code>LABEL_EXISTS</code> unless asked to replace. Labels do not replace (except, once, a name the target predefined); <code>=</code> and <code>.set</code> constants do; <code>EQU</code> replaces only with the same value (<code>CONSTANT_REDEFINED</code> otherwise).</li>
+      <li>The engine also keeps its own list of the labels the source defined (<code>_sourceLabels</code>): only a label is an address, and that list is what becomes a module's symbol table.</li>
+    </ul>
+
+    <h3>Local and anonymous labels</h3>
+    <p>Neither has its own table: the engine rewrites them into ordinary, generated names.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Written</th><th>Stored as</th><th>Mechanism</th></tr></thead>
+      <tbody>
+        <tr><td><code>@loop</code> after global label <code>Main</code></td><td><code>Main@loop</code></td><td><code>DefineName</code> prefixes the current scope: the last global label that took an address (<code>_currentGlobal</code>).</td></tr>
+        <tr><td><code>@loop</code> inside a macro expansion or <code>.rep</code> iteration</td><td><code>__m7@loop</code></td><td><code>BeginExpansion</code> pushes a fresh counter; the innermost expansion is the scope, so a macro can be used twice.</td></tr>
+        <tr><td><code>-</code>, <code>--</code>, <code>+</code>…</td><td><code>__anon_m1_0</code>, <code>__anon_p1_3</code>…</td><td><code>DefineAnonymous</code> counts definitions per direction and run length; <code>-</code> and <code>--</code> are different names, as in asm6.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>References are rewritten the same way before evaluation by <code>ExpandNames</code>: an operand that is only a run of <code>-</code> becomes the latest backward label of that length, a run of <code>+</code> becomes the next forward one (not yet defined, so it is a forward reference like any other), and every <code>@name</code> token gets the current scope prepended. The tokenizer accepts <code>Scope@name</code> as one identifier for exactly this reason. Generated names are never exported to <code>.symb</code>, and one left undefined is reported in source terms (<code>LOCAL_LABEL_UNDEFINED</code>, <code>ANON_LABEL_NOT_FOUND</code>), even in a multi-file build.</p>
+
+    <h2 id="expressions">Expressions</h2>
+    <p>Every operand and directive argument goes through <code>AssemblerEngine.ResolveExpression(expr, addrMode, isLogical)</code>, the single place where an evaluation error is reported.</p>
+    <div class="figure">
+      <svg viewBox="0 0 900 250" role="img" aria-label="Expression path: text is rewritten by ExpandNames and ExpandProgramCounter, tokenized by one regex, checked for shape, its identifiers looked up through ISymbolResolver; any undefined name returns a pending result, otherwise the shunting-yard evaluator computes a value; the role is attached from the addressing mode">
+        <defs>
+          <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <rect class="box-c" x="10" y="20" width="150" height="56" rx="8"/>
+        <text x="85" y="43" text-anchor="middle" font-weight="600" font-size="13">ExpandNames</text>
+        <text x="85" y="62" text-anchor="middle" class="muted" font-size="12">@local, - and +</text>
+        <rect class="box-c" x="185" y="20" width="170" height="56" rx="8"/>
+        <text x="270" y="43" text-anchor="middle" font-weight="600" font-size="13">ExpandProgramCounter</text>
+        <text x="270" y="62" text-anchor="middle" class="muted" font-size="12">* → $line address</text>
+        <rect class="box-a" x="380" y="20" width="140" height="56" rx="8"/>
+        <text x="450" y="43" text-anchor="middle" font-weight="600" font-size="13">Tokenizer</text>
+        <text x="450" y="62" text-anchor="middle" class="muted" font-size="12">one regex</text>
+        <rect class="box-a" x="545" y="20" width="140" height="56" rx="8"/>
+        <text x="615" y="43" text-anchor="middle" font-weight="600" font-size="13">CheckShape</text>
+        <text x="615" y="62" text-anchor="middle" class="muted" font-size="12">operand/operator, ( )</text>
+        <rect class="box-a" x="710" y="20" width="180" height="56" rx="8"/>
+        <text x="800" y="43" text-anchor="middle" font-weight="600" font-size="13">resolve identifiers</text>
+        <text x="800" y="62" text-anchor="middle" class="muted" font-size="12">ISymbolResolver</text>
+        <path class="line" d="M160,48 L185,48" marker-end="url(#a3)"/>
+        <path class="line" d="M355,48 L380,48" marker-end="url(#a3)"/>
+        <path class="line" d="M520,48 L545,48" marker-end="url(#a3)"/>
+        <path class="line" d="M685,48 L710,48" marker-end="url(#a3)"/>
+
+        <rect class="box-b" x="545" y="130" width="190" height="56" rx="8"/>
+        <text x="640" y="153" text-anchor="middle" font-weight="600" font-size="13">EvaluateTokens</text>
+        <text x="640" y="172" text-anchor="middle" class="muted" font-size="12">shunting-yard</text>
+        <path class="line" d="M780,76 L700,130" marker-end="url(#a3)"/>
+        <text x="760" y="112" class="muted" font-size="12">all known</text>
+
+        <rect class="box-d" x="750" y="130" width="145" height="56" rx="8"/>
+        <text x="822" y="153" text-anchor="middle" font-weight="600" font-size="13">pending</text>
+        <text x="822" y="172" text-anchor="middle" class="muted" font-size="12">WithUndefinedSymbols</text>
+        <path class="line" d="M840,76 L840,130" marker-end="url(#a3)"/>
+
+        <rect class="box-d" x="300" y="130" width="200" height="56" rx="8"/>
+        <text x="400" y="153" text-anchor="middle" font-weight="600" font-size="13">Success / Failure</text>
+        <text x="400" y="172" text-anchor="middle" class="muted" font-size="12">value, or Error + value 0</text>
+        <path class="line" d="M545,158 L500,158" marker-end="url(#a3)"/>
+        <path class="line" d="M615,76 Q 560 110 470 130" marker-end="url(#a3)" stroke-dasharray="5 4"/>
+        <text x="490" y="108" text-anchor="end" class="muted" font-size="12">shape error</text>
+
+        <rect class="box-c" x="10" y="130" width="250" height="56" rx="8"/>
+        <text x="135" y="153" text-anchor="middle" font-weight="600" font-size="13">WithRole(RoleFor(mode))</text>
+        <text x="135" y="172" text-anchor="middle" class="muted" font-size="12">Immediate · Address · RelativeBranch</text>
+        <path class="line" d="M300,158 L260,158" marker-end="url(#a3)"/>
+        <path class="line" d="M825,186 L825,222 L135,222 L135,186" marker-end="url(#a3)"/>
+      </svg>
+    </div>
+
+    <h3>Tokenizer</h3>
+    <p><code>Tokenizer</code> is one compiled regex whose named groups map to <code>TokenType</code>. The alternatives are ordered: <code>OR</code>/<code>AND</code>/<code>TRUE</code>/<code>FALSE</code> match whole words only (so <code>origin</code> is a name), character literals come before numbers, and <code>%</code> is a binary prefix only where an operand is expected (after a value it is modulo: <code>7%10</code>). The last alternative, <code>(?&lt;invalid&gt;[^\s]+)</code>, catches anything else so it becomes an error instead of being silently dropped. Numbers are <code>123</code>, <code>$FF</code>, <code>%1010</code>; see the <a href="syntax.html">syntax reference</a> for the full list.</p>
+
+    <h3>Evaluator</h3>
+    <p><code>ExpressionEvaluator.Evaluate</code> first runs <code>CheckShape</code> (operands and operators must alternate, parentheses must balance). It then converts literals, and looks every identifier up through <code>ISymbolResolver</code> (the <code>ScopeManager</code>). Each identifier is recorded in <code>UsedSymbols</code> whether or not it resolves. <strong>If any name is undefined, evaluation stops there</strong> and returns a pending result listing the missing names: there is never a partial value. Otherwise a shunting-yard pass computes the value; an operator is unary when it is first or follows another operator or an opening parenthesis.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Precedence</th><th>Operators</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>11</td><td>unary <code>&lt;</code> <code>&gt;</code> <code>+</code> <code>-</code> <code>~</code> <code>!</code></td><td><code>&lt;</code> low byte, <code>&gt;</code> high byte. The first one in prefix position also sets <code>ExpressionResult.Selector</code>, which survives to the relocation.</td></tr>
+        <tr><td>10</td><td><code>*</code> <code>/</code> <code>%</code></td><td>A <code>*</code> in operand position was already replaced by the line address.</td></tr>
+        <tr><td>9</td><td><code>+</code> <code>-</code></td><td></td></tr>
+        <tr><td>8</td><td><code>&lt;&lt;</code> <code>&gt;&gt;</code></td><td></td></tr>
+        <tr><td>7</td><td><code>&lt;</code> <code>&gt;</code> <code>&lt;=</code> <code>&gt;=</code></td><td></td></tr>
+        <tr><td>6</td><td><code>==</code> <code>!=</code> <code>&lt;&gt;</code> <code>=</code></td><td><code>=</code> compares like <code>==</code>.</td></tr>
+        <tr><td>5 / 4 / 3</td><td><code>&amp;</code> / <code>^</code> / <code>|</code></td><td>Bitwise.</td></tr>
+        <tr><td>2 / 1</td><td><code>AND</code> <code>&amp;&amp;</code> / <code>OR</code> <code>||</code></td><td>Logical.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Binary operators of equal precedence are applied left to right. Values are <code>Core.Value</code>, a struct that is either a <code>long</code> or a <code>bool</code>.</p>
+
+    <h3>ExpressionResult</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>State</th><th>Factory</th><th>Meaning for the caller</th></tr></thead>
+      <tbody>
+        <tr><td>resolved</td><td><code>Success</code></td><td><code>IsResolved</code>; <code>Value</code> is usable. <code>IsConstant</code> when no symbol was read, which means no relocation is recorded.</td></tr>
+        <tr><td>pending</td><td><code>WithUndefinedSymbols</code></td><td><code>UndefinedSymbols</code> lists the missing names; the caller emits a placeholder and registers a fixup.</td></tr>
+        <tr><td>failed</td><td><code>Failure</code></td><td><code>HasError</code>; <code>Error</code> holds the message (<code>EXPRESSION_INVALID_TOKEN</code>, <code>EXPRESSION_SYNTAX</code>, <code>DIVISION_BY_ZERO</code>, <code>NUMBER_TOO_LARGE</code>, a literal error). <code>Value</code> is 0 so the field keeps its size.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>A result also carries its <code>Expression</code> text (already rewritten, so a pending expression re-evaluated later still means what it meant on its line), its <code>Location</code>, and a <code>Role</code>. The evaluator never sets the role: <code>lda #$05</code> and <code>lda label</code> are the same expression, and only the addressing mode tells them apart. <code>ResolveExpression</code> attaches it with <code>RoleFor(mode)</code>; data directives use <code>ExpressionRole.Data</code>, and conditions (<code>isLogical</code>) get <code>None</code>.</p>
+
+    <h2 id="directives">Directives</h2>
+    <p>A directive is a class implementing a two-member interface, registered by name in a dispatcher:</p>
+<pre><code>public interface IDirectiveHandler
+{
+    string Name { get; }                       // ".byte", with the dot
+    void Execute(string argument, IAssemblyContext context);
+}</code></pre>
+    <p><code>IAssemblyContext</code> is the engine as a handler sees it: <code>Emitter</code>, <code>ScopeManager</code>, <code>ExpressionEvaluator</code>, <code>ListingService</code>, <code>Diagnostics</code>, <code>Cpu</code>, <code>CurrentLocation</code>, the conditional, repeat and macro state, and the operations <code>ResolveExpression</code>, <code>ParseLine</code>, <code>PushSourceFile</code>, <code>StopAssembling</code>, <code>DeferAssertion</code>, <code>BeginExpansion</code>/<code>EndExpansion</code>.</p>
+    <p><code>DirectiveDispatcher</code> stores handlers in a case-insensitive dictionary. <code>RegisterAlias(alias, target)</code> maps another spelling to the same handler instance. <code>DispatchDirective</code> lower-cases the name and reports <code>UNKNOWN_DIRECTIVE</code> when nothing is registered. The default set is built in <code>AssemblerEngine.CreateDefaultDispatcher</code>, and <code>AssemblerEngine.DefaultDirectiveNames</code> lists it for tools that need the names.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>File</th><th>Directives (handler)</th></tr></thead>
+      <tbody>
+        <tr><td><code>StandardDirectives.cs</code></td><td><code>.org</code> (Org), <code>.memarea</code> (MemArea), <code>.incbin</code> (IncBin), <code>.include</code> (Include), <code>.byte</code>, <code>.word</code>, <code>.macro</code>, <code>.endmacro</code>, <code>.if</code>, <code>.ifdef</code>, <code>.ifndef</code>, <code>.elseif</code>, <code>.else</code>, <code>.endif</code>, <code>.rep</code>, <code>.endrep</code>, <code>.end</code>, and <code>.equ</code>/<code>.set</code> on their own (NamedValue: always an error, since the named form is caught by the dispatcher)</td></tr>
+        <tr><td><code>ExtendedDirectives.cs</code></td><td><code>.asciiz</code>, <code>.lobytes</code>/<code>.hibytes</code> (ByteTable), <code>.dsb</code>/<code>.dsw</code> (Fill), <code>.res</code> without a label (Reserve), <code>.pad</code>, <code>.align</code>, <code>.error</code>, <code>.warning</code>, <code>.assert</code></td></tr>
+        <tr><td><code>Modules/ModuleDirectives.cs</code></td><td><code>.export</code>, <code>.import</code> (see <a href="modules.html">Modules</a>)</td></tr>
+        <tr><td>aliases</td><td><code>.db</code>, <code>.byt</code> → <code>.byte</code>; <code>.dw</code>, <code>.addr</code> → <code>.word</code>; <code>.endm</code> → <code>.endmacro</code>; <code>.rept</code> → <code>.rep</code>; <code>.endr</code> → <code>.endrep</code>; <code>.ds</code>, <code>.fill</code> → <code>.dsb</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Some forms never reach the dispatcher because a line pattern catches them first: <code>*= expr</code>, <code>NAME EQU v</code>, <code>NAME .set v</code> and <code>label .res n</code>.</p>
+
+    <h3>Data: DataEmitter</h3>
+    <p><code>.byte</code>, <code>.word</code>, <code>.asciiz</code> and <code>.lobytes</code>/<code>.hibytes</code> split their arguments with <code>SplitArguments</code>; a quoted argument goes through <code>DataEmitter.TryEmitString</code>, anything else through <code>DataEmitter.Emit(context, expression, width)</code>:</p>
+    <ul>
+      <li><strong>Resolved:</strong> a value outside −128..255 (byte) or −32768..65535 (word) is refused and a zero emitted in its place; otherwise the value is emitted and, if the expression read a symbol, a relocation of type <code>Data8</code>/<code>Data16</code> (or <code>LowByte</code>/<code>HighByte</code>) is recorded.</li>
+      <li><strong>Pending:</strong> a zero placeholder of the right width is emitted and an <code>UnresolvedExpr</code> registered, exactly as for an instruction operand.</li>
+    </ul>
+    <p><code>.lobytes</code> and <code>.hibytes</code> just wrap each argument in <code>&lt;(…)</code> or <code>&gt;(…)</code> before emitting it.</p>
+
+    <h3>Values that must be known now</h3>
+    <p>A directive whose argument decides <em>how many</em> bytes are emitted or <em>where</em> they go cannot use a placeholder. <code>.dsb</code>/<code>.dsw</code>, <code>.res</code>, <code>.pad</code>, <code>.align</code> and the <code>.incbin</code> offset/length use <code>DirectiveArguments.TryResolveNow</code>, which reports "… known at this point (undefined: …)". <code>.org</code>, <code>.memarea</code>, <code>.rep</code>, <code>.if</code> and <code>.elseif</code> report <code>Undefined symbol</code> when their expression is pending. <code>.ifdef</code>/<code>.ifndef</code> test whether the name is defined <em>at that line</em>.</p>
+
+    <h3>Conditionals</h3>
+    <p><code>ConditionalState</code> is a stack of frames (<code>ParentActive</code>, <code>Taken</code>, <code>Active</code>, <code>SeenElse</code>), at most 255 deep. <code>ParseLine</code> asks <code>ShouldAssembleCurrentLine()</code> and skips the line unless it is itself a conditional directive. An <code>.if</code> inside a skipped branch pushes a false frame without evaluating its condition, and an <code>.elseif</code> evaluates its condition only when its frame is live and no earlier branch was taken, so a dead branch may name symbols that do not exist.</p>
+
+    <h3>Macros</h3>
+    <ol>
+      <li><code>.macro name p1, p2</code> creates a <code>MacroDefinition</code> and sets <code>CurrentMacroBeingDefined</code>. A nested <code>.macro</code> is refused (<code>NESTED_MACROS</code>), a duplicate name too (<code>MACRO_EXISTS</code>).</li>
+      <li><code>ProcessFileStack</code> stores the following lines, trimmed and without comments, in the definition until <code>.endmacro</code>/<code>.endm</code>.</li>
+      <li>A call (<code>HandleMacroCall</code>) opens an expansion (<code>BeginExpansion</code>), splits the arguments with <code>SplitArguments</code>, folds surplus arguments into the last parameter, replaces each parameter as a whole word (<code>(?&lt;![\w@])param(?![\w])</code>, case-insensitive), and sends each line through <code>ParseLine</code>. A macro with parameters called without arguments is an error.</li>
+    </ol>
+
+    <h3>Repetition</h3>
+    <p><code>.rep n</code> evaluates <code>n</code> immediately and sets <code>RepeatState.IsInRepeatBlock</code>; <code>ParseLine</code> then buffers every line until <code>.endrep</code>/<code>.endr</code>. <code>EndRepDirectiveHandler</code> replays the buffer <code>n</code> times, each iteration in its own expansion so <code>@labels</code> inside are distinct. <code>.rep</code> blocks do not nest (<code>NESTED_REP</code>).</p>
+
+    <h2 id="instructions">Instructions</h2>
+    <p><code>HandleInstruction</code> is the busiest handler. In short:</p>
+    <ol>
+      <li>a name that is a macro is expanded instead;</li>
+      <li>the label/mnemonic swap described <a href="#dispatch">above</a>, and the label (if any) is defined at the current address;</li>
+      <li>an unknown mnemonic is <code>UNKNOWN_MNEMONIC</code> and emits nothing;</li>
+      <li><code>Cpu.ParseOperand</code> picks the addressing mode from the operand's shape; a form the CPU lacks falls back to its zero-page twin when there is one (<code>STX zp,Y</code>), otherwise <code>UNSUPPORTED_ADDRESSING_MODE</code>;</li>
+      <li>implied and accumulator forms emit one byte; <code>BBRn</code>/<code>BBSn</code> go to <code>EmitBitBranch</code>;</li>
+      <li>the operand is evaluated. Resolved: branch offset, range checks, zero-page shrinking, emission, relocation. Pending: opcode plus a zero placeholder sized by the form, and a fixup.</li>
+    </ol>
+    <p>How the mode and the opcode are chosen, including zero page versus absolute, is detailed on <a href="cpus.html#choosing">CPUs: choosing the addressing mode</a>.</p>
+
+    <h2 id="fixups">Forward references and fixups</h2>
+    <p>Two records in <code>Symbols/SymbolTypes.cs</code> carry everything that could not be finished:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Record</th><th>One per</th><th>Fields</th></tr></thead>
+      <tbody>
+        <tr><td><code>UnresolvedExpr</code></td><td>placeholder in the buffer</td><td><code>Expr</code> (rewritten text), <code>NbrUndefinedSymb</code> (names still missing), <code>Position</code> (address minus <code>OriginAddress</code>: where to patch), <code>BufferOffset</code>, <code>Type</code> (<code>Byte</code>/<code>Word</code>), <code>AddrMode</code>, <code>Location</code>. Kept in <code>ScopeManager.UnsolvedExprList</code>, keyed by <code>Position</code>.</td></tr>
+        <tr><td><code>UnresolvedSymbol</code></td><td>missing name</td><td><code>ExprList</code> (positions of placeholders waiting for it), <code>DependingList</code> (constants waiting for it). For a pending constant: its <code>Expr</code> and <code>NbrUndefinedSymb</code>.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 330" role="img" aria-label="Sequence of a forward reference: jmp fwd emits 4C 00 00 and registers an UnresolvedExpr; the label fwd is defined, ResolveSymbols decrements the counter to zero, re-evaluates and patches the word to 4C 05 80; at the end of the source the remaining fixups are resolved or reported">
+        <defs>
+          <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <rect class="box-c" x="20" y="16" width="200" height="34" rx="8"/>
+        <text x="120" y="38" text-anchor="middle" font-weight="600" font-size="13">source line</text>
+        <rect class="box-a" x="340" y="16" width="200" height="34" rx="8"/>
+        <text x="440" y="38" text-anchor="middle" font-weight="600" font-size="13">BinaryEmitter</text>
+        <rect class="box-b" x="610" y="16" width="220" height="34" rx="8"/>
+        <text x="720" y="38" text-anchor="middle" font-weight="600" font-size="13">ScopeManager</text>
+        <path class="life" d="M120,50 L120,320"/>
+        <path class="life" d="M440,50 L440,320"/>
+        <path class="life" d="M720,50 L720,320"/>
+
+        <text x="30" y="88" font-family="Consolas, monospace" font-size="13">$8002  jmp fwd</text>
+        <path class="line" d="M120,96 L432,96" marker-end="url(#a4)"/>
+        <text x="276" y="90" text-anchor="middle" class="muted" font-size="12">fwd unknown: placeholder</text>
+        <text x="452" y="100" font-family="Consolas, monospace" font-size="13">4C 00 00</text>
+        <path class="line" d="M440,116 L712,116" marker-end="url(#a4)"/>
+        <text x="576" y="110" text-anchor="middle" class="muted" font-size="12">AddUnresolvedExpression</text>
+        <text x="730" y="112" font-size="12">Expr "fwd", Word,</text>
+        <text x="730" y="128" font-size="12">count 1; fwd → ExprList</text>
+
+        <text x="30" y="178" font-family="Consolas, monospace" font-size="13">$8005  fwd: rts</text>
+        <path class="line" d="M120,186 L712,186" marker-end="url(#a4)"/>
+        <text x="416" y="180" text-anchor="middle" class="muted" font-size="12">HandleLabel: AddSymbol(fwd = $8005), ResolveSymbols</text>
+        <text x="730" y="206" font-size="12">count 0 → Evaluate</text>
+        <path class="line" d="M712,222 L448,222" marker-end="url(#a4)"/>
+        <text x="576" y="216" text-anchor="middle" class="muted" font-size="12">PatchResolvedExpression</text>
+        <text x="452" y="244" font-family="Consolas, monospace" font-size="13">4C 05 80</text>
+        <text x="452" y="262" font-size="12" class="muted">PatchWord, relocation resolved</text>
+
+        <text x="30" y="300" font-size="13">end of source</text>
+        <path class="line" d="M120,306 L712,306" marker-end="url(#a4)"/>
+        <text x="416" y="300" text-anchor="middle" class="muted" font-size="12">Complete: ResolvePendingSymbols, then report what is left</text>
+      </svg>
+    </div>
+
+    <p><code>ScopeManager.ResolveSymbols</code> runs after every label definition (named or anonymous) and once more from <code>Complete</code>. For each unsolved global name that now has a value, it decrements the counter of every waiting constant and placeholder; at zero, the expression is evaluated again and, for a placeholder, the engine's <code>PatchResolvedExpression</code> writes the bytes:</p>
+    <ul>
+      <li>relative branches (<code>Relative</code>, and the second operand of <code>BBRn</code>) recompute the displacement from the instruction address and may still fail with "Relative jump is too big";</li>
+      <li>byte and word fields are range-checked, then written with <code>PatchByte</code>/<code>PatchWord</code>, and the matching relocation record is marked resolved.</li>
+    </ul>
+    <p>An error found at this point (a branch out of range, a value too wide, a division by zero) is reported at the <code>Location</code> stored in the pending expression, not at the end of the file.</p>
+
+    <h3>Consequences worth knowing</h3>
+    <ul>
+      <li><strong>Width is fixed when the placeholder is emitted.</strong> A forward reference to a zero-page address keeps the absolute form: <code>lda later</code> followed by <code>later = $10</code> assembles to <code>AD 10 00</code>, while the same reference made after the definition gives <code>A5 10</code>.</li>
+      <li><strong>Constants are not a trigger.</strong> Defining a constant with <code>=</code> does not call <code>ResolveSymbols</code>; its waiters are served at the next label or at the end.</li>
+      <li><strong>Deferred assertions.</strong> An <code>.assert</code> whose expression is pending is stored with <code>DeferAssertion</code> and checked in <code>Complete</code>.</li>
+    </ul>
+
+    <h3>What is left at the end</h3>
+    <p><code>ReportStillUndefinedSymbols</code> runs after the last resolution. A generated name (local or anonymous) left undefined is always an error. Any other name is an error <code>Undefined symbol: NAME. Define it, or declare it with .import when another module provides it.</code>, located at the first relocation that reads it, unless <code>ReportUndefinedSymbols</code> is off or the name was declared with <code>.import</code>.</p>
+
+    <h3>Across files</h3>
+    <p>In a configuration build every unit is assembled with <code>ReportUndefinedSymbols = false</code>. A unit that still has pending work writes it to side files next to its source: <code>.Unsolved</code> (the <code>UnsolvedSymbols</code> dictionary) and <code>.UnsolvedExpr</code> (the <code>UnsolvedExprList</code>), as JSON. <code>MultiSegmentOrchestrator</code> then, for each such unit, creates a fresh engine, reloads the object file into its emitter, reloads both files, injects the <code>.symb</code> of every declared dependency into the global scope, calls <code>ResolvePendingSymbols()</code>, fails with <code>Undefined symbol</code> if anything remains, rewrites the object file and deletes the two side files. The dependencies are declared in <code>config.json</code>; see <a href="segments.html">Projects and segments</a>.</p>
+
+    <h2 id="diagnostics">Diagnostics</h2>
+    <p><code>Core/Diagnostic.cs</code> holds the whole model:</p>
+<pre><code>public class Diagnostic
+{
+    public SourceLocation Location { get; }     // FilePath + LineNumber
+    public string Message { get; }
+    public DiagnosticSeverity Severity { get; } // Info, Warning, Error
+}</code></pre>
+    <p>There are no numeric codes. <code>ErrorCodes</code> is a static class of message strings, several of them format templates (<code>"{0} does not support {1} addressing"</code>). Handlers report through <code>IDiagnosticReporter.ReportError</code>/<code>ReportWarning</code>; <code>DiagnosticReporter</code> keeps a list, and <code>AssemblyResult.Success</code> is <code>!HasErrors</code>, so warnings (<code>.warning</code>) never fail a build.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>When</th><th>Reported by</th><th>Examples</th></tr></thead>
+      <tbody>
+        <tr><td>While a line is handled</td><td>the handler, at <code>CurrentLocation</code></td><td><code>Syntax Error</code>, <code>Unknown directive '.foo'</code>, <code>LDX does not support indirect indexed (zp),Y addressing</code>, <code>Label already declared</code></td></tr>
+        <tr><td>An expression cannot be evaluated</td><td><code>ResolveExpression</code>, the single place</td><td><code>Malformed expression '(1+'</code>, <code>Division by zero in '1/0'</code></td></tr>
+        <tr><td>A fixup fails later</td><td><code>PatchResolvedExpression</code> (range, branch distance) or <code>ScopeManager.LateError</code> (evaluation), at the pending line</td><td><code>Relative jump is too big</code>, out-of-range values</td></tr>
+        <tr><td>End of the unit</td><td><code>CheckDeferredAssertions</code>, <code>ReportStillUndefinedSymbols</code></td><td><code>Assertion failed: …</code>, <code>Undefined symbol: …</code></td></tr>
+        <tr><td>The source asks</td><td><code>.error</code>, <code>.warning</code>, <code>.assert</code></td><td>the message as written</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Because the end-of-unit checks run after the read, diagnostics are not sorted by line: in the run below, line 5's undefined name is reported after line 6.</p>
+    <figure class="shot">
+      <a href="img/cli-errors.png"><img src="img/cli-errors.png" alt="A console running WinASM65 on a file with four errors: an unsupported addressing mode, a malformed expression, a division by zero and an undefined symbol"></a>
+      <figcaption>The command line prints each diagnostic with <code>Diagnostic.ToString()</code>, <code>Line N - File F - Type message</code>, on standard error, and exits with 1.</figcaption>
+    </figure>
+    <p>In the editor, the language server publishes the same objects: it converts <code>LineNumber</code> to a zero-based line spanning the whole line, maps <code>Error</code> to LSP severity 1 and anything else to 2, and sets the source to <code>winasm65</code>. For unsaved text of a project unit, it hides <code>Undefined symbol</code> messages while the last project build has not succeeded, since the name may come from another unit. See <a href="tooling.html">Tooling</a>.</p>
+
+    <h2 id="output">Output</h2>
+    <h3>BinaryEmitter</h3>
+    <p>One flat <code>List&lt;byte&gt;</code> and two addresses. <code>EmitByte</code>/<code>EmitWord</code>/<code>EmitBytes</code> append and advance <code>CurrentAddress</code>; words are little-endian. <code>PatchByte</code>/<code>PatchWord</code>/<code>PatchBytes</code> overwrite at a buffer position. Setting <code>OriginAddress</code> (what <code>.org</code> does) also appends an <code>EmitterOrigin(bufferOffset, address)</code> to <code>Origins</code>: there is one buffer, and the list of origins is how a module is later cut into one segment per <code>.org</code>. <code>SaveToFile</code> writes the raw buffer.</p>
+
+    <h3>Relocation records</h3>
+    <p>Every emitted field whose value depends on a symbol, resolved or not, gets a <code>RelocationRecord</code>: segment, buffer offset, address, width, type, the symbols read (the first is <code>TargetSymbol</code>), source file and line, expression text, and, once known, the value written. A field that read no symbol records nothing. In a direct build they are informational; they become the relocations of a <code>.w65</code> module (<a href="modules.html">Modules</a>).</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th><code>RelocationType</code></th><th>Chosen by <code>TypeFor(role, width, selector)</code> when</th></tr></thead>
+      <tbody>
+        <tr><td><code>LowByte</code> / <code>HighByte</code></td><td>width 1 and the expression started with <code>&lt;</code> / <code>&gt;</code></td></tr>
+        <tr><td><code>Rel8</code></td><td>role <code>RelativeBranch</code></td></tr>
+        <tr><td><code>Imm8</code></td><td>role <code>Immediate</code></td></tr>
+        <tr><td><code>Zp8</code> / <code>Abs16</code></td><td>role <code>Address</code>, width 1 / 2 (after zero-page shrinking)</td></tr>
+        <tr><td><code>Data8</code> / <code>Data16</code></td><td>role <code>Data</code>, width 1 / 2</td></tr>
+        <tr><td><code>Seg</code></td><td>not produced by <code>TypeFor</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Listings</h3>
+    <p>The engine never formats a listing. It reports fragments to an <code>IListingService</code>: the raw text of a line (<code>PrintLine(string)</code>), what the line produced (<code>PrintLine(LineType, value)</code>), and <code>EndLine()</code>. At <code>Finish(bytes)</code>, <code>ListingRowBuilder</code> turns the fragments into rows, reading the bytes from the <strong>final</strong> buffer, so a forward reference shows its patched value.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th><code>LineType</code></th><th>Value reported</th><th><code>ListingRowKind</code></th></tr></thead>
+      <tbody>
+        <tr><td><code>NONE</code> (text only)</td><td>—</td><td><code>Text</code>, no address</td></tr>
+        <tr><td><code>ORG</code></td><td>the new address</td><td><code>Origin</code></td></tr>
+        <tr><td><code>INST</code></td><td>byte count (instructions and data)</td><td><code>Instruction</code>; four bytes per row, continuation rows carry bytes only</td></tr>
+        <tr><td><code>LABEL</code></td><td>the label's address</td><td><code>Label</code></td></tr>
+        <tr><td><code>RES</code></td><td>the reserved address</td><td><code>Reserve</code></td></tr>
+        <tr><td><code>CONST</code></td><td>the constant's value</td><td><code>Constant</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>A real listing, rendered by <code>ListingRow.Render()</code> (the <code>jmp</code> was a forward reference):</p>
+<pre><code>           20 =   e = $20
+8000                .org $8000
+8000 A5 20         lda e
+8002 4C 05 80      jmp fwd
+8005 60          fwd: rts</code></pre>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Service</th><th>Produces</th><th>Used by</th></tr></thead>
+      <tbody>
+        <tr><td><code>ListingService</code></td><td>a <code>.lst</code> file: fragments go to a <code>.lst.tmp</code> file, then rows are rendered and the temporary file deleted</td><td>the CLI with <code>-l</code></td></tr>
+        <tr><td><code>InMemoryListingService</code></td><td><code>Rows</code>, with each row's source file and line (it implements <code>ISourceLineAwareListingService</code>, which <code>.include</code> needs)</td><td><code>SourceListingService</code>, <code>ProjectSession</code>, so the language server and the monitor</td></tr>
+        <tr><td><code>SourceListingService</code></td><td>a <code>SourceListing</code>: name, <code>AssemblyResult</code>, rows</td><td>the monitor's listing source; tests</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Files on disk</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>File</th><th>Written by</th><th>When</th></tr></thead>
+      <tbody>
+        <tr><td><code>.o</code> (or <code>-o</code>)</td><td><code>BinaryEmitter.SaveToFile</code></td><td>whenever an output path is given. Unless the format is <code>bin</code> or <code>w65</code>, the CLI then hands the bytes to the publisher for the target format (<a href="targets.html">Targets</a>).</td></tr>
+        <tr><td><code>.lst</code></td><td><code>ListingService.Finish</code></td><td>listing enabled. The name is the source path up to its first dot, plus <code>.lst</code>.</td></tr>
+        <tr><td><code>.symb</code></td><td><code>ExportSymbolFiles</code></td><td>assembled from a file and at least one global, non-generated name exists. JSON, name → value.</td></tr>
+        <tr><td><code>.Unsolved</code></td><td><code>ExportSymbolFiles</code></td><td>names are still undefined.</td></tr>
+        <tr><td><code>.UnsolvedExpr</code></td><td><code>ExportSymbolFiles</code></td><td>fixups are still pending.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The three side files are named by <code>SideFiles.BaseNameOf</code> (the source path without its extension) and placed by <code>SideFiles.Locate</code>, beside the source or in <code>SideFileDirectory</code>. Writer and reader share that class so they cannot disagree. <code>AssembleSource</code> writes none of them.</p>
+
+    <h2 id="changes">Where to make a change</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>To…</th><th>Touch</th></tr></thead>
+      <tbody>
+        <tr><td>add a directive</td><td>a new <code>IDirectiveHandler</code> (usually in <code>ExtendedDirectives.cs</code>), registered in <code>CreateDefaultDispatcher</code>; reuse <code>DataEmitter</code> or <code>TryResolveNow</code>.</td></tr>
+        <tr><td>add another spelling of a directive</td><td><code>dispatcher.RegisterAlias</code> in <code>CreateDefaultDispatcher</code>.</td></tr>
+        <tr><td>accept a new line form</td><td>a regex in <code>AssemblerEngine</code> and its place in <code>ParseLineBody</code>; check which later patterns it would shadow.</td></tr>
+        <tr><td>add an operator or a number format</td><td><code>Tokenizer.FullPattern</code> and its group map, then <code>ExpressionEvaluator</code> (<code>IsOperator</code>, <code>CanBeUnary</code>, <code>GetOperatorInfo</code>, <code>ApplyTopOperator</code>).</td></tr>
+        <tr><td>add an error message</td><td>a constant in <code>ErrorCodes</code>, reported through <code>IDiagnosticReporter</code>.</td></tr>
+        <tr><td>add an instruction or a CPU</td><td>the opcode tables in <code>Cpu/</code>; see <a href="cpus.html">CPUs</a>.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <footer>
+      <p>Behaviour described from the code in <code>WinASM65/src</code>. The French notes in <code>docs/pipeline.md</code> describe an earlier state; where they differ, this page and the code win.</p>
+    </footer>
+  </main>
+
+  <aside class="toc" aria-label="On this page"></aside>
+</div>
+</body>
+</html>

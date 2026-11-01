@@ -1,0 +1,3 @@
+# Task folders, builds and transcripts of benchmark runs
+work/
+__pycache__/

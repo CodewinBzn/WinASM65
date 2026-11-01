@@ -24,7 +24,7 @@ namespace WinASM65.Monitor.Tests
     /// measured build and check what the shell does with it. Left as literals they
     /// would make every backend in this suite unmeasured by accident.
     /// </summary>
-    public class FakeMemoryBackend : IMemoryBackend, IRomTransferTarget, IExecutionAdapter
+    public class FakeMemoryBackend : IMemoryBackend, IRomTransferTarget, IExecutionAdapter, IBreakpointRemoval
     {
         private readonly byte[] _memory;
 
@@ -167,6 +167,12 @@ namespace WinASM65.Monitor.Tests
             if (Breakpoints == null)
                 Breakpoints = new List<string>();
             Breakpoints.Add(address.ToString("X4") + ":" + kind);
+        }
+
+        public void RemoveBreakpoint(int address, string kind)
+        {
+            if (Breakpoints == null || !Breakpoints.Remove(address.ToString("X4") + ":" + kind))
+                throw new MonitorException("no such breakpoint: " + kind + " $" + address.ToString("X4"));
         }
 
         public void ClearBreakpoints()

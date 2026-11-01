@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modules and linker</title>
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<div class="layout">
+  <nav class="site-nav" aria-label="Pages"></nav>
+
+  <main>
+    <p class="breadcrumb"><a href="index.html">WinASM65</a> › Assembler</p>
+    <header class="page">
+      <h1>Modules, linker, viewer</h1>
+      <p class="lede">Besides assembling straight to a burnable image, WinASM65 can produce relocatable <code>.w65</code> modules: code that publishes names rather than addresses. Modules are packed into <code>.w65a</code> archives, joined by a linker that resolves names and patches every site that depends on one, and inspected with an offline HTML viewer.</p>
+    </header>
+
+    <aside class="sources">
+      <h4>Source files</h4>
+      <ul>
+        <li><a href="../../WinASM65/src/Modules/ModuleDirectives.cs"><code>Modules/ModuleDirectives.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Modules/ModuleDirectiveState.cs"><code>Modules/ModuleDirectiveState.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Modules/ModuleImage.cs"><code>Modules/ModuleImage.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Modules/W65Format.cs"><code>Modules/W65Format.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Modules/ModuleArchive.cs"><code>Modules/ModuleArchive.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Modules/ModuleViewer.cs"><code>Modules/ModuleViewer.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Linking/Linker.cs"><code>Linking/Linker.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Output/RelocationRecord.cs"><code>Output/RelocationRecord.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Core/AssemblerEngine.cs"><code>Core/AssemblerEngine.cs</code></a> (<code>BuildModule</code>)</li>
+        <li><a href="../../WinASM65/src/CommandLineApplication.cs"><code>CommandLineApplication.cs</code></a> (the verbs)</li>
+        <li><a href="../format-module.md"><code>docs/format-module.md</code></a> (French)</li>
+        <li><a href="../viewer.md"><code>docs/viewer.md</code></a> (French)</li>
+      </ul>
+    </aside>
+
+    <h2 id="why">Why modules</h2>
+    <p>The module system follows the model of Windows DLLs, deliberately not cc65's O65 format: the goal is to share routines between projects, not to be compatible with ca65 and ld65. A DLL exposes <strong>names, not addresses</strong>, and the linker resolves symbol names between modules. A module therefore tells apart a symbol it <em>defines</em> (and may export) from a symbol it <em>references</em> (which must be resolved elsewhere).</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Windows DLL concept</th><th>WinASM65 equivalent</th></tr></thead>
+      <tbody>
+        <tr><td><code>__declspec(dllexport)</code></td><td>the <code>.export</code> directive in the source</td></tr>
+        <tr><td><code>dllimport</code></td><td>the <code>.import</code> directive, resolved by name</td></tr>
+        <tr><td>Export and import tables</td><td>the same, in the <code>.w65</code> file</td></tr>
+        <tr><td>Image base, rebasing</td><td>segment origin plus relocations</td></tr>
+        <tr><td><code>LoadLibrary</code></td><td>the runtime stub (text targets) or the GEOS kernal</td></tr>
+        <tr><td>Dependency Walker</td><td>the HTML <a href="#viewer">viewer</a>, and the unsatisfied-import error</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The module path sits <strong>beside</strong> the direct mode, never in its place. Direct mode still writes a blob placed at its real address, burnable without a linker. Module mode writes a <code>.w65</code> that is not burnable: it holds unplaced segments and unresolved relocations. <code>WinASM65 link</code> turns modules into a burnable image again.</p>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 330" role="img" aria-label="Module flow: lib.asm and app.asm are assembled with -format w65 into lib.w65 and app.w65; WinASM65 archive packs them into demo.w65a; WinASM65 link, view and geos consume modules or archives and produce a flat image, an HTML report or a GEOS disk">
+        <defs>
+          <marker id="arrow-flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <!-- sources -->
+        <rect class="box-a" x="10" y="40" width="120" height="50" rx="8"/>
+        <text x="70" y="70" text-anchor="middle" font-weight="600">lib.asm</text>
+        <rect class="box-a" x="10" y="150" width="120" height="50" rx="8"/>
+        <text x="70" y="180" text-anchor="middle" font-weight="600">app.asm</text>
+
+        <!-- assembler -->
+        <rect class="box-a" x="170" y="85" width="150" height="70" rx="8"/>
+        <text x="245" y="113" text-anchor="middle" font-weight="600">Assembler</text>
+        <text x="245" y="134" text-anchor="middle" class="muted" font-size="12">-format w65</text>
+
+        <!-- modules -->
+        <rect class="box-b" x="360" y="40" width="130" height="50" rx="8"/>
+        <text x="425" y="63" text-anchor="middle" font-weight="600">lib.w65</text>
+        <text x="425" y="80" text-anchor="middle" class="muted" font-size="12">exports print, newline</text>
+        <rect class="box-b" x="360" y="150" width="130" height="50" rx="8"/>
+        <text x="425" y="173" text-anchor="middle" font-weight="600">app.w65</text>
+        <text x="425" y="190" text-anchor="middle" class="muted" font-size="12">imports 3 names</text>
+
+        <!-- archive -->
+        <rect class="box-c" x="530" y="85" width="130" height="70" rx="8"/>
+        <text x="595" y="113" text-anchor="middle" font-weight="600">demo.w65a</text>
+        <text x="595" y="134" text-anchor="middle" class="muted" font-size="12">WinASM65 archive</text>
+
+        <!-- consumers -->
+        <rect class="box-d" x="700" y="20" width="190" height="60" rx="8"/>
+        <text x="795" y="45" text-anchor="middle" font-weight="600">WinASM65 link</text>
+        <text x="795" y="65" text-anchor="middle" class="muted" font-size="12">flat image: .bin, .prg, .nes…</text>
+        <rect class="box-d" x="700" y="110" width="190" height="60" rx="8"/>
+        <text x="795" y="135" text-anchor="middle" font-weight="600">WinASM65 view</text>
+        <text x="795" y="155" text-anchor="middle" class="muted" font-size="12">one offline HTML report</text>
+        <rect class="box-d" x="700" y="200" width="190" height="60" rx="8"/>
+        <text x="795" y="225" text-anchor="middle" font-weight="600">WinASM65 geos</text>
+        <text x="795" y="245" text-anchor="middle" class="muted" font-size="12">GEOS application on a D64</text>
+
+        <path class="line" d="M130,65 L170,105" marker-end="url(#arrow-flow)"/>
+        <path class="line" d="M130,175 L170,135" marker-end="url(#arrow-flow)"/>
+        <path class="line" d="M320,105 L360,68" marker-end="url(#arrow-flow)"/>
+        <path class="line" d="M320,135 L360,172" marker-end="url(#arrow-flow)"/>
+        <path class="line" d="M490,65 L530,105" marker-end="url(#arrow-flow)"/>
+        <path class="line" d="M490,175 L530,135" marker-end="url(#arrow-flow)"/>
+        <path class="line" d="M660,110 L700,55" marker-end="url(#arrow-flow)"/>
+        <path class="line" d="M660,120 L700,140" marker-end="url(#arrow-flow)"/>
+        <path class="line" d="M660,135 L700,225" marker-end="url(#arrow-flow)"/>
+        <path class="line" d="M425,200 L425,290 L680,290 L680,250 L700,250" stroke-dasharray="5 4" marker-end="url(#arrow-flow)"/>
+        <text x="550" y="312" text-anchor="middle" class="muted" font-size="12">modules can also be given directly, without an archive</text>
+      </svg>
+    </div>
+    <p class="caption">The three consumers accept <code>.w65</code> modules and <code>.w65a</code> archives alike; <code>link</code> and <code>geos</code> expand an archive into its members (and the archives it references) before the linker runs.</p>
+
+    <h2 id="directives">.export and .import</h2>
+    <p>Two directives turn an ordinary unit into a module. Both are handled in <code>ModuleDirectives.cs</code>; their arguments are split on commas and white space.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Directive</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>.export a, b, …</code></td><td>Publishes one or more names. Each name must already be defined <strong>at that line</strong>: the directive looks the symbol up when it runs, so an <code>.export</code> placed before the definition fails with “Exported symbol 'x' is not defined in this unit.” Put the exports after the code, as <code>lib.asm</code> does below.</td></tr>
+        <tr><td><code>.import name</code><br><code>.import name, module</code></td><td>Declares a name another module provides. <strong>One symbol per line</strong>: the first word is the symbol, a second word is the module expected to export it. <code>.import print, newline</code> therefore imports <code>print</code> from a module called <code>newline</code>; it does not import two names.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>A declared import is what lets a module assemble on its own: when the unit ends, a name that is still undefined is an error (“Undefined symbol: x. Define it, or declare it with .import when another module provides it.”) unless an <code>.import</code> declared it. The expected module name is advisory: the linker resolves by symbol name alone, and the viewer shows the name in its “expected from” column.</p>
+
+    <h2 id="building">Building a module</h2>
+    <p>Choosing the output format <code>w65</code> writes a module instead of an executable. The two sample sources used for the screenshots, from <code>tools/screenshots/samples/</code>:</p>
+    <div class="grid-2">
+<pre><code>; A tiny library: prints the zero-terminated string at (ptr) on a C64.
+CHROUT = $FFD2
+ptr = $FB
+    .org $C000
+print:
+    ldy #0
+@next:
+    lda (ptr),y
+    beq @done
+    jsr CHROUT
+    iny
+    bne @next
+@done:
+    rts
+newline:
+    lda #13
+    jmp CHROUT
+    .export print, newline</code></pre>
+<pre><code>; The program: imports print and newline from the library.
+ptr = $FB
+    .import print
+    .import newline
+    .import clear_screen
+    .org $0801
+start:
+    jsr clear_screen
+    lda #&lt;message
+    sta ptr
+    lda #&gt;message
+    sta ptr+1
+    jsr print
+    jsr newline
+    rts
+message:
+    .asciiz "HELLO FROM WINASM65"</code></pre>
+    </div>
+    <p class="caption"><code>lib.asm</code> (left) and <code>app.asm</code> (right). Nothing in the samples exports <code>clear_screen</code>: the import is left unsatisfied on purpose, so that the viewer has something to flag.</p>
+<pre><code>WinASM65 -f lib.asm -t c64 -format w65 -o lib.w65
+WinASM65 -f app.asm -t c64 -format w65 -o app.w65</code></pre>
+    <p>What <code>BuildModule</code> in <code>AssemblerEngine.cs</code> does at the end of the assembly:</p>
+    <ul>
+      <li><strong>A module needs a declaration.</strong> A unit with no <code>.export</code> and no <code>.import</code> produces no module, and <code>-format w65</code> stops with “Format 'w65' needs a module: the source declares no .export and no .import.”</li>
+      <li><strong>One segment per origin block.</strong> The emitter holds one flat buffer; it is cut back at each recorded origin, so a unit with several <code>.org</code> gives several segments, each with its own origin, bytes and relocations. Segments are named after the module in source order: <code>lib_0</code>, <code>lib_1</code>… A unit with a single block gets one segment named after the module itself. Empty blocks are kept as zero-length segments rather than merged into a neighbour.</li>
+      <li><strong>The target's load address is a block too.</strong> With <code>-t c64</code> the default origin <code>$0801</code> opens the first block, so both samples get an empty segment <code>_0</code> at <code>$0801</code>, and their code is in segment <code>_1</code>. The linker skips empty segments.</li>
+      <li><strong>Exports</strong> become a segment index and an offset inside that segment, never an absolute address. An exported label of the second block points at the second segment.</li>
+      <li><strong>Local labels</strong>: every other label the source defined (including <code>@local</code> labels, stored as <code>print@next</code>) goes into the module's table of local labels, so that the module's own references to them can be relocated. Anonymous labels and constants are left out.</li>
+      <li><strong>Relocations</strong> recorded by the emitter are re-pointed at the segment their buffer offset falls in. Every operand or data field whose expression read a name produces one.</li>
+      <li>Every segment is of kind <code>ro</code>, alignment 1, bank 0: the format can describe <code>rw</code>, <code>bss</code>, alignment and banks, but the assembler does not yet produce them.</li>
+    </ul>
+
+    <h2 id="image">Inside a module</h2>
+    <p>In memory a module is a <code>ModuleImage</code> (<code>Modules/ModuleImage.cs</code>): five lists, written to disk in this order by <code>W65Format</code>.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Part</th><th>Class</th><th>Holds</th></tr></thead>
+      <tbody>
+        <tr><td>Segments</td><td><code>ModuleSegment</code></td><td>Name, bytes, kind (<code>Ro</code>, <code>Rw</code>, <code>Bss</code>), alignment, bank, and the origin the unit was written against. The origin is not a placement: it is where the linker puts the segment when nothing else constrains it. A <code>bss</code> segment reserves space and stores no bytes.</td></tr>
+        <tr><td>Exports</td><td><code>ModuleExport</code></td><td>Name, segment index, offset in the segment.</td></tr>
+        <tr><td>Imports</td><td><code>ModuleImport</code></td><td>Name, and the module expected to provide it (may be empty). A name is imported once.</td></tr>
+        <tr><td>Local labels</td><td><code>ModuleSymbol</code></td><td>Name, segment index, offset: the labels defined and not exported. A redefinition replaces the earlier entry.</td></tr>
+        <tr><td>Relocations</td><td><code>RelocationRecord</code></td><td>Segment, offset, width (1 or 2), type, the address as assembled, the target symbol, and the source file and line the site came from.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The provenance is the point of the relocation record: a failed resolution can name the symbol, the module and the line that needs it, instead of a number in an unknown file.</p>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 440" role="img" aria-label="Layout of lib.w65, 374 bytes: a 16-byte header, then the segment, export, import, relocation and local label tables, then the segment data at offset 356. Exports, local labels and relocations point at a segment and an offset; the segment table points at the data">
+        <defs>
+          <marker id="arrow-layout" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <text x="20" y="22" class="muted" font-size="12.5">lib.w65, as written by the command above (offsets in decimal)</text>
+
+        <rect class="box-c" x="20" y="36" width="420" height="44" rx="6"/>
+        <text x="36" y="63" font-weight="600">Header</text>
+        <text x="425" y="63" text-anchor="end" class="muted" font-size="12">0–15 · "W65" 0, v1.1, tables 340, data at 356</text>
+
+        <rect class="box-a" x="20" y="88" width="420" height="44" rx="6"/>
+        <text x="36" y="115" font-weight="600">Segment table</text>
+        <text x="425" y="115" text-anchor="end" class="muted" font-size="12">16–69 · lib_0 (empty), lib_1 (18 bytes)</text>
+
+        <rect class="box-a" x="20" y="140" width="420" height="44" rx="6"/>
+        <text x="36" y="167" font-weight="600">Export table</text>
+        <text x="425" y="167" text-anchor="end" class="muted" font-size="12">70–109 · print 1+0, newline 1+13</text>
+
+        <rect class="box-a" x="20" y="192" width="420" height="44" rx="6"/>
+        <text x="36" y="219" font-weight="600">Import table</text>
+        <text x="425" y="219" text-anchor="end" class="muted" font-size="12">110–113 · empty</text>
+
+        <rect class="box-a" x="20" y="244" width="420" height="44" rx="6"/>
+        <text x="36" y="271" font-weight="600">Relocation table</text>
+        <text x="425" y="271" text-anchor="end" class="muted" font-size="12">114–307 · 5 sites</text>
+
+        <rect class="box-a" x="20" y="296" width="420" height="44" rx="6"/>
+        <text x="36" y="323" font-weight="600">Local labels <tspan class="muted" font-size="12" font-weight="400">(1.1)</tspan></text>
+        <text x="425" y="323" text-anchor="end" class="muted" font-size="12">308–355 · print@next, print@done</text>
+
+        <rect class="box-b" x="20" y="348" width="420" height="44" rx="6"/>
+        <text x="36" y="375" font-weight="600">Segment data</text>
+        <text x="425" y="375" text-anchor="end" class="muted" font-size="12">356–373 · A0 00 B1 FB F0 06 20 D2 FF …</text>
+
+        <!-- references -->
+        <rect class="box-b" x="560" y="200" width="320" height="100" rx="8"/>
+        <text x="720" y="228" text-anchor="middle" font-weight="600">segment index + offset</text>
+        <text x="720" y="250" text-anchor="middle" class="muted" font-size="12">never an absolute address:</text>
+        <text x="720" y="268" text-anchor="middle" class="muted" font-size="12">the linker adds the placed address</text>
+        <text x="720" y="286" text-anchor="middle" class="muted" font-size="12">of the segment</text>
+
+        <path class="line" d="M440,162 L560,225" marker-end="url(#arrow-layout)"/>
+        <path class="line" d="M440,266 L560,255" marker-end="url(#arrow-layout)"/>
+        <path class="line" d="M440,318 L560,285" marker-end="url(#arrow-layout)"/>
+        <path class="line" d="M440,110 Q 520 110 520 240 Q 520 370 446 370" stroke-dasharray="5 4" marker-end="url(#arrow-layout)"/>
+        <text x="528" y="140" class="muted" font-size="12">absolute file offset</text>
+        <text x="20" y="420" class="muted" font-size="12.5">Every table starts with a 4-byte count; every string is a 4-byte length followed by UTF-8 bytes. All integers are little-endian.</text>
+      </svg>
+    </div>
+
+    <h2 id="format">The .w65 file format</h2>
+    <p>The normative description is <a href="../format-module.md"><code>docs/format-module.md</code></a> (in French); the layout below is the one <code>W65Format.cs</code> writes and reads. All integers are little-endian. A <em>string</em> is a 4-byte length followed by that many UTF-8 bytes. Each table starts with a 4-byte entry count.</p>
+<pre><code>[ header              16 bytes ]
+[ segment table                ]
+[ export table                 ]
+[ import table                 ]
+[ relocation table             ]
+[ local label table   1.1+     ]
+[ segment data                 ]</code></pre>
+
+    <h3>Header</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Offset</th><th>Size</th><th>Field</th></tr></thead>
+      <tbody>
+        <tr><td><code>$00</code></td><td>4</td><td>magic: <code>W65</code> (<code>$57 $36 $35</code>) and a zero byte</td></tr>
+        <tr><td><code>$04</code></td><td>2</td><td>format version, major (1)</td></tr>
+        <tr><td><code>$06</code></td><td>2</td><td>format version, minor (1)</td></tr>
+        <tr><td><code>$08</code></td><td>4</td><td>length of the tables</td></tr>
+        <tr><td><code>$0C</code></td><td>4</td><td>absolute position of the segment data</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The magic is <code>W65</code>, not <code>o65</code>: a file that starts with <code>o65</code> is a cc65 object, not a WinASM65 module. A reader rejects any major version other than 1.</p>
+
+    <h3>Tables</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Table</th><th>Fields of each entry</th></tr></thead>
+      <tbody>
+        <tr><td>Segments</td><td>name (string) · size (4) · alignment (4) · kind (1: 0 <code>ro</code>, 1 <code>rw</code>, 2 <code>bss</code>) · bank (1, <code>$FF</code> for <code>bss</code>) · file offset (4) · origin (2)</td></tr>
+        <tr><td>Exports</td><td>name (string) · segment index (4) · offset in the segment (4)</td></tr>
+        <tr><td>Imports</td><td>name (string) · expected module (string, empty when not given)</td></tr>
+        <tr><td>Relocations</td><td>segment index (4) · offset in the segment (4) · width (1) · type (1) · address as assembled (2) · target symbol (string) · source file (string) · source line (4)</td></tr>
+        <tr><td>Local labels</td><td>name (string) · segment index (4) · offset (4)</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <ul>
+      <li><strong>Absolute offsets.</strong> A segment's file offset is measured from the start of the file, like every other position. Since the data follows the tables, its base is only known once the tables are sized: the writer serializes the tables once to measure them, then again with the real offsets. A <code>bss</code> or empty segment has offset 0 and no bytes.</li>
+      <li><strong>Version 1.1</strong> added the local label table. It is the last table and the minor version says whether it is there: a 1.0 reader stops after the relocations and ignores it, and a 1.0 file reads back with an empty table instead of labels invented from code bytes.</li>
+      <li><strong>Corrupt files</strong> produce a diagnostic (“bad magic”, “truncated”, “a table runs past the end of the file”, “segment data runs past the end of the file”) rather than an exception.</li>
+    </ul>
+
+    <h2 id="relocations">Relocation types</h2>
+    <p>The type of a site is decided by <code>RelocationRecord.TypeFor</code> from the role of the expression (address, immediate, branch, data), from the width left after the zero-page optimization, and from a <code>&lt;</code> or <code>&gt;</code> byte selector. Never from the numeric value: <code>lda #$05</code> and <code>lda label</code> look alike, only the addressing mode tells them apart.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Code</th><th>Type</th><th>Width</th><th>Example</th><th>What the linker writes</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><code>Zp8</code></td><td>1</td><td><code>lda (ptr),y</code></td><td>a zero-page address; error if above <code>$FF</code></td></tr>
+        <tr><td>2</td><td><code>Abs16</code></td><td>2</td><td><code>jsr print</code></td><td>the 16-bit address, low byte first</td></tr>
+        <tr><td>3</td><td><code>Imm8</code></td><td>1</td><td><code>lda #MASK</code></td><td>a one-byte value; error if above <code>$FF</code></td></tr>
+        <tr><td>4</td><td><code>Rel8</code></td><td>1</td><td><code>bne @next</code></td><td>the signed distance from the end of the field; error outside -128…127</td></tr>
+        <tr><td>5</td><td><code>Data8</code></td><td>1</td><td><code>.byte COUNT</code></td><td>a one-byte value; error if above <code>$FF</code></td></tr>
+        <tr><td>6</td><td><code>Data16</code></td><td>2</td><td><code>.word TABLE</code></td><td>the 16-bit value</td></tr>
+        <tr><td>7</td><td><code>Seg</code></td><td>2</td><td>—</td><td>a segment address; defined, never produced by the assembler</td></tr>
+        <tr><td>8</td><td><code>LowByte</code></td><td>1</td><td><code>lda #&lt;message</code></td><td>the low byte of the resolved value</td></tr>
+        <tr><td>9</td><td><code>HighByte</code></td><td>1</td><td><code>lda #&gt;message</code></td><td>the high byte of the resolved value</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The selector matters on imported names: the evaluator cannot apply <code>&lt;</code> or <code>&gt;</code> to a value it does not know yet, so the choice travels in the relocation type and the linker applies it after placement. On a two-byte field the selector is dropped, and only the outermost selector counts. The specification in <code>docs/format-module.md</code> lists <code>abs8</code>, <code>abs16</code>, <code>zp8</code>, <code>rel8</code> and <code>seg</code>; the code has no <code>abs8</code>, and adds <code>imm8</code>, <code>data8</code>/<code>data16</code> (needed by GEOS) and <code>low8</code>/<code>high8</code> (found by running linked code on an emulated NES).</p>
+
+    <h2 id="archives">Archives</h2>
+    <p>An archive (<code>.w65a</code>, <code>ModuleArchive.cs</code>) groups several modules and can reference other archives.</p>
+<pre><code>WinASM65 archive lib.w65 app.w65 -o demo.w65a</code></pre>
+<pre><code>Archived 2 module(s) -&gt; demo.w65a
+  lib
+  app</code></pre>
+<pre><code>[ magic "W65A"            4 ]
+[ version major 2 ][ minor 2 ]   1.0
+[ member count            4 ]
+[ length of the tables    4 ]
+[ start of the members    4 ]   absolute
+[ member table             ]   per member: name, absolute offset, length
+[ reference table          ]   count, then archive paths
+[ member blobs             ]   each one a complete .w65 module</code></pre>
+    <ul>
+      <li><strong>No stored symbol index.</strong> The index is the union of the members' export tables, computed when the archive is opened. A stored copy could disagree with the members.</li>
+      <li><strong>References</strong> are added with <code>-ref other.w65a</code> (repeatable). A reference is a path relative to the archive that names it, so a library can move along with its dependents. Resolution is transitive, and a referenced archive is placed before the archive that needs it in the link order.</li>
+      <li><strong>A reference cycle is an error</strong>, even though resolution could proceed: it always means a mistake in the build setup. The message names the whole chain: “Archive reference cycle: a.w65a -&gt; b.w65a -&gt; a.w65a.”</li>
+      <li><strong>A name exported twice is an error</strong>, not a warning, and both providers are named: “Symbol 'X' is exported by both lib.w65a (base) and other.w65a (extra).” Choosing one silently would bind a call to the wrong routine.</li>
+      <li>The archive magic <code>W65A</code> starts with the module magic <code>W65</code>, so every reader tests for an archive first.</li>
+    </ul>
+
+    <h2 id="linker">The linker</h2>
+<pre><code>WinASM65 link &lt;module.w65 | archive.w65a&gt;... -o &lt;image&gt; [-format &lt;fmt&gt;] [-shift &lt;n&gt;]</code></pre>
+    <p>The output defaults to <code>out.bin</code> in the raw <code>bin</code> format; <code>-format</code> takes the same executable formats as the assembler (<code>prg</code>, <code>nes</code>, <code>xex</code>…, see <a href="targets.html">Targets and formats</a>), with the image's lowest address as load address. Archives are expanded before the linker runs, so <code>Linker.Link</code> only ever sees a list of modules. It works in fixed steps and stops at the first error:</p>
+    <ol>
+      <li><strong>Place.</strong> Each non-empty segment goes to its origin. A segment with origin 0 goes after everything placed so far (or at <code>$0200</code> if nothing is). <code>-shift n</code> adds <code>n</code> to every address, which is how one shared routine is placed at a second address. The address is then aligned. A segment that runs past <code>$FFFF</code> is an error.</li>
+      <li><strong>Check overlaps</strong> between all placed segments.</li>
+      <li><strong>Build the symbol table</strong> from every export: placed segment address plus offset. A name exported by two modules is an error.</li>
+      <li><strong>Resolve imports</strong> by name against that table. The expected module name is not consulted.</li>
+      <li><strong>Compute the extent</strong> from the lowest to the highest placed byte. Gaps between segments are filled with zeros.</li>
+      <li><strong>Copy</strong> the segment bytes (<code>bss</code> segments are skipped).</li>
+      <li><strong>Apply relocations.</strong> The target symbol is looked up in the exports first, then in the local labels of the module that owns the relocation. A local label therefore follows its segment like an export does, and two modules can each have a private <code>loop</code> without colliding.</li>
+    </ol>
+    <p>The linked image also keeps the list of absolute references it wrote (<code>Abs16</code>, <code>Data16</code>, and the low and high bytes). A target that moves the image at load time, such as GEOS, uses that list to build its own relocation table.</p>
+
+    <h3>Linker errors</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Message</th><th>Cause</th></tr></thead>
+      <tbody>
+        <tr><td>Unsatisfied import 'x' in app: expected from module 'm'. No module on the link line exports that name.</td><td>An import nobody exports (the “expected from” part only when the import names a module).</td></tr>
+        <tr><td>Symbol 'x' is exported by both a and b.</td><td>Duplicate export.</td></tr>
+        <tr><td>Segments overlap: 's' of a at $C000 and 't' of b at $C010.</td><td>Two placed segments share bytes.</td></tr>
+        <tr><td>Segment 's' of a does not fit: $FF00 + 512 exceeds $FFFF.</td><td>Placement past the address space.</td></tr>
+        <tr><td>Relocation in a needs 'x', which no linked module exports and which a does not define.</td><td>A site names a symbol found neither in the exports nor in the module's local labels.</td></tr>
+        <tr><td>Relative branch in a is too big: N octets.</td><td>A <code>Rel8</code> site out of range after placement.</td></tr>
+        <tr><td>Value $1234 in a does not fit on one octet.</td><td>A <code>Zp8</code>, <code>Imm8</code> or <code>Data8</code> site whose value is above <code>$FF</code>.</td></tr>
+        <tr><td>Nothing to link: every segment is empty.</td><td>No bytes to place.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Messages that come from a relocation carry the source file and line of the site.</p>
+    <p>On the samples, linking stops on the import left open on purpose:</p>
+<pre><code>&gt; WinASM65 link demo.w65a -o demo.prg -format prg
+archive demo: 2 module(s)
+Line 0  - File  - Type Unsatisfied import 'clear_screen' in app. No module on the link line exports that name.</code></pre>
+
+    <div class="callout">
+      <p><strong>Current limits of relocation</strong>, observed with the code as it is:</p>
+      <ul>
+        <li>A relocation stores only the <em>first</em> symbol its expression read, and the linker writes that symbol's value. The rest of the expression is lost: <code>lda table+1</code> is linked as <code>lda table</code>. The specification asks for every symbol of the site to be kept; the assembler records them, the file format keeps only the first.</li>
+        <li>A site that reads a constant (<code>ptr = $FB</code>, <code>CHROUT = $FFD2</code>) still records a relocation naming it, but constants are neither exported nor stored as local labels. Linking such a module fails with “Relocation in lib needs 'ptr', which no linked module exports and which lib does not define.” This is the case of both samples: even with a module that exports <code>clear_screen</code>, <code>lib</code> stops on <code>ptr</code>.</li>
+      </ul>
+    </div>
+
+    <h2 id="geos">GEOS</h2>
+    <p>GEOS relocates programs when it loads them, so for this target the linker does not produce the final addresses alone: <code>WinASM65 geos</code> links modules (or archives) with the same <code>Linker</code>, then turns the image's list of absolute references into the relocation table the GEOS kernal consumes, and writes the application on a D64 disk image.</p>
+<pre><code>WinASM65 geos &lt;module.w65&gt;... -o &lt;disk.d64&gt; [-name &lt;n&gt;] [-disk &lt;n&gt;] [-id &lt;nn&gt;] [-start &lt;addr&gt;]</code></pre>
+    <p>The details are on <a href="targets.html">Targets and formats</a>.</p>
+
+    <h2 id="viewer">The viewer</h2>
+    <p><code>WinASM65 view</code> writes an offline, read-only HTML view of a module or an archive: one file, with no external resource, that opens with a double click. It is the equivalent of Windows' Dependency Walker, and it exists because resolution by name can stay silent until the program runs on the target, where there is often no debugger. It never writes a module, never links and never executes anything.</p>
+<pre><code>WinASM65 view -f demo.w65a -o demo.html</code></pre>
+    <p>Without <code>-o</code>, the report is written beside the input with the extension <code>.html</code>. The input may also be given without <code>-f</code>.</p>
+    <figure class="shot">
+      <a href="img/module-viewer-full.png"><img src="img/module-viewer-full.png" alt="The viewer's report of demo.w65a: the symbol index, then for lib and app their segments, exports with their users, and imports, where clear_screen is marked NOT SATISFIED"></a>
+      <figcaption>The report of <code>demo.w65a</code>. The symbol index lists <code>print</code> and <code>newline</code>; <code>lib</code>'s exports are both used by <code>app</code>; <code>app</code>'s import of <code>clear_screen</code> is not satisfied.</figcaption>
+    </figure>
+    <div class="grid-2">
+      <div class="card">
+        <h4>For an archive</h4>
+        <p>The summary (modules, references, exported symbols), any duplicate-export diagnostic, the references, the symbol index (built with the resolver's own code, so it matches what the linker will see, with an “exported twice” column), and for each member: its segments, its exports with whether another member uses them and who, and its imports with “satisfied” and the provider, or “NOT SATISFIED”.</p>
+      </div>
+      <div class="card">
+        <h4>For a single module</h4>
+        <p>The summary, the segments (kind, bank, alignment, origin, size), the exports, the imports with the expected module, the local labels, and every relocation: site address, width, type, address, target symbol and <code>file:line</code> of the source.</p>
+      </div>
+    </div>
+    <p>A duplicate export does not stop the report: the page is produced anyway, with the conflict listed under “Diagnostics”, because a view that does not show up helps no one. The viewer only reads the archive it is given; it does not follow its references. Viewing an already linked binary is not supported, on purpose: the image keeps no symbols and no relocation table, so there would be nothing to show but bytes.</p>
+    <figure class="shot">
+      <a href="img/module-viewer.png"><img src="img/module-viewer.png" alt="The top of the viewer's report: symbol index and the segment tables of lib and app"></a>
+      <figcaption>The segment tables show the block layout described in <a href="#building">Building a module</a>: an empty <code>_0</code> segment at the C64 load address <code>$0801</code>, and the code in <code>_1</code> (<code>$C000</code> for <code>lib</code>, <code>$0801</code> for <code>app</code>).</figcaption>
+    </figure>
+
+    <footer>
+      <p>The commands and outputs on this page were run on the samples in <code>tools/screenshots/samples/</code>; the screenshots are made by <code>tools/screenshots/shoot-all.ps1</code>.</p>
+    </footer>
+  </main>
+
+  <aside class="toc" aria-label="On this page"></aside>
+</div>
+</body>
+</html>

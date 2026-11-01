@@ -49,6 +49,8 @@ namespace WinASM65.Tests
                     return doc.Mnemonic + " ($10)";
                 case AddressingMode.AbsoluteIndexedIndirect:
                     return doc.Mnemonic + " ($1234,x)";
+                case AddressingMode.ZeroPageRelative:
+                    return "Start:\n" + doc.Mnemonic + " $10,Start";
                 default:
                     return null;
             }
@@ -116,11 +118,18 @@ namespace WinASM65.Tests
         }
 
         [TestMethod]
+        public void EveryDocumentedFormOfEveryCpuAgreesWithTheAssembler()
+        {
+            foreach (KeyValuePair<string, ICpuInstructionSet> cpu in CpuFactory.All)
+                AssertAgreesWithTheAssembler(cpu.Value, cpu.Key);
+        }
+
+        [TestMethod]
         public void EveryMnemonicTheAssemblerAcceptsIsDocumented()
         {
-            foreach (ICpuInstructionSet cpu in new ICpuInstructionSet[] { new Cpu6502(), new Cpu65C02() })
+            foreach (ICpuInstructionSet cpu in CpuFactory.All.Values)
             {
-                foreach (string mnemonic in cpu.InstructionTable.Keys)
+                foreach (string mnemonic in cpu.Mnemonics)
                 {
                     IReadOnlyList<InstructionDocumentation> forms = InstructionDocs.ForMnemonic(mnemonic, cpu);
                     Assert.IsTrue(forms.Count > 0, mnemonic + " is accepted by the assembler but documented nowhere");

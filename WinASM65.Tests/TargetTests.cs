@@ -389,9 +389,9 @@ namespace WinASM65.Tests
         [TestMethod]
         public void UneEtiquetteDuSourcePrimeSurUnSymboleMaterielPredefini()
         {
-            // Le catalogue NES definit JOY1 a $4016, et example_bomberman-nes
-            // utilise "JOY1:" comme etiquette de boucle. Refuser l'etiquette parce
-            // qu'un nom de confort existe deja rendait le programme reel
+            // Le catalogue NES definit JOY1 a $4016, et un programme reel peut
+            // utiliser "JOY1:" comme etiquette de boucle. Refuser l'etiquette parce
+            // qu'un nom de confort existe deja rendait un tel programme
             // inassemblable. Le source fait autorite sur ses propres etiquettes.
             AssemblyResult result = AssembleWithPredefined(".org $C000\nJOY1: nop\n        jmp JOY1\n",
                 new Dictionary<string, long> { { "JOY1", 0x4016 } });

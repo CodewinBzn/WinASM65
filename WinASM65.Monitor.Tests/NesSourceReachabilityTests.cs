@@ -9,9 +9,10 @@ using WinASM65.Monitor.Shell;
 namespace WinASM65.Monitor.Tests
 {
     /// <summary>
-    /// The NES homebrew is the reference workload: if the editor cannot open it, the
-    /// editor is a toy. These tests are what turned that from an assumption into a
-    /// measurement, and two real defects came out of it.
+    /// A NES program written the way older homebrew is written -- .nas sources, a
+    /// label left without its colon -- is the reference workload: if the editor
+    /// cannot open it, the editor is a toy. These tests are what turned that from an
+    /// assumption into a measurement, and two real defects came out of it.
     ///
     /// The first: .nas was not a recognised source extension, so the tree listed
     /// "(no .asm here)" over a directory full of sources. Renaming one file to .asm
@@ -26,26 +27,6 @@ namespace WinASM65.Monitor.Tests
     [TestClass]
     public class NesSourceReachabilityTests
     {
-        private static string BombermanDirectory
-        {
-            get
-            {
-                // Walk up from the test binaries until the repository root shows up, so
-                // the test does not depend on the working directory or a machine path.
-                DirectoryInfo dir = new DirectoryInfo(AppContext.BaseDirectory);
-                while (dir != null)
-                {
-                    string candidate = Path.Combine(dir.FullName, "example_bomberman-nes");
-                    if (Directory.Exists(candidate))
-                        return candidate;
-
-                    dir = dir.Parent;
-                }
-
-                return null;
-            }
-        }
-
         [TestMethod]
         public void TheNasSourceExtensionIsRecognised()
         {
@@ -98,9 +79,10 @@ namespace WinASM65.Monitor.Tests
         [TestMethod]
         public void AFailedAssemblyReportsTheFailureRatherThanAMissingFeature()
         {
-            // The exact shape of the bomberman failure at BMAN.NAS:536, which is a bare
-            // VRAMADDRZ that the assembler reports as "Undefined Macro". That token is
-            // what a genuine, reported failure looks like here.
+            // The exact shape of a failure met in a real NES homebrew: a bare
+            // VRAMADDRZ, a label written without its colon, that the assembler reports
+            // as "Undefined Macro". That token is what a genuine, reported failure
+            // looks like here.
             //
             // Note what this deliberately does NOT use: `JMP NEVER_DEFINED` does not
             // fail. The assembler resolves an undefined symbol to zero and assembles
@@ -178,18 +160,37 @@ namespace WinASM65.Monitor.Tests
         }
 
         [TestMethod]
-        public void TheBombermanSourcesAreReachableWhenTheyArePresent()
+        public void AProjectWrittenInNasSourcesIsReachable()
         {
-            string directory = BombermanDirectory;
-            if (directory == null)
-                Assert.Inconclusive("example_bomberman-nes is not in this checkout");
+            // A project directory the way a .nas homebrew lays it out: upper-case
+            // sources, a configuration, and the binaries beside them. None of it is
+            // .asm, so a tree that only knew .asm would list nothing.
+            string directory = Path.Combine(Path.GetTempPath(), "WinASM65Nas_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            try
+            {
+                File.WriteAllText(Path.Combine(directory, "GAME.NAS"),
+                    "        .org $C000" + Environment.NewLine + "RESET:  JMP RESET" + Environment.NewLine);
+                File.WriteAllText(Path.Combine(directory, "VARS.NAS"), "SCORE = $10" + Environment.NewLine);
+                File.WriteAllText(Path.Combine(directory, "vectors.NAS"),
+                    "        .org $FFFA" + Environment.NewLine + "        .word RESET, RESET, RESET" + Environment.NewLine);
+                File.WriteAllBytes(Path.Combine(directory, "TILES.CHR"), new byte[16]);
+                File.WriteAllText(Path.Combine(directory, "config.json"),
+                    "{ \"Input\": [ { \"FileName\": \"GAME.NAS\", \"Dependencies\": [] } ] }");
 
-            string problem;
-            IReadOnlyList<FileTreeRow> rows =
-                FileTreeModel.Rows(directory, new UnitLibrary(null, directory), out problem);
+                string problem;
+                IReadOnlyList<FileTreeRow> rows =
+                    FileTreeModel.Rows(directory, new UnitLibrary(null, directory), out problem);
 
-            Assert.IsTrue(ContainsExtension(rows, ".nas"),
-                "the homebrew is written in .nas and none of it is listed. Listed: " + Describe(rows));
+                Assert.IsTrue(ContainsExtension(rows, ".nas"),
+                    "the project is written in .nas and none of it is listed. Listed: " + Describe(rows));
+                Assert.IsTrue(Contains(rows, "GAME.NAS"), "GAME.NAS. Listed: " + Describe(rows));
+                Assert.IsTrue(Contains(rows, "vectors.NAS"), "vectors.NAS. Listed: " + Describe(rows));
+            }
+            finally
+            {
+                try { Directory.Delete(directory, true); } catch (IOException) { }
+            }
         }
 
         private static bool Contains(IReadOnlyList<FileTreeRow> rows, string name)

@@ -15,18 +15,17 @@ namespace WinASM65.Monitor.Tests
     /// monitor.
     ///
     /// <para>
-    /// The workload is the one program in the repository that is genuinely multi-file
-    /// without being told to be: <c>example_bomberman-nes</c>'s bank 1, bank 2 and
-    /// vectors each use names the others define and none of them declares an import.
-    /// Building it and comparing the bytes with the image the original toolchain
-    /// produced is the only check here that says anything: a verb that assembled
-    /// nothing and reported success would pass every other test in this class.
+    /// The workload is the NES example game, <c>example_rock_patrol</c>: its
+    /// <c>game.asm</c> uses the tables <c>data.asm</c> defines and its vectors name
+    /// three routines <c>game.asm</c> defines, and none of them declares an import.
+    /// Building it and comparing the hash with the pinned Rock Patrol image is the
+    /// only check here that says anything: a verb that assembled nothing and
+    /// reported success would pass every other test in this class.
     /// </para>
     ///
     /// <para>
-    /// The reference image is build output and is not in version control, so the
-    /// comparison is <see cref="Assert.Inconclusive"/> when it is absent — never a
-    /// failure, and never a value invented to compare against.
+    /// The example is built in a temporary copy, so the side files and the image a
+    /// build writes never reach the working tree.
     /// </para>
     ///
     /// <para>
@@ -39,9 +38,9 @@ namespace WinASM65.Monitor.Tests
     [TestClass]
     public class ProjectBuildVerbTests
     {
-        /// <summary>The SHA256 of the NES image the original toolchain produced.</summary>
+        /// <summary>The SHA256 of the Rock Patrol image, the value GoldenOutputTests pins.</summary>
         private const string GoldenImage =
-            "4E57F08754A2FF7EC788245629FB70F99D4E003F66F86742566BCA99C810A244";
+            "F99BB587D623D0B88523424771359E6D94CE58622D69DF51F512CC4276EE0B25";
 
         private const string GoodSource =
             ".org $8000\n" +
@@ -58,62 +57,45 @@ namespace WinASM65.Monitor.Tests
             "  rts\n" +
             "  .export Start\n";
 
-        // ------------------------------------------------------------ the real homebrew
+        // ------------------------------------------------------------ the example game
 
         [TestMethod]
-        public void TheVerbBuildsTheHomebrewAndWritesTheImageTheToolchainProduced()
+        public void TheVerbBuildsTheExampleGameAndWritesItsPinnedImage()
         {
-            string project = HomebrewDirectory();
-            string image = Path.Combine(project, "bomber.nes");
-
-            // bomber.nes is the reference, not an artifact of this run. Snapshotted and
-            // put back whatever happens, so a build that produced different bytes fails
-            // the assertion instead of quietly becoming the next reference.
-            byte[] before = File.ReadAllBytes(image);
-            SideFiles sideFiles = SideFiles.Around(project);
-            try
+            using (TemporaryDirectory project = ExampleGameCopy())
             {
-                IReadOnlyList<string> answer = Execute(project, "BUILD " + Path.Combine(project, "config.json"));
+                string image = Path.Combine(project.Path, "rock_patrol.nes");
+                Assert.IsFalse(File.Exists(image), "the copy starts without an image");
+
+                IReadOnlyList<string> answer = Execute(project.Path,
+                    "BUILD " + Path.Combine(project.Path, "config.json"));
 
                 string all = string.Join(" | ", new List<string>(answer).ToArray());
-                Assert.IsFalse(all.Contains("ERR"), "the homebrew must build: " + all);
+                Assert.IsFalse(all.Contains("ERR"), "the example game must build: " + all);
                 Assert.IsTrue(all.StartsWith("OK ", StringComparison.Ordinal), all);
-                Assert.IsTrue(all.Contains("3 unit(s)"), all);
-                Assert.IsTrue(all.Contains("24592 byte(s)"), all);
+                Assert.IsTrue(all.Contains("4 unit(s)"), all);
+                Assert.IsTrue(all.Contains("40976 byte(s)"), all);
                 Assert.IsTrue(all.Contains(image), "the answer has to say where it wrote: " + all);
 
-                // The point of the whole milestone: the bytes on disk are the reference
+                // The point of the whole milestone: the bytes on disk are the pinned
                 // bytes, so the editor's build and the command line's build agree.
                 Assert.AreEqual(GoldenImage, HashOf(File.ReadAllBytes(image)),
-                    "the image F5 writes must be the one the original toolchain produced");
-            }
-            finally
-            {
-                sideFiles.Dispose();
-                File.WriteAllBytes(image, before);
+                    "the image F5 writes must be the pinned Rock Patrol image");
             }
         }
 
         [TestMethod]
         public void TheVerbLeavesTheProjectSymbolsForTheListingToUse()
         {
-            string project = HomebrewDirectory();
-            SideFiles sideFiles = SideFiles.Around(project);
-            try
+            using (TemporaryDirectory project = ExampleGameCopy())
+            using (FakeMemoryBackend machine = new FakeMemoryBackend())
             {
-                using (FakeMemoryBackend machine = new FakeMemoryBackend())
-                {
-                    MonitorSession session = new MonitorSession(machine, new Cpu6502(), project);
-                    session.Execute("BUILD config.json");
+                MonitorSession session = new MonitorSession(machine, new Cpu6502(), project.Path);
+                session.Execute("BUILD config.json");
 
-                    Assert.IsTrue(session.Projects.LastSession != null, "the build kept no session");
-                    Assert.IsTrue(session.Projects.LastSession.ProjectSymbols.Count > 0,
-                        "the vectors unit cannot be built without the names the banks define");
-                }
-            }
-            finally
-            {
-                sideFiles.Dispose();
+                Assert.IsTrue(session.Projects.LastSession != null, "the build kept no session");
+                Assert.IsTrue(session.Projects.LastSession.ProjectSymbols.Count > 0,
+                    "the vectors unit cannot be built without the names the game defines");
             }
         }
 
@@ -352,34 +334,32 @@ namespace WinASM65.Monitor.Tests
         }
 
         /// <summary>
-        /// The real homebrew, or inconclusive when it is not in the tree. Both the
-        /// sources and the reference image are checked, because a directory with the
-        /// sources but no <c>bomber.nes</c> would otherwise compare the build against
-        /// itself.
+        /// A copy of <c>example_rock_patrol</c> in a temporary directory, or
+        /// inconclusive when the example is not in the tree.
         /// </summary>
-        private static string HomebrewDirectory()
+        private static TemporaryDirectory ExampleGameCopy()
         {
-            string project = Path.Combine(FindRepositoryRoot(), "example_bomberman-nes");
-            if (!Directory.Exists(project))
-                Assert.Inconclusive("example_bomberman-nes is not in the built tree");
+            string source = Path.Combine(FindRepositoryRoot(), "example_rock_patrol");
+            if (!File.Exists(Path.Combine(source, "config.json")))
+                Assert.Inconclusive("example_rock_patrol is not in the built tree");
 
-            foreach (string source in new[] { "BMAN_BANK1.NAS", "BMAN_BANK2.NAS", "vectors.NAS",
-                "NES_Header.bin", "BOMBER.CHR", "config.json" })
-            {
-                if (!File.Exists(Path.Combine(project, source)))
-                    Assert.Inconclusive("example_bomberman-nes/" + source + " is missing");
-            }
+            TemporaryDirectory copy = new TemporaryDirectory();
+            CopyTree(source, copy.Path);
+            return copy;
+        }
 
-            if (!File.Exists(Path.Combine(project, "bomber.nes")))
-                Assert.Inconclusive("bomber.nes is not in the built tree: the reference image is build"
-                    + " output and is not in version control, so there is nothing to compare against");
-
-            return project;
+        private static void CopyTree(string source, string target)
+        {
+            Directory.CreateDirectory(target);
+            foreach (string file in Directory.GetFiles(source))
+                File.Copy(file, Path.Combine(target, Path.GetFileName(file)));
+            foreach (string dir in Directory.GetDirectories(source))
+                CopyTree(dir, Path.Combine(target, Path.GetFileName(dir)));
         }
 
         /// <summary>
         /// A project of one unit, so a test can fail a build without depending on which
-        /// part of the homebrew it wants to break.
+        /// part of the example game it wants to break.
         /// </summary>
         private static void WriteProject(TemporaryDirectory temp, string name, string source)
         {
@@ -435,84 +415,6 @@ namespace WinASM65.Monitor.Tests
                 {
                     if (Directory.Exists(Path))
                         Directory.Delete(Path, true);
-                }
-                catch (IOException)
-                {
-                }
-                catch (UnauthorizedAccessException)
-                {
-                }
-            }
-        }
-
-        /// <summary>
-        /// Deletes the side files a project build leaves beside its sources.
-        ///
-        /// A build of more than one unit has no other channel between its units: each
-        /// writes the names it knows to a <c>.symb</c>, a <c>.Unsolved</c> and a
-        /// <c>.UnsolvedExpr</c> beside its source, and the next unit reads them back.
-        /// The library puts them there by design and will not redirect them, so a test
-        /// that builds the real homebrew would otherwise leave them in the working
-        /// tree for whoever runs the suite next.
-        ///
-        /// <c>bomber.nes</c> is explicitly never a candidate: it is the reference
-        /// image, not an artifact of any run here, and the test that builds it puts its
-        /// own bytes back.
-        /// </summary>
-        private sealed class SideFiles : IDisposable
-        {
-            private readonly string _directory;
-            private readonly List<string> _existing;
-
-            private SideFiles(string directory, List<string> existing)
-            {
-                _directory = directory;
-                _existing = existing;
-            }
-
-            /// <summary>Records what is there, so only what a build adds is removed.</summary>
-            public static SideFiles Around(string directory)
-            {
-                List<string> existing = new List<string>();
-                foreach (string path in Directory.GetFiles(directory, "*"))
-                    existing.Add(Path.GetFileName(path));
-
-                return new SideFiles(directory, existing);
-            }
-
-            public void Dispose()
-            {
-                foreach (string file in Directory.GetFiles(_directory, "*"))
-                {
-                    string name = Path.GetFileName(file);
-
-                    // The reference image is not an artifact of any run here, and the
-                    // test that builds it restores its own bytes.
-                    if (name.Equals("bomber.nes", StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    if (_existing.Contains(name))
-                        continue;
-
-                    if (IsSideFile(name))
-                        TryDelete(file);
-                }
-            }
-
-            private static bool IsSideFile(string name)
-            {
-                return name.EndsWith(".o", StringComparison.OrdinalIgnoreCase)
-                    || name.EndsWith(".lst", StringComparison.OrdinalIgnoreCase)
-                    || name.EndsWith(".symb", StringComparison.OrdinalIgnoreCase)
-                    || name.EndsWith(".Unsolved", StringComparison.OrdinalIgnoreCase)
-                    || name.EndsWith(".UnsolvedExpr", StringComparison.OrdinalIgnoreCase);
-            }
-
-            private static void TryDelete(string file)
-            {
-                try
-                {
-                    File.Delete(file);
                 }
                 catch (IOException)
                 {

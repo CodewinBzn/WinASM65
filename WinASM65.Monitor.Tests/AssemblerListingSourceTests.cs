@@ -167,7 +167,7 @@ namespace WinASM65.Monitor.Tests
         // ---------------------------------------------------------------- cycles
 
         [TestMethod]
-        public void ACycleCountTheProjectDoesNotHaveIsPassedThroughAsNothing()
+        public void AnInstructionRowCarriesTheCycleCountOfItsForm()
         {
             using (TemporaryDirectory temp = new TemporaryDirectory())
             {
@@ -176,12 +176,9 @@ namespace WinASM65.Monitor.Tests
                 AssemblerListingSource source = new AssemblerListingSource(new Cpu6502(), temp.Path);
                 IReadOnlyList<ListingRow> rows = source.Rows(new ListingRequest(name, 0x8000, 100));
 
+                // lda #imm: the count is the execution core's own, 2 cycles.
                 ListingRow instruction = RowAtLine(rows, 4);
-                Assert.IsFalse(instruction.Cycles.HasValue,
-                    "no cycle table exists in this project, so a count here would be invented");
-
-                // The blank column is the honest rendering of that, and the bytes are
-                // still drawn beside it.
+                Assert.AreEqual(2, instruction.Cycles);
                 Assert.AreEqual(2, instruction.Bytes.Count);
                 StringAssert.Contains(ListingFormatter.Row(instruction), "A9 5A");
             }

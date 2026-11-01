@@ -100,12 +100,10 @@ namespace WinASM65.TextFormat
     /// </summary>
     public sealed class AssemblyLexer
     {
-        private static readonly HashSet<string> DirectiveLookup = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ".org", ".memarea", ".incbin", ".include", ".byte", ".word", ".res",
-            ".macro", ".endmacro", ".if", ".ifdef", ".ifndef", ".else", ".endif",
-            ".rep", ".endrep", ".end", ".export", ".import"
-        };
+        // Taken from the assembler itself, aliases included, so a directive the
+        // assembler gains is highlighted without a second list to keep in step.
+        private static readonly HashSet<string> DirectiveLookup =
+            new HashSet<string>(WinASM65.Core.AssemblerEngine.DefaultDirectiveNames, StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// The words the expression tokenizer reads as operators rather than
@@ -170,10 +168,22 @@ namespace WinASM65.TextFormat
             }
         }
 
-        /// <summary>Lexes one line, without its terminator.</summary>
+        /// <summary>Lexes one line, without its terminator; a <c>/*</c> it leaves open runs to its end.</summary>
         public IReadOnlyList<SourceToken> TokenizeLine(string line)
         {
+            bool endsInComment;
+            return TokenizeLine(line, false, out endsInComment);
+        }
+
+        /// <summary>
+        /// Lexes one line of a source with block comments: <paramref name="inComment"/>
+        /// says whether it starts inside a <c>/* ... */</c>, and
+        /// <paramref name="endsInComment"/> whether the next line does.
+        /// </summary>
+        public IReadOnlyList<SourceToken> TokenizeLine(string line, bool inComment, out bool endsInComment)
+        {
             List<SourceToken> tokens = new List<SourceToken>();
+            endsInComment = inComment;
             if (string.IsNullOrEmpty(line))
                 return tokens;
 
@@ -181,9 +191,33 @@ namespace WinASM65.TextFormat
             int length = line.Length;
             bool atLabelPosition = true;
 
+            if (inComment)
+            {
+                int close = line.IndexOf("*/", StringComparison.Ordinal);
+                int end = close < 0 ? length : close + 2;
+                Add(tokens, 0, end, SourceTokenKind.Comment, line);
+                if (close < 0)
+                    return tokens;
+                endsInComment = false;
+                index = end;
+            }
+
             while (index < length)
             {
                 char c = line[index];
+
+                if (c == '/' && Peek(line, index + 1) == '*')
+                {
+                    // A block comment, as the assembler strips it: to its */, or to
+                    // the end of the line and on into the next ones.
+                    int close = line.IndexOf("*/", index + 2, StringComparison.Ordinal);
+                    int end = close < 0 ? length : close + 2;
+                    Add(tokens, index, end - index, SourceTokenKind.Comment, line);
+                    index = end;
+                    if (close < 0)
+                        endsInComment = true;
+                    continue;
+                }
 
                 if (char.IsWhiteSpace(c))
                 {
@@ -193,8 +227,7 @@ namespace WinASM65.TextFormat
 
                 if (c == ';')
                 {
-                    // The assembler strips a comment the same way, and to the end
-                    // of the line for the same reason: it has no block comment.
+                    // The assembler strips a comment the same way: to the end of the line.
                     Add(tokens, index, length - index, SourceTokenKind.Comment, line);
                     break;
                 }
@@ -291,8 +324,9 @@ namespace WinASM65.TextFormat
             if (count > 1 && rawLines[count - 1].Length == 0)
                 count--;
 
+            bool inComment = false;
             for (int i = 0; i < count; i++)
-                lines.Add(new SourceTokenLine(i + 1, TokenizeLine(rawLines[i])));
+                lines.Add(new SourceTokenLine(i + 1, TokenizeLine(rawLines[i], inComment, out inComment)));
 
             return lines;
         }
@@ -395,7 +429,8 @@ namespace WinASM65.TextFormat
 
         private static bool IsNameStart(char c)
         {
-            return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+            // '@' starts a local label (@loop), which is a name like any other.
+            return c == '_' || c == '@' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
         }
 
         private static bool IsNamePart(char c)

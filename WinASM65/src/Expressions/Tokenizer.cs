@@ -14,7 +14,9 @@ namespace WinASM65.Expressions
 
     public class Tokenizer : ITokenizer
     {
-        public const string LabelPattern = @"[a-zA-Z_][a-zA-Z_0-9]*";
+        // A name, a local "@name", or a local already qualified by its scope
+        // ("Main@loop"), which is how a local is stored for a later pass.
+        public const string LabelPattern = @"@?[a-zA-Z_][a-zA-Z_0-9]*(?:@[a-zA-Z_][a-zA-Z_0-9]*)?";
 
         private const string DecPattern = @"[0-9]+";
         private const string BinPattern = @"[01]+";
@@ -23,17 +25,23 @@ namespace WinASM65.Expressions
         private const string DecRegex = @"(?<DEC>" + DecPattern + ")";
         private const string HexRegex = @"(\$(?<HEX>" + HexPattern + "))";
         private const string LabelRegex = @"(?<label>" + LabelPattern + ")";
-        private const string BinRegex = @"(%(?<bin>" + BinPattern + "))";
+        // % is a binary prefix only where a value is expected: after an operand
+        // (a digit, a name, a closing parenthesis) it is the modulo operator, so
+        // "7%10" is 7 mod 10 and not 7 followed by binary 2.
+        private const string BinRegex = @"((?<![\w)]\s*)%(?<bin>" + BinPattern + "))";
 
         private const string FullPattern =
             @"(?<OpenRoundBracket>\()|" +
             @"(?<CloseRoundBracket>\))|" +
             @"(?<whitespace>\s+)|" +
-            @"(?<OR>(OR|or|\|\|))|" +
-            @"(?<AND>(AND|and|&&))|" +
-            @"(?<TRUE>(TRUE|true))|" +
-            @"(?<FALSE>(FALSE|false))|" +
-            "\"(?<CHAR>[\x00-\xFF])\"|" +
+            // Whole words only: a name such as "origin" or "and_mask" is a name.
+            @"(?<OR>(\b(OR|or)\b|\|\|))|" +
+            @"(?<AND>(\b(AND|and)\b|&&))|" +
+            @"(?<TRUE>\b(TRUE|true)\b)|" +
+            @"(?<FALSE>\b(FALSE|false)\b)|" +
+            // One character in double or single quotes, escapes allowed.
+            @"""(?<CHAR>\\x[0-9a-fA-F]{2}|\\.|[\x00-\xFF])""|" +
+            @"'(?<SCHAR>\\x[0-9a-fA-F]{2}|\\.|[^'\\])'|" +
             BinRegex + "|" +
             DecRegex + "|" +
             HexRegex + "|" +
@@ -68,6 +76,8 @@ namespace WinASM65.Expressions
             { "label", TokenType.Identifier },
             { "bin", TokenType.BinaryNumber },
             { "CHAR", TokenType.CharacterConstant },
+            { "SCHAR", TokenType.CharacterConstant },
+            { "invalid", TokenType.Invalid },
             { "OpenRoundBracket", TokenType.OpenParenthesis },
             { "CloseRoundBracket", TokenType.CloseParenthesis },
             { "BSL", TokenType.BitwiseShiftLeft },
@@ -114,7 +124,7 @@ namespace WinASM65.Expressions
                         TokenType tokenType;
                         if (GroupToTypeMap.TryGetValue(groupName, out tokenType))
                         {
-                            tokenList.Add(new Token(tokenType, group.Value));
+                            tokenList.Add(new Token(tokenType, group.Value, match.Index, match.Length));
                             break;
                         }
                     }

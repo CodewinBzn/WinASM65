@@ -1,0 +1,9 @@
+{
+  "id": "09-bounce",
+  "level": "hard",
+  "title": "Bouncing star",
+  "prompt": "Add a star sprite (tile $03) at Y=150 that moves by itself, 1 pixel per frame, left and right between X=16 and X=232, turning around at each edge. Keep the ship.",
+  "start": "template",
+  "check": "09-bounce.lua",
+  "solution": "solutions/09-bounce"
+}

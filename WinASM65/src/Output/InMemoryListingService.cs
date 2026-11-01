@@ -24,6 +24,13 @@ namespace WinASM65.Output
         /// <summary>Always true: this sink has nothing to switch off.</summary>
         public bool IsEnabled { get; set; }
 
+        /// <summary>
+        /// The address of bytes emitted before any .org, set by the assembler from its
+        /// default origin. Kept across <see cref="Start"/>, which the assembler calls
+        /// after setting it.
+        /// </summary>
+        public int StartAddress { get; set; }
+
         private string _currentSource;
 
         public InMemoryListingService()
@@ -72,7 +79,7 @@ namespace WinASM65.Output
         public void Finish(byte[] memoryBytes)
         {
             CommitLine();
-            Rows = ListingRowBuilder.Build(_lines, memoryBytes);
+            Rows = ListingRowBuilder.Build(_lines, memoryBytes, StartAddress);
         }
 
         private void Append(ListingFragment fragment)

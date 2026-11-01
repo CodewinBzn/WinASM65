@@ -14,10 +14,39 @@ namespace WinASM65.Cpu
         bool IsRelativeBranch(string mnemonic);
         bool IsAccumulatorInstruction(string mnemonic);
         bool TryGetOpcode(string mnemonic, AddressingMode mode, out byte opcode);
-        IReadOnlyDictionary<string, byte[]> InstructionTable { get; }
+
+        /// <summary>
+        /// Every form the CPU accepts, one entry per mnemonic and addressing mode,
+        /// sorted by mnemonic then mode. Absence is absence: no byte value means
+        /// "unsupported", because every byte value is a real opcode on some CPU.
+        /// </summary>
+        IReadOnlyList<OpcodeEntry> Opcodes { get; }
+
+        /// <summary>The mnemonics the CPU accepts, upper case.</summary>
+        IReadOnlyCollection<string> Mnemonics { get; }
         InstructionInfo ParseOperand(string mnemonic, string operand);
         bool TryOptimizeZeroPage(string mnemonic, AddressingMode currentMode, long value, out AddressingMode optimizedMode, out byte opcode, out byte length);
         bool TryCalculateRelativeOffset(long targetAddress, long instructionAddress, out byte offset, out string error);
+    }
+
+    /// <summary>One form of one instruction: its mnemonic, addressing mode and opcode byte.</summary>
+    public readonly struct OpcodeEntry
+    {
+        public OpcodeEntry(string mnemonic, AddressingMode mode, byte opcode)
+        {
+            Mnemonic = mnemonic;
+            Mode = mode;
+            Opcode = opcode;
+        }
+
+        public string Mnemonic { get; }
+        public AddressingMode Mode { get; }
+        public byte Opcode { get; }
+
+        public override string ToString()
+        {
+            return Mnemonic + " " + Mode + " $" + Opcode.ToString("X2");
+        }
     }
 
     public class Cpu6502 : ICpuInstructionSet
@@ -95,19 +124,80 @@ namespace WinASM65.Cpu
             { "TYA", new byte[] {0x98, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff } }
         };
 
-        protected virtual Dictionary<string, byte[]> OpcodeTable
+        private static readonly Dictionary<string, Dictionary<AddressingMode, byte>> NmosMap = FromRows(NmosOpcodeTable);
+
+        /// <summary>Mnemonic -> addressing mode -> opcode. A missing mode is an unsupported one.</summary>
+        protected virtual Dictionary<string, Dictionary<AddressingMode, byte>> OpcodeMap
         {
-            get { return NmosOpcodeTable; }
+            get { return NmosMap; }
         }
 
-        /// <summary>
-        /// Read-only view of this CPU's opcode table. Exposed for the
-        /// disassembler, which needs the exact mnemonic/mode/opcode coupling,
-        /// including the 65C02 extensions absent from the NMOS table.
-        /// </summary>
-        public System.Collections.Generic.IReadOnlyDictionary<string, byte[]> InstructionTable
+        private IReadOnlyList<OpcodeEntry> _opcodes;
+
+        public IReadOnlyList<OpcodeEntry> Opcodes
         {
-            get { return OpcodeTable; }
+            get
+            {
+                if (_opcodes == null)
+                {
+                    List<OpcodeEntry> entries = new List<OpcodeEntry>();
+                    List<string> names = new List<string>(OpcodeMap.Keys);
+                    names.Sort(StringComparer.Ordinal);
+                    foreach (string name in names)
+                    {
+                        List<AddressingMode> modes = new List<AddressingMode>(OpcodeMap[name].Keys);
+                        modes.Sort();
+                        foreach (AddressingMode mode in modes)
+                            entries.Add(new OpcodeEntry(name, mode, OpcodeMap[name][mode]));
+                    }
+                    _opcodes = entries;
+                }
+                return _opcodes;
+            }
+        }
+
+        public IReadOnlyCollection<string> Mnemonics
+        {
+            get { return OpcodeMap.Keys; }
+        }
+
+        /// <summary>Reads literal rows, where $FF marks a mode the NMOS table does not have.</summary>
+        protected static Dictionary<string, Dictionary<AddressingMode, byte>> FromRows(Dictionary<string, byte[]> rows)
+        {
+            Dictionary<string, Dictionary<AddressingMode, byte>> map =
+                new Dictionary<string, Dictionary<AddressingMode, byte>>(StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<string, byte[]> row in rows)
+            {
+                Dictionary<AddressingMode, byte> modes = new Dictionary<AddressingMode, byte>();
+                for (int i = 0; i < row.Value.Length; i++)
+                {
+                    if (row.Value[i] != 0xFF)
+                        modes[(AddressingMode)i] = row.Value[i];
+                }
+                map[row.Key.ToUpperInvariant()] = modes;
+            }
+            return map;
+        }
+
+        protected static Dictionary<string, Dictionary<AddressingMode, byte>> Copy(Dictionary<string, Dictionary<AddressingMode, byte>> source)
+        {
+            Dictionary<string, Dictionary<AddressingMode, byte>> map =
+                new Dictionary<string, Dictionary<AddressingMode, byte>>(StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<string, Dictionary<AddressingMode, byte>> pair in source)
+                map[pair.Key] = new Dictionary<AddressingMode, byte>(pair.Value);
+            return map;
+        }
+
+        /// <summary>Adds or replaces one form. Any byte, $FF included, is an opcode here.</summary>
+        protected static void Set(Dictionary<string, Dictionary<AddressingMode, byte>> map, string mnemonic, AddressingMode mode, byte opcode)
+        {
+            Dictionary<AddressingMode, byte> modes;
+            if (!map.TryGetValue(mnemonic, out modes))
+            {
+                modes = new Dictionary<AddressingMode, byte>();
+                map[mnemonic.ToUpperInvariant()] = modes;
+            }
+            modes[mode] = opcode;
         }
 
         protected virtual HashSet<string> RelativeBranchMnemonics
@@ -120,11 +210,19 @@ namespace WinASM65.Cpu
             get { return NmosAccumulatorMnemonics; }
         }
 
+        private static readonly HashSet<string> NoBitBranches = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Mnemonics written <c>zp,target</c> (the Rockwell BBRn/BBSn).</summary>
+        protected virtual HashSet<string> BitBranchMnemonics
+        {
+            get { return NoBitBranches; }
+        }
+
         public bool IsInstruction(string mnemonic)
         {
             if (string.IsNullOrEmpty(mnemonic))
                 return false;
-            return OpcodeTable.ContainsKey(mnemonic);
+            return OpcodeMap.ContainsKey(mnemonic);
         }
 
         public bool IsRelativeBranch(string mnemonic)
@@ -143,59 +241,45 @@ namespace WinASM65.Cpu
 
         public bool TryGetOpcode(string mnemonic, AddressingMode mode, out byte opcode)
         {
-            opcode = 0xFF;
+            opcode = 0;
             if (string.IsNullOrEmpty(mnemonic))
                 return false;
 
-            byte[] table;
-            if (OpcodeTable.TryGetValue(mnemonic, out table))
-            {
-                int index = (int)mode;
-                if (index >= 0 && index < table.Length)
-                {
-                    opcode = table[index];
-                    return opcode != 0xFF;
-                }
-            }
-            return false;
+            Dictionary<AddressingMode, byte> modes;
+            return OpcodeMap.TryGetValue(mnemonic, out modes) && modes.TryGetValue(mode, out opcode);
         }
 
         public InstructionInfo ParseOperand(string mnemonic, string operand)
         {
             mnemonic = (mnemonic ?? string.Empty).ToUpperInvariant();
 
-            if (string.IsNullOrWhiteSpace(operand))
+            // "ASL A" is the MOS spelling of the accumulator form, "ASL" the short one.
+            // A is only the accumulator for a mnemonic that has that form; elsewhere it
+            // stays a name, as in "LDA A".
+            if (string.IsNullOrWhiteSpace(operand)
+                || (IsAccumulatorInstruction(mnemonic) && string.Equals(operand.Trim(), "A", StringComparison.OrdinalIgnoreCase)))
             {
-                if (IsAccumulatorInstruction(mnemonic))
-                {
-                    byte opc;
-                    TryGetOpcode(mnemonic, AddressingMode.Accumulator, out opc);
-                    return new InstructionInfo(AddressingMode.Accumulator, opc, 1, string.Empty);
-                }
-                else
-                {
-                    byte opc;
-                    TryGetOpcode(mnemonic, AddressingMode.Implicit, out opc);
-                    return new InstructionInfo(AddressingMode.Implicit, opc, 1, string.Empty);
-                }
+                AddressingMode bare = IsAccumulatorInstruction(mnemonic) ? AddressingMode.Accumulator : AddressingMode.Implicit;
+                return Form(mnemonic, bare, 1, string.Empty);
             }
 
             if (IsRelativeBranch(mnemonic))
+                return Form(mnemonic, AddressingMode.Relative, 2, operand.Trim());
+
+            if (BitBranchMnemonics.Contains(mnemonic))
             {
-                byte opc;
-                TryGetOpcode(mnemonic, AddressingMode.Relative, out opc);
-                return new InstructionInfo(AddressingMode.Relative, opc, 2, operand.Trim());
+                // BBRn zp,target: a zero-page byte to test, then a branch target.
+                List<string> parts = WinASM65.Core.SourceText.SplitArguments(operand);
+                string zp = parts.Count > 0 ? parts[0] : string.Empty;
+                string target = parts.Count > 1 ? string.Join(",", parts.GetRange(1, parts.Count - 1)) : string.Empty;
+                return Form(mnemonic, AddressingMode.ZeroPageRelative, 3, zp).WithSecondOperand(target);
             }
 
-            string clean = Regex.Replace(operand, @"\s+", "");
+            // Whitespace goes, except inside a literal: "lda #' '" is a space.
+            string clean = WinASM65.Core.SourceText.RemoveWhitespaceOutsideQuotes(operand);
 
             if (clean.StartsWith("#"))
-            {
-                string expr = clean.Substring(1);
-                byte opc;
-                TryGetOpcode(mnemonic, AddressingMode.Immediate, out opc);
-                return new InstructionInfo(AddressingMode.Immediate, opc, 2, expr);
-            }
+                return Form(mnemonic, AddressingMode.Immediate, 2, clean.Substring(1));
 
             if (clean.StartsWith("(") && clean.EndsWith(",x)", StringComparison.OrdinalIgnoreCase))
             {
@@ -204,12 +288,7 @@ namespace WinASM65.Cpu
             }
 
             if (clean.StartsWith("(") && clean.EndsWith("),y", StringComparison.OrdinalIgnoreCase))
-            {
-                string expr = clean.Substring(1, clean.Length - 4);
-                byte opc;
-                TryGetOpcode(mnemonic, AddressingMode.IndirectY, out opc);
-                return new InstructionInfo(AddressingMode.IndirectY, opc, 2, expr);
-            }
+                return Form(mnemonic, AddressingMode.IndirectY, 2, clean.Substring(1, clean.Length - 4));
 
             if (clean.StartsWith("(") && clean.EndsWith(")"))
             {
@@ -218,39 +297,30 @@ namespace WinASM65.Cpu
             }
 
             if (clean.EndsWith(",x", StringComparison.OrdinalIgnoreCase))
-            {
-                string expr = clean.Substring(0, clean.Length - 2);
-                byte opc;
-                TryGetOpcode(mnemonic, AddressingMode.AbsoluteX, out opc);
-                return new InstructionInfo(AddressingMode.AbsoluteX, opc, 3, expr);
-            }
+                return Form(mnemonic, AddressingMode.AbsoluteX, 3, clean.Substring(0, clean.Length - 2));
 
             if (clean.EndsWith(",y", StringComparison.OrdinalIgnoreCase))
-            {
-                string expr = clean.Substring(0, clean.Length - 2);
-                byte opc;
-                TryGetOpcode(mnemonic, AddressingMode.AbsoluteY, out opc);
-                return new InstructionInfo(AddressingMode.AbsoluteY, opc, 3, expr);
-            }
+                return Form(mnemonic, AddressingMode.AbsoluteY, 3, clean.Substring(0, clean.Length - 2));
 
-            // Default to Absolute
-            byte absOpc;
-            TryGetOpcode(mnemonic, AddressingMode.Absolute, out absOpc);
-            return new InstructionInfo(AddressingMode.Absolute, absOpc, 3, clean);
+            return Form(mnemonic, AddressingMode.Absolute, 3, clean);
+        }
+
+        /// <summary>The instruction in one mode, saying whether the CPU has that form.</summary>
+        protected InstructionInfo Form(string mnemonic, AddressingMode mode, byte length, string expression)
+        {
+            byte opc;
+            bool has = TryGetOpcode(mnemonic, mode, out opc);
+            return new InstructionInfo(mode, opc, length, expression, has);
         }
 
         protected virtual InstructionInfo ParseIndexedIndirectX(string mnemonic, string expr)
         {
-            byte opc;
-            TryGetOpcode(mnemonic, AddressingMode.IndirectX, out opc);
-            return new InstructionInfo(AddressingMode.IndirectX, opc, 2, expr);
+            return Form(mnemonic, AddressingMode.IndirectX, 2, expr);
         }
 
         protected virtual InstructionInfo ParseIndirect(string mnemonic, string expr)
         {
-            byte opc;
-            TryGetOpcode(mnemonic, AddressingMode.Indirect, out opc);
-            return new InstructionInfo(AddressingMode.Indirect, opc, 3, expr);
+            return Form(mnemonic, AddressingMode.Indirect, 3, expr);
         }
 
         public bool TryOptimizeZeroPage(string mnemonic, AddressingMode currentMode, long value, out AddressingMode optimizedMode, out byte opcode, out byte length)
@@ -273,7 +343,7 @@ namespace WinASM65.Cpu
                 if (candidateMode != AddressingMode.None)
                 {
                     byte zpOpc;
-                    if (TryGetOpcode(mnemonic, candidateMode, out zpOpc) && zpOpc != 0xFF)
+                    if (TryGetOpcode(mnemonic, candidateMode, out zpOpc))
                     {
                         optimizedMode = candidateMode;
                         opcode = zpOpc;

@@ -79,7 +79,7 @@ namespace WinASM65.Cpu
             if (cpu == null)
                 throw new ArgumentNullException("cpu");
 
-            _index = BuildIndex(cpu.InstructionTable);
+            _index = BuildIndex(cpu.Opcodes);
         }
 
         /// <summary>
@@ -87,24 +87,14 @@ namespace WinASM65.Cpu
         /// mnemonic/mode pairs: silently disassembling wrong is worse than refusing
         /// to start.
         /// </summary>
-        private static Dictionary<byte, OpcodeInfo> BuildIndex(IReadOnlyDictionary<string, byte[]> table)
+        private static Dictionary<byte, OpcodeInfo> BuildIndex(IReadOnlyList<OpcodeEntry> entries)
         {
             Dictionary<byte, OpcodeInfo> index = new Dictionary<byte, OpcodeInfo>();
-            foreach (KeyValuePair<string, byte[]> pair in table)
+            foreach (OpcodeEntry entry in entries)
             {
-                byte[] row = pair.Value;
-                if (row == null)
-                    continue;
-
-                // La longueur de la rangee vaut 13 en NMOS et 15 en CMOS : les modes
-                // ZeroPageIndirect et AbsoluteIndexedIndirect sont propres au 65C02.
-                for (int mode = 0; mode < row.Length; mode++)
                 {
-                    byte opcode = row[mode];
-                    if (opcode == 0xFF)
-                        continue;
-
-                    OpcodeInfo info = new OpcodeInfo(pair.Key.ToUpperInvariant(), (AddressingMode)mode);
+                    byte opcode = entry.Opcode;
+                    OpcodeInfo info = new OpcodeInfo(entry.Mnemonic.ToUpperInvariant(), entry.Mode);
                     OpcodeInfo existing;
                     if (index.TryGetValue(opcode, out existing))
                     {
@@ -168,6 +158,15 @@ namespace WinASM65.Cpu
                 sbyte delta = unchecked((sbyte)lo);
                 target = (ushort)(address + 2 + delta);
                 operand = "$" + target.Value.ToString("X4", CultureInfo.InvariantCulture);
+            }
+            else if (info.Mode == AddressingMode.ZeroPageRelative)
+            {
+                // BBRn zp,target: the displacement counts from the end of the
+                // three-byte instruction.
+                sbyte delta = unchecked((sbyte)hi);
+                target = (ushort)(address + 3 + delta);
+                operand = "$" + lo.ToString("X2", CultureInfo.InvariantCulture)
+                    + ",$" + target.Value.ToString("X4", CultureInfo.InvariantCulture);
             }
 
             string text = operand.Length == 0
@@ -240,7 +239,7 @@ namespace WinASM65.Cpu
                 case AddressingMode.ZeroPageIndirect:
                     return 2;
                 default:
-                    return 3;
+                    return 3; // absolute forms, and ZeroPageRelative: opcode, zp, displacement
             }
         }
 

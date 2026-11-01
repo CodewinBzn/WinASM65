@@ -1,0 +1,9 @@
+{
+  "id": "03-sprite-position",
+  "level": "easy",
+  "title": "Move the ship sprite",
+  "prompt": "The ship sprite starts near the centre of the screen. Make it start at X=200, Y=50 instead.",
+  "start": "template",
+  "check": "03-sprite-position.lua",
+  "solution": "solutions/03-sprite-position"
+}

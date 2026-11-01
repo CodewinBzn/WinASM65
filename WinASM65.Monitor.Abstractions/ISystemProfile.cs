@@ -40,6 +40,13 @@ namespace WinASM65.Monitor.Abstractions
         IReadOnlyList<NameTableLayout> NameTables { get; }
 
         /// <summary>
+        /// Memories outside the CPU's address space (video memory, sprite table,
+        /// palette), by the names a bridge is asked for. Empty for a machine whose
+        /// processor sees all of its memory.
+        /// </summary>
+        IReadOnlyList<MemorySpace> MemorySpaces { get; }
+
+        /// <summary>
         /// Resources the system ships with, already in memory: palettes, tile data,
         /// character sets. Carried as content rather than as paths, because resolving
         /// a path is I/O and this assembly does none.

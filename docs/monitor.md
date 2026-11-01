@@ -151,9 +151,9 @@ dans le code la ou ils mordent, parce qu'ils se reproduisent tous par un echec
    Le nom du type de memoire est donc une decision d'adaptateur par emulateur, et
    non une constante partagee.
 
-MesenCE echoue aussi sur `bomber.nes` (`[CPU] Uninitialized memory read: $0008`) :
-le jeu lit un miroir de PPUSTATUS avant que le PPU soit pret, et le mode
-testrunner traite une lecture non initialisee comme une erreur fatale. Ce n'est
+MesenCE echouait aussi sur la ROM d'un ancien exemple NES du depot
+(`[CPU] Uninitialized memory read: $0008`) : le jeu lisait un miroir de
+PPUSTATUS avant que le PPU soit pret, et le mode testrunner traite une lecture non initialisee comme une erreur fatale. Ce n'etait
 pas une defaute de la ROM.
 
 ## 7. Ce que la validation couvre

@@ -168,9 +168,9 @@ namespace WinASM65.Tests
         [TestMethod]
         public void UneCibleQuiDefinitUneEtiquetteUtiliseeParLeSourceResteAssemblable()
         {
-            // example_bomberman-nes porte "JOY1:" comme etiquette alors que le
-            // catalogue NES definit JOY1 a $4016. Refuser l'etiquette rendait le
-            // programme du depot inassemblable des qu'on lui donnait une cible.
+            // Un programme NES reel peut porter "JOY1:" comme etiquette alors que le
+            // catalogue NES definit JOY1 a $4016. Refuser l'etiquette rendait un tel
+            // programme inassemblable des qu'on lui donnait une cible.
             using (TemporaryDirectory temp = new TemporaryDirectory())
             {
                 string source = Path.Combine(temp.Path, "joy.asm");

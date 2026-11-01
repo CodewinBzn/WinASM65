@@ -1,0 +1,50 @@
+{
+	"Input": [
+		{
+			"FileName": "src/header.asm",
+			"Dependencies": []
+		},
+		{
+			"FileName": "src/data.asm",
+			"Dependencies": []
+		},
+		{
+			"FileName": "src/game.asm",
+			"Dependencies": ["src/data.asm"]
+		},
+		{
+			"FileName": "src/vectors.asm",
+			"Dependencies": ["src/game.asm"]
+		}
+	],
+	"Output": {
+		"ObjectFile": "rock_patrol.nes",
+		"Files": [
+			{
+				"FileName": "src/header.o",
+				"Size": "$10"
+			},
+			{
+				"FileName": "src/data.o",
+				"Size": "$4000"
+			},
+			{
+				"FileName": "src/game.o",
+				"Size": "$3FFA"
+			},
+			{
+				"FileName": "src/vectors.o"
+			},
+			{
+				"FileName": "chr/tiles.chr"
+			},
+			{
+				"FileName": "chr/tiles.chr"
+			}
+		]
+	},
+	"Emulator": {
+		"Name": "mesen2",
+		"Path": "C:\\Emulators\\Mesen2\\Mesen.exe"
+	}
+}

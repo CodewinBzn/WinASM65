@@ -5,6 +5,10 @@ by CodewinBzn.
 
 Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
 
+**Documentation:** open [docs/site/index.html](docs/site/index.html), a website that explains every module of the solution, with screenshots (retaken by `tools/screenshots/shoot-all.ps1`).
+
+**Example:** [`example_rock_patrol/`](example_rock_patrol/README.md) is a small original NES game, code and graphics, built with WinASM65 and used throughout the documentation.
+
 ------------------------------
 ## Build
 
@@ -21,11 +25,72 @@ produces a standalone `WinASM65.exe` that runs without a .NET install.
 ## Monitor
 
 `WinASM65.Monitor` assembles a source, places it in a running emulator, reads it
-back, and places it again elsewhere without reassembling. See `docs/monitor.md`
-for the protocol, the measured limits of MesenCE 2.2.1, and the design decisions.
+back, and places it again elsewhere without reassembling. The emulator is any one
+with a bridge (Mesen2 and MesenCE are built in); see the documentation's Monitor
+and Emulator bridges pages.
 
 ```bash
-dotnet run --project WinASM65.Monitor -- --mesen "C:\...\Mesen.exe" --rom game.nes
+dotnet run --project WinASM65.Monitor -- --tui --emulator-path "C:\...\Mesen.exe" --rom game.nes
+```
+
+------------------------------
+## VS Code
+
+`vscode-extension/` is a VS Code extension for WinASM65 projects:
+- Press F5 to build the project, start the emulator `config.json` names (Mesen2 2.1.1 for the NES examples), and debug in the sources: breakpoints, step, registers, and the Memory panel, whose views (RAM, and on the NES the palettes, nametables, OAM and tiles) come from the machine.
+- Errors are reported as you type; hovers describe instructions and names, with their cycles.
+- A build task fills the Problems panel.
+- Sources get syntax highlighting.
+- AI agents in VS Code get the WinASM65 tools (below).
+
+The extension starts `WinASM65.Tooling` in one of these modes:
+- `--dap` for the debug adapter
+- `--lsp` for the language server
+- `--build <config.json>` for the build task
+- `--mcp` for the MCP server
+
+```bash
+cd vscode-extension
+npm install
+npm run package        # publishes WinASM65.Tooling into bin/ and builds the .vsix
+code --install-extension winasm65-win32-x64-0.4.2.vsix
+```
+
+To try the extension from the repository without packaging it, open `vscode-extension/` in VS Code and press F5. It uses the debug build of `WinASM65.Tooling`.
+
+Two scripts check the parts that only a real emulator can test. Close any open Mesen2 first, because it runs as a single instance:
+
+```bash
+python tools/mesen2-bridge-check.py <Mesen.exe> example_rock_patrol/rock_patrol.nes C0DF   # the NMI of the built game
+python tools/dap-smoke.py WinASM65.Tooling/bin/Debug/net8.0/WinASM65.Tooling.dll <config.json> <source> <line>
+```
+
+------------------------------
+## Graphics Designer
+
+`graphics-extension/` is a second extension, the WinASM65 Graphics Designer: tile
+sets, palettes, screens, metatile maps, metasprites and animations drawn in VS Code,
+exported as sources and binaries the assembler includes, shown in hovers of the
+code, and written live into the running game. `WinASM65.Designer` exports, renders
+and imports the same assets from the command line:
+
+```bash
+dotnet run --project WinASM65.Designer -- export example_rock_patrol/gfx
+cd graphics-extension
+npm install
+npm run package        # publishes WinASM65.Designer into bin/ and builds the .vsix
+code --install-extension winasm65-graphics-win32-x64-0.2.0.vsix
+```
+
+------------------------------
+## AI assistants
+
+`WinASM65.Tooling --mcp` is a Model Context Protocol server: an assistant (Claude
+Code, VS Code's agents, Continue, Claude Desktop…) can build, assemble, debug in
+the emulator, read and write memory, and draw and export graphics with it.
+
+```bash
+claude mcp add winasm65 -- C:\...\WinASM65.Tooling.exe --mcp
 ```
 
 ------------------------------
@@ -47,7 +112,7 @@ dotnet run --project WinASM65.Monitor -- --mesen "C:\...\Mesen.exe" --rom game.n
 
 		-t <system>		Target system (nes, c64, apple2, atari8, bbc, ...).
 				Use `-t list` to enumerate every known system.
-		-cpu <cpu>		CPU override: 6502 or 65c02.
+		-cpu <cpu>		CPU override: 6502, 6502x (stable illegal opcodes), 65c02, r65c02 (Rockwell bit instructions), w65c02 (+ STP, WAI).
 				Defaults to the target system's CPU.
 		-format <fmt>		Output format override: bin, ines, prg, xex,
 				a2bin, rom, o65, ihex, srec.
@@ -260,9 +325,21 @@ fill the rest of bytes with the value $00 .
 
 ## Syntax
 
-- Comments begin with a semicolon (;).
+The complete reference is [docs/site/syntax.html](docs/site/syntax.html). Besides what this section describes, the assembler accepts:
+- character literals `'A'` with escapes, and strings with `\n \t \0 \" \xNN`, commas and semicolons;
+- `ASL A` as well as `ASL`, and `*` as the program counter (`jmp *`, `*= $C000`);
+- local labels `@loop` (scoped to the previous global label) and asm6-style anonymous labels `-` / `+`;
+- `NAME EQU value`, `NAME .equ value` (constant), `NAME .set value` (redefinable);
+- `.db .dw .addr .asciiz .lobytes .hibytes .dsb .dsw .pad .align .elseif .error .warning .assert`, and `.incbin "f", offset, length`;
+- the CPUs `6502x` (stable illegal opcodes), `r65c02` (BBR/BBS/RMB/SMB) and `w65c02` (+ STP/WAI).
+
+Errors that used to be silent are reported: unknown instruction, mode or directive, invalid expression, division by zero.
+
+- Comments begin with a semicolon (;), or run from /* to */, inside a line or over several.
 ```
 lda #$00 	; this is a comment
+/* this one
+   spans lines */
 ```
 
 - Labels are declared in two ways. 

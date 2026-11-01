@@ -137,11 +137,14 @@ namespace WinASM65.Core
         // instruction carrying a label. Unanchored, it swallowed the colon and left
         // the instruction with nothing to match, so the line was silently dropped
         // and only the label survived.
-        private static readonly Regex LabelDeclareRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*):\s*$", RegexOptions.Compiled);
-        private static readonly Regex DirectiveRegex = new Regex(@"\s*(?<directive>\.[a-zA-Z]+)(\s+(?<value>(.)+))?", RegexOptions.Compiled);
-        private static readonly Regex InstructionRegex = new Regex(@"^(\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s*:?\s+)?(?<opcode>[a-zA-Z]{3})((\s+(?<operands>(.)+))|$)", RegexOptions.Compiled);
-        private static readonly Regex ConstantRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s*=\s*(?<value>(.)+)$", RegexOptions.Compiled);
-        private static readonly Regex MemReserveRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s+\.(RES|res)\s+(?<value>(.)+)$", RegexOptions.Compiled);
+        private static readonly Regex LabelDeclareRegex = new Regex(@"^\s*(?<label>@?[a-zA-Z_][a-zA-Z_0-9]*):\s*$", RegexOptions.Compiled);
+        // Anchored: a directive is the first thing on its line (a label before it is
+        // LabelDirectiveRegex's case). Unanchored, ".word" anywhere in a line won the
+        // dispatch, whatever came before it.
+        private static readonly Regex DirectiveRegex = new Regex(@"^\s*(?<directive>\.[a-zA-Z][a-zA-Z0-9_]*)(\s+(?<value>(.)+))?$", RegexOptions.Compiled);
+        private static readonly Regex InstructionRegex = new Regex(@"^(\s*(?<label>@?[a-zA-Z_][a-zA-Z_0-9]*)\s*:?\s+)?(?<opcode>[a-zA-Z]{3}[0-7]?)((\s+(?<operands>(.)+))|$)", RegexOptions.Compiled);
+        private static readonly Regex ConstantRegex = new Regex(@"^\s*(?<label>@?[a-zA-Z_][a-zA-Z_0-9]*)\s*=\s*(?<value>(.)+)$", RegexOptions.Compiled);
+        private static readonly Regex MemReserveRegex = new Regex(@"^\s*(?<label>@?[a-zA-Z_][a-zA-Z_0-9]*)\s+\.(RES|res)\s+(?<value>(.)+)$", RegexOptions.Compiled);
         private static readonly Regex MacroCallRegex = new Regex(@"^(\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*))(\s+(?<value>(.)+))?", RegexOptions.Compiled);
 
         /// <summary>
@@ -155,7 +158,7 @@ namespace WinASM65.Core
         /// this line from a bare label, a constant and an instruction.
         /// </para>
         /// </summary>
-        private static readonly Regex LabelDirectiveRegex = new Regex(@"^\s*(?<label>[a-zA-Z_][a-zA-Z_0-9]*)\s*:?\s+\.[a-zA-Z]+", RegexOptions.Compiled);
+        private static readonly Regex LabelDirectiveRegex = new Regex(@"^\s*(?<label>@?[a-zA-Z_][a-zA-Z_0-9]*)\s*:?\s+\.[a-zA-Z][a-zA-Z0-9_]*", RegexOptions.Compiled);
 
         #region Properties & IAssemblyContext
 
@@ -206,6 +209,12 @@ namespace WinASM65.Core
             _tokenizer = tokenizer ?? new WinASM65.Expressions.Tokenizer();
             _evaluator = evaluator ?? new ExpressionEvaluator(_tokenizer);
             _scopeManager = scopeManager ?? new ScopeManager();
+            ScopeManager concreteScopes = _scopeManager as ScopeManager;
+            if (concreteScopes != null)
+            {
+                concreteScopes.LateError = (pending, message) =>
+                    _diagnostics.ReportError(pending != null && pending.HasLocation ? pending.Location : CurrentLocation, message);
+            }
             _emitter = emitter ?? new BinaryEmitter();
             _listingService = listingService ?? new ListingService();
             _diagnostics = diagnostics ?? new DiagnosticReporter();
@@ -234,6 +243,31 @@ namespace WinASM65.Core
             dispatcher.Register(new EndIfDirectiveHandler());
             dispatcher.Register(new RepDirectiveHandler());
             dispatcher.Register(new EndRepDirectiveHandler());
+            dispatcher.Register(new ElseIfDirectiveHandler());
+            dispatcher.Register(new AsciizDirectiveHandler());
+            dispatcher.Register(new ByteTableDirectiveHandler(".lobytes", "<"));
+            dispatcher.Register(new ByteTableDirectiveHandler(".hibytes", ">"));
+            dispatcher.Register(new FillDirectiveHandler(".dsb", 1));
+            dispatcher.Register(new FillDirectiveHandler(".dsw", 2));
+            dispatcher.Register(new ReserveDirectiveHandler());
+            dispatcher.Register(new PadDirectiveHandler());
+            dispatcher.Register(new AlignDirectiveHandler());
+            dispatcher.Register(new ErrorDirectiveHandler());
+            dispatcher.Register(new WarningDirectiveHandler());
+            dispatcher.Register(new AssertDirectiveHandler());
+            dispatcher.Register(new NamedValueDirectiveHandler(".equ"));
+            dispatcher.Register(new NamedValueDirectiveHandler(".set"));
+
+            // The spellings other assemblers use for the same directives.
+            dispatcher.RegisterAlias(".db", ".byte");
+            dispatcher.RegisterAlias(".byt", ".byte");
+            dispatcher.RegisterAlias(".dw", ".word");
+            dispatcher.RegisterAlias(".addr", ".word");
+            dispatcher.RegisterAlias(".endm", ".endmacro");
+            dispatcher.RegisterAlias(".rept", ".rep");
+            dispatcher.RegisterAlias(".endr", ".endrep");
+            dispatcher.RegisterAlias(".ds", ".dsb");
+            dispatcher.RegisterAlias(".fill", ".dsb");
             dispatcher.Register(new EndDirectiveHandler());
             dispatcher.Register(new ExportDirectiveHandler());
             dispatcher.Register(new ImportDirectiveHandler());
@@ -329,6 +363,7 @@ namespace WinASM65.Core
         private AssemblyResult Complete(string outputFile, string sourceName, bool fromFile)
         {
             ResolvePendingSymbols();
+            CheckDeferredAssertions();
 
             // A name nobody ever defined leaves a placeholder in the buffer, and
             // the placeholder is zero. The image therefore builds clean, writes a
@@ -449,7 +484,7 @@ namespace WinASM65.Core
             for (int i = 0; i < _sourceLabels.Count; i++)
             {
                 string name = _sourceLabels[i].Name;
-                if (state.Exports.Contains(name))
+                if (state.Exports.Contains(name) || name.StartsWith("__anon_", StringComparison.Ordinal))
                     continue;
 
                 int placed;
@@ -574,6 +609,10 @@ namespace WinASM65.Core
 
         private void ApplyDefaultOrigin()
         {
+            InMemoryListingService inMemory = _listingService as InMemoryListingService;
+            if (inMemory != null)
+                inMemory.StartAddress = _defaultOrigin ?? 0;
+
             if (!_defaultOrigin.HasValue)
                 return;
             _emitter.CurrentAddress = _defaultOrigin.Value;
@@ -655,10 +694,22 @@ namespace WinASM65.Core
         /// </summary>
         private void ReportStillUndefinedSymbols()
         {
+            Dictionary<string, UnresolvedSymbol> unsolved = _scopeManager.GlobalScope.UnsolvedSymbols;
+
+            // A local or anonymous label cannot come from another unit, so one left
+            // undefined is an error even in a multi-unit build.
+            List<string> generated = new List<string>();
+            foreach (string name in unsolved.Keys)
+            {
+                if (IsGeneratedName(name))
+                    generated.Add(name);
+            }
+            generated.Sort(StringComparer.Ordinal);
+            foreach (string name in generated)
+                ReportUndefinedGeneratedName(name);
+
             if (!_reportUndefinedSymbols)
                 return;
-
-            Dictionary<string, UnresolvedSymbol> unsolved = _scopeManager.GlobalScope.UnsolvedSymbols;
             if (unsolved.Count == 0 && _scopeManager.UnsolvedExprList.Count == 0)
                 return;
 
@@ -673,6 +724,8 @@ namespace WinASM65.Core
             List<string> missing = new List<string>();
             foreach (string name in unsolved.Keys)
             {
+                if (IsGeneratedName(name))
+                    continue;
                 if (declared.Count == 0 || !declared.Contains(name))
                     missing.Add(name);
             }
@@ -711,8 +764,51 @@ namespace WinASM65.Core
             return CurrentLocation;
         }
 
+        private sealed class DeferredAssertion
+        {
+            public string Expression;
+            public string Message;
+            public SourceLocation Location;
+        }
+
+        private readonly List<DeferredAssertion> _deferredAssertions = new List<DeferredAssertion>();
+
+        public void DeferAssertion(string expression, string message)
+        {
+            _deferredAssertions.Add(new DeferredAssertion { Expression = expression, Message = message, Location = CurrentLocation });
+        }
+
+        /// <summary>
+        /// The .assert lines that read a symbol defined later, now that the unit is
+        /// complete. In a multi-unit build a name may still belong to another unit;
+        /// that case is left to the build's own undefined-name check.
+        /// </summary>
+        private void CheckDeferredAssertions()
+        {
+            foreach (DeferredAssertion assertion in _deferredAssertions)
+            {
+                ExpressionResult res = _evaluator.Evaluate(assertion.Expression, _scopeManager, assertion.Location);
+                if (res.HasError)
+                    _diagnostics.ReportError(assertion.Location, res.Error);
+                else if (!res.IsResolved)
+                {
+                    if (_reportUndefinedSymbols)
+                        _diagnostics.ReportError(assertion.Location, ErrorCodes.UNDEFINED_SYMBOL + ": " + string.Join(", ", res.UndefinedSymbols));
+                }
+                else if (!res.Value.ToBoolean())
+                    _diagnostics.ReportError(assertion.Location, string.Format(ErrorCodes.ASSERTION_FAILED, assertion.Message));
+            }
+            _deferredAssertions.Clear();
+        }
+
         private void Reset()
         {
+            _deferredAssertions.Clear();
+            _currentGlobal = null;
+            _expansions.Clear();
+            _expansionCounter = 0;
+            _backwardLabels.Clear();
+            _forwardLabels.Clear();
             _emitter.Reset();
             _scopeManager.Reset();
             _diagnostics.Clear();
@@ -784,8 +880,13 @@ namespace WinASM65.Core
                     string trimmed = rawLine.Trim();
                     _currentFile.CurrentLineNumber++;
 
-                    // Strip comment
-                    trimmed = Regex.Replace(trimmed, ";(.)*", "").Trim();
+                    // Strip the comments: the first ';' that is not inside a string or a
+                    // character literal, so ".byte "a;b"" and "cmp #';'" keep their data,
+                    // and /* ... */, which may span lines (each file keeps its own state).
+                    bool opened;
+                    trimmed = SourceText.StripComments(trimmed, ref _currentFile.InComment, out opened).Trim();
+                    if (opened)
+                        _currentFile.CommentLine = _currentFile.CurrentLineNumber;
                     if (string.IsNullOrWhiteSpace(trimmed))
                     {
                         _listingService.EndLine();
@@ -793,7 +894,7 @@ namespace WinASM65.Core
                     }
 
                     if (_currentMacroBeingDefined != null &&
-                        !trimmed.Equals(".endmacro", StringComparison.OrdinalIgnoreCase) &&
+                        !IsEndMacro(trimmed) &&
                         !trimmed.StartsWith(".macro", StringComparison.OrdinalIgnoreCase))
                     {
                         _currentMacroBeingDefined.Lines.Add(trimmed);
@@ -805,13 +906,44 @@ namespace WinASM65.Core
                     }
                 }
 
+                if (_currentFile.InComment && !_stopAssembling)
+                    _diagnostics.ReportError(new SourceLocation(_currentFile.FilePath, _currentFile.CommentLine),
+                        ErrorCodes.UNTERMINATED_COMMENT);
                 _currentFile.Close();
                 _currentFile = _fileStack.Count > 0 ? _fileStack.Pop() : null;
             }
         }
 
+        private static readonly Regex EndMacroRegex = new Regex(@"^\.(endmacro|endm)\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex EndRepRegex = new Regex(@"^\.(endrep|endr)\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex ConditionalDirectiveRegex = new Regex(@"^\.(if|ifdef|ifndef|elseif|else|endif)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        // NAME = value is redefinable (a counter in a .rep block needs that); NAME .set
+        // value is the same thing. NAME EQU value and NAME .equ value are constants: a
+        // second definition with another value is an error.
+        private static readonly Regex EquRegex = new Regex(@"^\s*(?<label>@?[a-zA-Z_][a-zA-Z_0-9]*)\s*:?\s+\.?(?i:equ)\s+(?<value>.+)$", RegexOptions.Compiled);
+        private static readonly Regex SetRegex = new Regex(@"^\s*(?<label>@?[a-zA-Z_][a-zA-Z_0-9]*)\s+(?i:\.set)\s+(?<value>.+)$", RegexOptions.Compiled);
+
+        // *= expr sets the program counter, as .org does.
+        private static readonly Regex OrgStarRegex = new Regex(@"^\s*\*\s*=\s*(?<value>.+)$", RegexOptions.Compiled);
+
+        private static bool IsEndMacro(string line)
+        {
+            return EndMacroRegex.IsMatch(line);
+        }
+
+        private static bool IsEndRep(string line)
+        {
+            return EndRepRegex.IsMatch(line);
+        }
+
+        // The address of the line being assembled: what '*' means in an expression.
+        private ushort _lineStartAddress;
+
         public void ParseLine(string line, string originalLine)
         {
+            _lineStartAddress = _emitter.CurrentAddress;
+
             // Conditional assembly filtering
             if (_conditionState.IsActive &&
                 !_conditionState.ShouldAssembleCurrentLine() &&
@@ -823,11 +955,31 @@ namespace WinASM65.Core
 
             // Repeat block buffering
             if (_repeatState.IsInRepeatBlock &&
-                !line.Equals(".endrep", StringComparison.OrdinalIgnoreCase) &&
+                !IsEndRep(line) &&
                 !line.StartsWith(".rep", StringComparison.OrdinalIgnoreCase))
             {
                 _repeatState.Lines.Add(line);
                 _listingService.EndLine();
+                return;
+            }
+
+            ParseLineBody(line);
+            _listingService.EndLine();
+        }
+
+        // A line that is only "-", "--", "+", "++"... (an anonymous label), possibly
+        // followed by the rest of a line: "- lda #1".
+        private static readonly Regex AnonLabelRegex = new Regex(@"^(?<anon>\++|-+)(\s+(?<rest>.+))?$", RegexOptions.Compiled);
+
+        private void ParseLineBody(string line)
+        {
+            Match anonymous = AnonLabelRegex.Match(line);
+            if (anonymous.Success)
+            {
+                DefineAnonymous(anonymous.Groups["anon"].Value);
+                string rest = anonymous.Groups["rest"].Value;
+                if (!string.IsNullOrWhiteSpace(rest))
+                    ParseLineBody(rest.Trim());
                 return;
             }
 
@@ -844,6 +996,18 @@ namespace WinASM65.Core
                 if (!_scopeManager.ExitLocalScope(out err))
                     _diagnostics.ReportError(CurrentLocation, err);
             }
+            else if (OrgStarRegex.IsMatch(line))
+            {
+                DispatchDirective(".org", OrgStarRegex.Match(line).Groups["value"].Value);
+            }
+            else if (EquRegex.IsMatch(line))
+            {
+                HandleConstant(EquRegex.Match(line), true);
+            }
+            else if (SetRegex.IsMatch(line))
+            {
+                HandleConstant(SetRegex.Match(line), false);
+            }
             else if (MemReserveRegex.IsMatch(line))
             {
                 HandleMemReserve(MemReserveRegex.Match(line));
@@ -852,19 +1016,15 @@ namespace WinASM65.Core
             {
                 // The label takes the address the directive is about to emit at, so
                 // it is defined first and the directive then fills that address.
-                HandleLabel(LabelDirectiveRegex.Match(line));
-                Match labelled = DirectiveRegex.Match(line);
-                _directiveDispatcher.TryDispatch(
-                    labelled.Groups["directive"].Value.ToLowerInvariant(),
-                    labelled.Groups["value"].Value,
-                    this);
+                Match labelMatch = LabelDirectiveRegex.Match(line);
+                HandleLabel(labelMatch);
+                Match labelled = DirectiveRegex.Match(line.Substring(labelMatch.Groups["label"].Index + labelMatch.Groups["label"].Length).TrimStart(':', ' ', '\t'));
+                DispatchDirective(labelled.Groups["directive"].Value, labelled.Groups["value"].Value);
             }
             else if (DirectiveRegex.IsMatch(line))
             {
                 Match match = DirectiveRegex.Match(line);
-                string directiveName = match.Groups["directive"].Value.ToLowerInvariant();
-                string argument = match.Groups["value"].Value;
-                _directiveDispatcher.TryDispatch(directiveName, argument, this);
+                DispatchDirective(match.Groups["directive"].Value, match.Groups["value"].Value);
             }
             else if (LabelDeclareRegex.IsMatch(line))
             {
@@ -872,7 +1032,7 @@ namespace WinASM65.Core
             }
             else if (ConstantRegex.IsMatch(line))
             {
-                HandleConstant(ConstantRegex.Match(line));
+                HandleConstant(ConstantRegex.Match(line), false);
             }
             else if (InstructionRegex.IsMatch(line))
             {
@@ -886,17 +1046,178 @@ namespace WinASM65.Core
             {
                 _diagnostics.ReportError(CurrentLocation, ErrorCodes.SYNTAX);
             }
+        }
 
-            _listingService.EndLine();
+        // ---------------------------------------------------- local and anonymous labels
+
+        // The last global label that took an address: the scope of "@name".
+        private string _currentGlobal;
+
+        // Open macro expansions and .rep iterations, innermost last: inside one, "@name"
+        // belongs to the expansion, so the same macro can be used twice.
+        private readonly Stack<int> _expansions = new Stack<int>();
+        private int _expansionCounter;
+
+        // How many anonymous labels of each run length have been defined so far:
+        // "-" and "--" are different names, as in asm6.
+        private readonly Dictionary<int, int> _backwardLabels = new Dictionary<int, int>();
+        private readonly Dictionary<int, int> _forwardLabels = new Dictionary<int, int>();
+
+        public void BeginExpansion()
+        {
+            _expansions.Push(++_expansionCounter);
+        }
+
+        public void EndExpansion()
+        {
+            if (_expansions.Count > 0)
+                _expansions.Pop();
+        }
+
+        private string LocalScope()
+        {
+            if (_expansions.Count > 0)
+                return "__m" + _expansions.Peek().ToString(CultureInfo.InvariantCulture);
+            return _currentGlobal;
+        }
+
+        /// <summary>
+        /// The stored name of a definition. "@name" becomes "Scope@name"; a global
+        /// label that takes an address opens a new scope for the locals after it.
+        /// </summary>
+        private string DefineName(string written, bool opensScope)
+        {
+            if (written.StartsWith("@", StringComparison.Ordinal))
+            {
+                string scope = LocalScope();
+                if (scope == null)
+                {
+                    _diagnostics.ReportError(CurrentLocation, string.Format(ErrorCodes.LOCAL_LABEL_NO_SCOPE, written));
+                    return written;
+                }
+                return scope + written;
+            }
+            if (opensScope)
+                _currentGlobal = written;
+            return written;
+        }
+
+        private static string AnonymousName(bool forward, int length, int index)
+        {
+            return "__anon_" + (forward ? "p" : "m") + length.ToString(CultureInfo.InvariantCulture)
+                + "_" + index.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private void DefineAnonymous(string run)
+        {
+            bool forward = run[0] == '+';
+            Dictionary<int, int> counts = forward ? _forwardLabels : _backwardLabels;
+            int index;
+            counts.TryGetValue(run.Length, out index);
+            counts[run.Length] = index + 1;
+
+            string err;
+            if (AddSourceSymbol(AnonymousName(forward, run.Length, index), _emitter.CurrentAddress, out err))
+            {
+                _listingService.PrintLine(LineType.LABEL, _emitter.CurrentAddress);
+                _scopeManager.ResolveSymbols(_evaluator, PatchResolvedExpression);
+            }
+            else
+            {
+                _diagnostics.ReportError(CurrentLocation, err);
+            }
+        }
+
+        private static readonly Regex AnonReferenceRegex = new Regex(@"^\s*(?<anon>\++|-+)\s*$", RegexOptions.Compiled);
+
+        /// <summary>
+        /// Rewrites the names an expression reads into the names they are stored under:
+        /// "@loop" into "Scope@loop", and an operand that is only "-" or "+" runs into
+        /// the anonymous label it designates.
+        /// </summary>
+        private string ExpandNames(string expr)
+        {
+            if (string.IsNullOrEmpty(expr))
+                return expr;
+
+            Match anonymous = AnonReferenceRegex.Match(expr);
+            if (anonymous.Success)
+            {
+                string run = anonymous.Groups["anon"].Value;
+                bool forward = run[0] == '+';
+                int count;
+                (forward ? _forwardLabels : _backwardLabels).TryGetValue(run.Length, out count);
+                if (forward)
+                    return AnonymousName(true, run.Length, count);
+                if (count == 0)
+                {
+                    _diagnostics.ReportError(CurrentLocation, string.Format(ErrorCodes.ANON_LABEL_NOT_FOUND, run, "before this line"));
+                    return "0";
+                }
+                return AnonymousName(false, run.Length, count - 1);
+            }
+
+            if (expr.IndexOf('@') < 0)
+                return expr;
+
+            string scope = LocalScope();
+            IReadOnlyList<Token> tokens = _tokenizer.Tokenize(expr);
+            System.Text.StringBuilder text = new System.Text.StringBuilder(expr);
+            for (int i = tokens.Count - 1; i >= 0; i--)
+            {
+                if (tokens[i].Type != TokenType.Identifier || !tokens[i].Value.StartsWith("@", StringComparison.Ordinal))
+                    continue;
+                if (scope == null)
+                {
+                    _diagnostics.ReportError(CurrentLocation, string.Format(ErrorCodes.LOCAL_LABEL_NO_SCOPE, tokens[i].Value));
+                    continue;
+                }
+                text.Insert(tokens[i].Index, scope);
+            }
+            return text.ToString();
+        }
+
+        /// <summary>A stored name as the source wrote it, for messages.</summary>
+        private static bool IsGeneratedName(string name)
+        {
+            return name.StartsWith("__anon_", StringComparison.Ordinal) || name.IndexOf('@') >= 0;
+        }
+
+        private void ReportUndefinedGeneratedName(string name)
+        {
+            SourceLocation where = LocationOf(name);
+            if (name.StartsWith("__anon_", StringComparison.Ordinal))
+            {
+                int length = int.Parse(name.Substring(8, name.LastIndexOf('_') - 8), CultureInfo.InvariantCulture);
+                _diagnostics.ReportError(where, string.Format(ErrorCodes.ANON_LABEL_NOT_FOUND, new string('+', length), "after this line"));
+                return;
+            }
+            int at = name.IndexOf('@');
+            string scope = name.Substring(0, at);
+            if (scope.StartsWith("__m", StringComparison.Ordinal))
+                scope = "this macro or .rep expansion";
+            _diagnostics.ReportError(where, string.Format(ErrorCodes.LOCAL_LABEL_UNDEFINED, name.Substring(at), scope));
+        }
+
+        /// <summary>
+        /// Runs a directive, and says so when there is no such directive: an unknown
+        /// one used to be skipped without a word, so ".db" or a typo left a hole in
+        /// the image where the data should have been.
+        /// </summary>
+        private void DispatchDirective(string written, string argument)
+        {
+            if (_directiveDispatcher.TryDispatch(written.ToLowerInvariant(), argument, this))
+                return;
+            // ".loop" alone on its line is how other assemblers write a local label.
+            if (string.IsNullOrWhiteSpace(argument))
+                _diagnostics.ReportError(CurrentLocation, string.Format(ErrorCodes.UNKNOWN_DIRECTIVE_LABEL, written, written.TrimStart('.')));
+            else
+                _diagnostics.ReportError(CurrentLocation, string.Format(ErrorCodes.UNKNOWN_DIRECTIVE, written));
         }
 
         private static bool IsConditionalDirective(string line)
         {
-            return line.Equals(".endif", StringComparison.OrdinalIgnoreCase) ||
-                   line.Equals(".else", StringComparison.OrdinalIgnoreCase) ||
-                   line.StartsWith(".if ", StringComparison.OrdinalIgnoreCase) ||
-                   line.StartsWith(".ifdef ", StringComparison.OrdinalIgnoreCase) ||
-                   line.StartsWith(".ifndef ", StringComparison.OrdinalIgnoreCase);
+            return ConditionalDirectiveRegex.IsMatch(line);
         }
 
         public ExpressionResult ResolveExpression(string expr, AddressingMode addrMode = AddressingMode.None, bool isLogical = false)
@@ -904,8 +1225,59 @@ namespace WinASM65.Core
             // The role comes from the decoded addressing mode, never from the value:
             // it is the addressing mode that says whether the byte about to be emitted
             // holds a data value, an address, or a branch displacement.
-            ExpressionResult result = _evaluator.Evaluate(expr, _scopeManager, CurrentLocation);
+            ExpressionResult result = _evaluator.Evaluate(ExpandProgramCounter(ExpandNames(expr)), _scopeManager, CurrentLocation);
+
+            // The single place an expression that cannot be evaluated is reported, at
+            // the line it was written on. The result carries the value 0, so the caller
+            // still emits a field of the right size and registers nothing pending.
+            if (result.HasError)
+                _diagnostics.ReportError(CurrentLocation, result.Error);
+
             return result.WithRole(RoleFor(addrMode, isLogical));
+        }
+
+        /// <summary>
+        /// Replaces '*' in operand position with the address of the line, so that
+        /// "jmp *" and ".word *+2" read the program counter while "2*3" multiplies.
+        /// The expression is rewritten before it is stored for a later pass, so a
+        /// pending expression keeps the address of the line it was written on.
+        /// </summary>
+        private string ExpandProgramCounter(string expr)
+        {
+            if (string.IsNullOrEmpty(expr) || expr.IndexOf('*') < 0)
+                return expr;
+
+            IReadOnlyList<Token> tokens = _tokenizer.Tokenize(expr);
+            System.Text.StringBuilder text = new System.Text.StringBuilder(expr);
+            string pc = "$" + _lineStartAddress.ToString("X4", CultureInfo.InvariantCulture);
+            for (int i = tokens.Count - 1; i >= 0; i--)
+            {
+                if (tokens[i].Type != TokenType.Multiply)
+                    continue;
+                bool operandPosition = i == 0 || !EndsOperand(tokens[i - 1].Type);
+                if (!operandPosition)
+                    continue;
+                text.Remove(tokens[i].Index, tokens[i].Length).Insert(tokens[i].Index, pc);
+            }
+            return text.ToString();
+        }
+
+        private static bool EndsOperand(TokenType type)
+        {
+            switch (type)
+            {
+                case TokenType.DecimalNumber:
+                case TokenType.HexNumber:
+                case TokenType.BinaryNumber:
+                case TokenType.CharacterConstant:
+                case TokenType.Identifier:
+                case TokenType.CloseParenthesis:
+                case TokenType.True:
+                case TokenType.False:
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         /// <summary>
@@ -934,7 +1306,7 @@ namespace WinASM65.Core
 
         private void HandleLabel(Match match)
         {
-            string label = match.Groups["label"].Value;
+            string label = DefineName(match.Groups["label"].Value, true);
             string err;
             if (AddSourceSymbol(label, _emitter.CurrentAddress, out err))
             {
@@ -947,14 +1319,22 @@ namespace WinASM65.Core
             }
         }
 
-        private void HandleConstant(Match match)
+        private void HandleConstant(Match match, bool strict)
         {
-            string label = match.Groups["label"].Value;
+            string label = DefineName(match.Groups["label"].Value, false);
             string valueExpr = match.Groups["value"].Value;
 
             ExpressionResult res = ResolveExpression(valueExpr);
             if (res.IsResolved)
             {
+                Value existing;
+                if (strict && _scopeManager.TryResolveSymbol(label, out existing)
+                    && existing.AsInteger != res.Value.AsInteger)
+                {
+                    _diagnostics.ReportError(CurrentLocation, string.Format(ErrorCodes.CONSTANT_REDEFINED, label));
+                    return;
+                }
+
                 string err;
                 _scopeManager.AddSymbol(label, res.Value.AsInteger, true, out err);
                 _listingService.PrintLine(LineType.CONST, res.Value.ToInt32());
@@ -964,7 +1344,7 @@ namespace WinASM65.Core
                 UnresolvedSymbol unResSymb = new UnresolvedSymbol
                 {
                     NbrUndefinedSymb = res.UndefinedSymbols.Count,
-                    Expr = valueExpr
+                    Expr = res.Expression
                 };
 
                 foreach (string symb in res.UndefinedSymbols)
@@ -978,7 +1358,7 @@ namespace WinASM65.Core
 
         private void HandleMemReserve(Match match)
         {
-            string label = match.Groups["label"].Value;
+            string label = DefineName(match.Groups["label"].Value, false);
             string valueExpr = match.Groups["value"].Value;
 
             ExpressionResult res = ResolveExpression(valueExpr);
@@ -1001,6 +1381,7 @@ namespace WinASM65.Core
                 {
                     _listingService.PrintLine(LineType.RES, memArea);
                     _scopeManager.CurrentScope.MemArea = (ushort)(memArea + (size & 0xFFFF));
+                    _scopeManager.ResolveSymbols(_evaluator, PatchResolvedExpression);
                 }
                 else
                 {
@@ -1062,19 +1443,55 @@ namespace WinASM65.Core
                     // and the second definition won. The label on its own line has
                     // always reported it; the two spellings are one concept.
                     string err;
-                    if (!AddSourceSymbol(label, _emitter.CurrentAddress, out err)
-                        && !string.IsNullOrEmpty(err))
+                    if (AddSourceSymbol(DefineName(label, true), _emitter.CurrentAddress, out err))
+                        _scopeManager.ResolveSymbols(_evaluator, PatchResolvedExpression);
+                    else if (!string.IsNullOrEmpty(err))
                         _diagnostics.ReportError(CurrentLocation, err);
                 }
+            }
+
+            // A word in mnemonic position that is neither an instruction of this CPU nor
+            // a macro used to emit $FF; it is an error, and nothing is emitted.
+            if (!_cpu.IsInstruction(opcode))
+            {
+                _diagnostics.ReportError(CurrentLocation, string.Format(ErrorCodes.UNKNOWN_MNEMONIC, writtenOpcode));
+                return;
             }
 
             InstructionInfo info = _cpu.ParseOperand(opcode, operands);
             AddressingMode mode = info.Mode;
 
+            if (!info.HasOpcode)
+            {
+                // Some forms exist only in zero page (STX zp,Y; LDX zp,Y has an
+                // absolute twin, STX does not). The operand reads as absolute, so
+                // the zero-page form is taken; a value that does not fit a byte is
+                // then a range error like any other one-byte operand.
+                AddressingMode zeroPage = AddressingModes.ZeroPageOf(mode);
+                byte zpOpcode;
+                if (zeroPage != AddressingMode.None && _cpu.TryGetOpcode(opcode, zeroPage, out zpOpcode))
+                {
+                    info = info.WithModeAndLength(zeroPage, zpOpcode, 2);
+                    mode = zeroPage;
+                }
+                else
+                {
+                    _diagnostics.ReportError(CurrentLocation, string.Format(ErrorCodes.UNSUPPORTED_ADDRESSING_MODE,
+                        opcode, AddressingModes.Describe(mode)));
+                    return;
+                }
+            }
+
             if (mode == AddressingMode.Implicit || mode == AddressingMode.Accumulator)
             {
                 _emitter.EmitByte(info.Opcode);
                 _listingService.PrintLine(LineType.INST, 1);
+                return;
+            }
+
+            if (mode == AddressingMode.ZeroPageRelative)
+            {
+                EmitBitBranch(opcode, info, opcodeAddress);
                 return;
             }
 
@@ -1173,7 +1590,8 @@ namespace WinASM65.Core
                     Type = symbolType,
                     AddrMode = mode,
                     NbrUndefinedSymb = exprRes.UndefinedSymbols.Count,
-                    Expr = info.OperandExpression
+                    Expr = exprRes.Expression,
+                    Location = CurrentLocation
                 };
                 _scopeManager.AddUnresolvedExpression(position, unresExpr);
 
@@ -1190,6 +1608,98 @@ namespace WinASM65.Core
                 }
 
                 _listingService.PrintLine(LineType.INST, info.Length);
+            }
+        }
+
+        /// <summary>
+        /// <c>BBRn zp,target</c>: the opcode, the zero-page byte tested, then the branch
+        /// displacement, counted from the end of the three-byte instruction. Either
+        /// operand may be a forward reference and is then patched on its own.
+        /// </summary>
+        private void EmitBitBranch(string mnemonic, InstructionInfo info, ushort opcodeAddress)
+        {
+            if (string.IsNullOrWhiteSpace(info.OperandExpression) || string.IsNullOrWhiteSpace(info.SecondOperandExpression))
+            {
+                _diagnostics.ReportError(CurrentLocation, string.Format(ErrorCodes.DIRECTIVE_ARGUMENTS, mnemonic, "a zero-page address and a branch target"));
+                return;
+            }
+
+            _emitter.EmitByte(info.Opcode);
+
+            ExpressionResult zp = ResolveExpression(info.OperandExpression, AddressingMode.ZeroPage);
+            if (zp.IsResolved)
+            {
+                long value = zp.Value.AsInteger;
+                if (value < 0 || value > 0xFF)
+                {
+                    ReportOperandOutOfRange(value, true);
+                    _emitter.EmitByte(0);
+                }
+                else
+                {
+                    _emitter.EmitByte((byte)value);
+                    RecordRelocation(zp, 1, value);
+                }
+            }
+            else
+            {
+                int bufferOffset = _emitter.Length;
+                _emitter.EmitByte(0);
+                RegisterPending(zp, (ushort)(opcodeAddress - _emitter.OriginAddress + 1), bufferOffset,
+                    SymbolType.Byte, AddressingMode.ZeroPage);
+                RecordRelocation(zp, 1, 0, false);
+            }
+
+            ExpressionResult target = ResolveExpression(info.SecondOperandExpression, AddressingMode.Relative);
+            if (target.IsResolved)
+            {
+                byte offset;
+                string relErr;
+                // The displacement counts from opcode+3; TryCalculateRelativeOffset
+                // adds 2 to the address it is given.
+                if (_cpu.TryCalculateRelativeOffset(target.Value.AsInteger, opcodeAddress + 1, out offset, out relErr))
+                {
+                    _emitter.EmitByte(offset);
+                    RecordRelocation(target, 1, (sbyte)offset);
+                }
+                else
+                {
+                    _diagnostics.ReportError(CurrentLocation, relErr);
+                    _emitter.EmitByte(0);
+                }
+            }
+            else
+            {
+                int bufferOffset = _emitter.Length;
+                _emitter.EmitByte(0);
+                RegisterPending(target, (ushort)(opcodeAddress - _emitter.OriginAddress + 2), bufferOffset,
+                    SymbolType.Byte, AddressingMode.ZeroPageRelative);
+                RecordRelocation(target, 1, 0, false);
+            }
+
+            _listingService.PrintLine(LineType.INST, 3);
+        }
+
+        /// <summary>Records a field to patch once the symbols its expression waits for are defined.</summary>
+        private void RegisterPending(ExpressionResult res, ushort position, int bufferOffset, SymbolType type, AddressingMode mode)
+        {
+            UnresolvedExpr pending = new UnresolvedExpr
+            {
+                Position = position,
+                BufferOffset = bufferOffset,
+                Type = type,
+                AddrMode = mode,
+                NbrUndefinedSymb = res.UndefinedSymbols.Count,
+                Expr = res.Expression,
+                Location = CurrentLocation
+            };
+            _scopeManager.AddUnresolvedExpression(position, pending);
+
+            foreach (string symbol in res.UndefinedSymbols)
+            {
+                UnresolvedSymbol unresolved = new UnresolvedSymbol();
+                unresolved.ExprList.Add(position);
+                _scopeManager.AddUnresolvedSymbol(symbol, unresolved);
             }
         }
 
@@ -1239,8 +1749,19 @@ namespace WinASM65.Core
 
         private void ReportOperandOutOfRange(long value, bool byteSized)
         {
+            ReportOperandOutOfRange(value, byteSized, CurrentLocation);
+        }
+
+        private void ReportOperandOutOfRange(long value, bool byteSized, SourceLocation location)
+        {
             string template = byteSized ? ErrorCodes.VALUE_OUT_OF_RANGE_BYTE : ErrorCodes.VALUE_OUT_OF_RANGE_WORD;
-            _diagnostics.ReportError(CurrentLocation, string.Format(CultureInfo.InvariantCulture, template, value));
+            _diagnostics.ReportError(location, string.Format(CultureInfo.InvariantCulture, template, value));
+        }
+
+        /// <summary>Where a pending expression was written, or the current line when unknown.</summary>
+        private SourceLocation LocationOf(UnresolvedExpr expr)
+        {
+            return expr != null && expr.HasLocation ? expr.Location : CurrentLocation;
         }
 
         private void HandleMacroCall(Match match)
@@ -1257,15 +1778,47 @@ namespace WinASM65.Core
 
             _listingService.EndLine();
 
+            BeginExpansion();
+            try
+            {
+                ExpandMacro(macroDef, argsValue);
+            }
+            finally
+            {
+                EndExpansion();
+            }
+        }
+
+        private void ExpandMacro(MacroDefinition macroDef, string argsValue)
+        {
             if (!string.IsNullOrEmpty(argsValue))
             {
-                string[] paramValues = Regex.Replace(argsValue, @"\s+", "").Split(',');
+                // Arguments split like any argument list, so "($10),y" or "a b" is one
+                // argument; a parameter is replaced as a whole word, so a parameter
+                // named x does not rewrite "tax".
+                List<string> paramValues = SourceText.SplitArguments(argsValue);
+
+                // More arguments than parameters: the last parameter takes the rest,
+                // so "get ($10),y" passes the whole operand to a one-parameter macro.
+                int declared = macroDef.Parameters.Length;
+                if (declared > 0 && paramValues.Count > declared)
+                {
+                    string rest = string.Join(",", paramValues.GetRange(declared - 1, paramValues.Count - declared + 1));
+                    paramValues.RemoveRange(declared - 1, paramValues.Count - declared + 1);
+                    paramValues.Add(rest);
+                }
                 foreach (string line in macroDef.Lines)
                 {
                     string expandedLine = line;
-                    for (int i = 0; i < paramValues.Length && i < macroDef.Parameters.Length; i++)
+                    for (int i = 0; i < paramValues.Count && i < macroDef.Parameters.Length; i++)
                     {
-                        expandedLine = expandedLine.Replace(macroDef.Parameters[i], paramValues[i]);
+                        string parameter = macroDef.Parameters[i];
+                        if (string.IsNullOrEmpty(parameter))
+                            continue;
+                        string value = paramValues[i];
+                        expandedLine = Regex.Replace(expandedLine,
+                            @"(?<![\w@])" + Regex.Escape(parameter) + @"(?![\w])",
+                            m => value, RegexOptions.IgnoreCase);
                     }
                     _listingService.PrintLine(expandedLine);
                     ParseLine(expandedLine, expandedLine);
@@ -1293,8 +1846,10 @@ namespace WinASM65.Core
             // relocation lookup uses.
             int relocationOffset = expr.BufferOffset > 0 ? expr.BufferOffset : expr.Position;
 
-            if (expr.AddrMode == AddressingMode.Relative)
+            if (expr.AddrMode == AddressingMode.Relative || expr.AddrMode == AddressingMode.ZeroPageRelative)
             {
+                // Both displacements count from the byte after the field: a branch
+                // from opcode+2, a BBRn from opcode+3, and the field is the last byte.
                 byte offset;
                 string relErr;
                 // expr.Position is after the opcode, so instructionAddress = (expr.Position + OriginAddress - 1)
@@ -1306,7 +1861,7 @@ namespace WinASM65.Core
                 }
                 else
                 {
-                    _diagnostics.ReportError(CurrentLocation, relErr);
+                    _diagnostics.ReportError(LocationOf(expr), relErr);
                 }
             }
             else
@@ -1315,7 +1870,7 @@ namespace WinASM65.Core
                 {
                     if (!Value.InWordRange(value.AsInteger))
                     {
-                        ReportOperandOutOfRange(value.AsInteger, false);
+                        ReportOperandOutOfRange(value.AsInteger, false, LocationOf(expr));
                         return;
                     }
                     _emitter.PatchWord(expr.Position, (ushort)(value.AsInteger & 0xFFFF));
@@ -1325,7 +1880,7 @@ namespace WinASM65.Core
                 {
                     if (!Value.InByteRange(value.AsInteger))
                     {
-                        ReportOperandOutOfRange(value.AsInteger, true);
+                        ReportOperandOutOfRange(value.AsInteger, true, LocationOf(expr));
                         return;
                     }
                     _emitter.PatchByte(expr.Position, (byte)(value.AsInteger & 0xFF));
@@ -1341,23 +1896,34 @@ namespace WinASM65.Core
             // and where they have always been written.
             string baseName = SideFiles.BaseNameOf(sourceFile);
 
-            if (_scopeManager.GlobalScope.SymbolTable.Count > 0)
+            // Local and anonymous labels stay in their unit: another unit that read
+            // "__anon_p1_0" from this file would resolve its own "+" to ours.
+            Dictionary<string, long> exported = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<string, long> pair in _scopeManager.GlobalScope.SymbolTable)
+            {
+                if (!IsGeneratedName(pair.Key))
+                    exported[pair.Key] = pair.Value;
+            }
+            if (exported.Count > 0)
             {
                 string symbPath = SideFile(baseName, ".symb");
-                File.WriteAllText(symbPath, JsonConvert.SerializeObject(_scopeManager.GlobalScope.SymbolTable));
+                File.WriteAllText(symbPath, JsonConvert.SerializeObject(exported));
             }
 
+            // A unit with nothing left to resolve writes no such file, and must not
+            // leave one behind either: the orchestrator reads whatever it finds, so a
+            // failed build's files would fail the next build of the corrected source.
+            string unsolvedPath = SideFile(baseName, ".Unsolved");
             if (_scopeManager.GlobalScope.UnsolvedSymbols.Count > 0)
-            {
-                string unsolvedPath = SideFile(baseName, ".Unsolved");
                 File.WriteAllText(unsolvedPath, JsonConvert.SerializeObject(_scopeManager.GlobalScope.UnsolvedSymbols));
-            }
+            else
+                File.Delete(unsolvedPath);
 
+            string exprPath = SideFile(baseName, ".UnsolvedExpr");
             if (_scopeManager.UnsolvedExprList.Count > 0)
-            {
-                string exprPath = SideFile(baseName, ".UnsolvedExpr");
                 File.WriteAllText(exprPath, JsonConvert.SerializeObject(_scopeManager.UnsolvedExprList));
-            }
+            else
+                File.Delete(exprPath);
         }
 
         /// <summary>
@@ -1373,6 +1939,10 @@ namespace WinASM65.Core
         {
             public string FilePath { get; private set; }
             public int CurrentLineNumber { get; set; }
+
+            /// <summary>Inside a <c>/* ... */</c> that started on line <see cref="CommentLine"/>.</summary>
+            public bool InComment;
+            public int CommentLine;
 
             private readonly StreamReader _reader;
             private readonly IReadOnlyList<string> _lines;

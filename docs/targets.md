@@ -247,9 +247,9 @@ historiques de la machine : `$0801` pour `prg`, `$0800` pour `a2bin`,
 ### `ines` en particulier
 
 `InesFormat` (`:17`) detecte un en-tete deja present et ne le reconstitue
-pas. C'est ce qui permet a `example_bomberman-nes` de fonctionner : la sortie
-combinee commence par `NES_Header.bin`, qui contient deja l'en-tete, et le
-format le laisse passer intact.
+pas. C'est ce qui permet aux exemples NES de fonctionner : la sortie combinee
+commence par l'en-tete que le projet assemble lui-meme (`src/header.o` dans
+`example_rock_patrol`), et le format le laisse passer intact.
 
 Le mapper est reparti sur deux octets : bits 4-7 de l'octet 6 pour les
 bits 0-3, bits 4-7 de l'octet 7 pour les bits 4-7 (`:41`, `:58`). Le
@@ -320,8 +320,7 @@ place aucun octet, ne remplace pas le `.org` et ne modifie pas la sortie. Une
 configuration **sans** section `Regions` a une carte vide, qui ne valide rien :
 c'est le comportement d'avant T6, et il est verifie par
 `ConfigurationSansRegions_LaLigneDeCommandeSeComporteCommeAvant`.
-`example_bomberman-nes` produit le meme octet pour un octet avec et sans
-`Regions`.
+Ajouter des `Regions` a un projet ne change donc pas un octet de son image.
 
 Ce qui change, c'est qu'un `.org` **ne peut plus atterrir hors de toute carte
 en silence**.
@@ -342,7 +341,7 @@ adresse inferieure a toutes les regions attend la premiere, et une adresse
 tombee dans un **trou** entre deux regions attend celle que le trou suit.
 
 ```
-Line 3 - File BMAN_BANK1.NAS - Type $C000 lands outside every declared region.
+Line 3 - File bank0.asm - Type $C000 lands outside every declared region.
 Expected region: PRG1 $F000-$FFF9 (ro). Declared regions: PRG1 $F000-$FFF9 (ro).
 ```
 

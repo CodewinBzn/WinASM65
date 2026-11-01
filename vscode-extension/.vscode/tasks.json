@@ -1,0 +1,12 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "compile",
+      "type": "shell",
+      "command": "npm run compile && dotnet build ../WinASM65.Tooling",
+      "problemMatcher": ["$tsc"],
+      "group": "build"
+    }
+  ]
+}

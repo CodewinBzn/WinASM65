@@ -1,0 +1,286 @@
+{
+  "version": 1,
+  "system": "nes",
+  "chr": "../chr/tiles.chr",
+  "palettes": "game.pal.json",
+  "prefix": "spr_",
+  "metasprites": [
+    {
+      "name": "ship",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 1,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 2,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 3,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 4,
+          "palette": 0,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "shot",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 5,
+          "palette": 1,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "rock",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 8,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 9,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 10,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 11,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "rock turned",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 12,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 13,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 14,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 15,
+          "palette": 2,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "burst",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 16,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 17,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 18,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 19,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "burst wide",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 20,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "tile": 21,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "tile": 22,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "tile": 23,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    },
+    {
+      "name": "heart",
+      "originX": 0,
+      "originY": 0,
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0,
+          "tile": 24,
+          "palette": 3,
+          "flipH": false,
+          "flipV": false,
+          "behind": false
+        }
+      ]
+    }
+  ],
+  "animations": [
+    {
+      "name": "rock",
+      "loop": true,
+      "frames": [
+        {
+          "metasprite": "rock",
+          "duration": 12
+        },
+        {
+          "metasprite": "rock turned",
+          "duration": 12
+        }
+      ]
+    },
+    {
+      "name": "burst",
+      "loop": false,
+      "frames": [
+        {
+          "metasprite": "burst",
+          "duration": 8
+        },
+        {
+          "metasprite": "burst wide",
+          "duration": 8
+        }
+      ]
+    }
+  ]
+}

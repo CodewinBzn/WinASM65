@@ -130,17 +130,46 @@ namespace WinASM65.Directives
     {
         public string Name { get { return ".incbin"; } }
 
+        /// <summary>
+        /// <c>.incbin "file"[, offset[, length]]</c>. The file name is taken as written
+        /// (no escapes), so a Windows path keeps its backslashes. Without a length the
+        /// rest of the file from the offset is included.
+        /// </summary>
         public void Execute(string argument, IAssemblyContext context)
         {
-            string fileName = (argument ?? string.Empty).Replace("\"", string.Empty).Trim();
+            System.Collections.Generic.List<string> args = SourceText.SplitArguments(argument);
+            if (args.Count == 0 || args.Count > 3)
+            {
+                context.Diagnostics.ReportError(context.CurrentLocation,
+                    string.Format(ErrorCodes.DIRECTIVE_ARGUMENTS, ".incbin", "a file name, an optional offset and an optional length"));
+                return;
+            }
+
+            string fileName = args[0].Replace("\"", string.Empty).Trim();
             string directoryName = Path.GetDirectoryName(context.CurrentLocation.FilePath);
             string toInclude = string.IsNullOrEmpty(directoryName) ? fileName : Path.Combine(directoryName, fileName);
 
             if (File.Exists(toInclude))
             {
                 byte[] bytesToInc = File.ReadAllBytes(toInclude);
-                context.Emitter.EmitBytes(bytesToInc);
-                context.ListingService.PrintLine(LineType.INST, bytesToInc.Length);
+                long offset = 0;
+                long length = -1;
+                if (args.Count > 1 && !DirectiveArguments.TryResolveNow(context, args[1], ".incbin", "an offset", out offset))
+                    return;
+                if (args.Count > 2 && !DirectiveArguments.TryResolveNow(context, args[2], ".incbin", "a length", out length))
+                    return;
+                if (length < 0 && args.Count <= 2)
+                    length = bytesToInc.Length - offset;
+                if (offset < 0 || length < 0 || offset + length > bytesToInc.Length)
+                {
+                    context.Diagnostics.ReportError(context.CurrentLocation, string.Format(ErrorCodes.INCBIN_RANGE, fileName, bytesToInc.Length));
+                    return;
+                }
+
+                byte[] slice = new byte[length];
+                System.Array.Copy(bytesToInc, offset, slice, 0, length);
+                context.Emitter.EmitBytes(slice);
+                context.ListingService.PrintLine(LineType.INST, slice.Length);
             }
             else
             {
@@ -179,72 +208,13 @@ namespace WinASM65.Directives
             if (string.IsNullOrWhiteSpace(argument))
                 return;
 
-            string[] byteEntries = argument.Split(',');
+            // Arguments are split on top-level commas only, so ".byte "a,b"" is one
+            // string and ".byte ','" one character.
             ushort startAddr = context.Emitter.CurrentAddress;
-
-            foreach (string entry in byteEntries)
+            foreach (string data in SourceText.SplitArguments(argument))
             {
-                string data = entry.Trim();
-                if (data.StartsWith("\"") && data.EndsWith("\"") && data.Length >= 2)
-                {
-                    string strContent = data.Substring(1, data.Length - 2);
-                    foreach (char c in strContent)
-                    {
-                        context.Emitter.EmitByte(Convert.ToByte(c));
-                    }
-                }
-                else
-                {
-                    ExpressionResult res = context.ResolveExpression(data, AddressingMode.None, false);
-                    if (res.IsResolved)
-                    {
-                        // A value that does not fit is refused, not narrowed. ToByte()
-                        // masks to the low octet, so 300 became $2C and the image built
-                        // clean while behaving in a way the source never described -- and
-                        // .byte is the instruction byte of every LDA/STA operand the NES
-                        // sources write, so a wrong byte there is a wrong program. The
-                        // placeholder is a zero rather than the truncated value: the byte
-                        // is still emitted, so every address after it stays where the
-                        // source put it and the listing still counts the right length.
-                        if (!Value.InByteRange(res.Value.AsInteger))
-                        {
-                            DataRange.Report(context, res.Value.AsInteger, true);
-                            context.Emitter.EmitByte(0);
-                        }
-                        else
-                        {
-                            int fieldOffset = context.Emitter.Length;
-                            context.Emitter.EmitByte(res.Value.ToByte());
-                            DataRelocation.Record(context, res.WithRole(ExpressionRole.Data), fieldOffset, 1, res.Value.AsInteger);
-                        }
-                    }
-                    else
-                    {
-                        ushort position = (ushort)(context.Emitter.CurrentAddress - context.Emitter.OriginAddress);
-                        int bufferOffset = context.Emitter.Length;
-                        context.Emitter.EmitByte(0);
-
-                        UnresolvedExpr expr = new UnresolvedExpr
-                        {
-                            Position = position,
-                            BufferOffset = bufferOffset,
-                            Type = SymbolType.Byte,
-                            AddrMode = AddressingMode.None,
-                            NbrUndefinedSymb = res.UndefinedSymbols.Count,
-                            Expr = data
-                        };
-                        context.ScopeManager.AddUnresolvedExpression(position, expr);
-
-                        DataRelocation.Record(context, res.WithRole(ExpressionRole.Data), bufferOffset, 1, 0);
-
-                        foreach (string symb in res.UndefinedSymbols)
-                        {
-                            UnresolvedSymbol unResSymb = new UnresolvedSymbol();
-                            unResSymb.ExprList.Add(position);
-                            context.ScopeManager.AddUnresolvedSymbol(symb, unResSymb);
-                        }
-                    }
-                }
+                if (!DataEmitter.TryEmitString(context, data))
+                    DataEmitter.Emit(context, data, 1);
             }
 
             int bytesCount = context.Emitter.CurrentAddress - startAddr;
@@ -261,57 +231,10 @@ namespace WinASM65.Directives
             if (string.IsNullOrWhiteSpace(argument))
                 return;
 
-            string[] wordEntries = argument.Split(',');
-            context.ListingService.PrintLine(LineType.INST, wordEntries.Length * 2);
-
-            foreach (string entry in wordEntries)
-            {
-                string data = entry.Trim();
-                ExpressionResult res = context.ResolveExpression(data, AddressingMode.None, false);
-                if (res.IsResolved)
-                {
-                    // Same rule as .byte, at the two-byte width: ToUInt16() masks, and a
-                    // masked address is a pointer into the middle of the address space
-                    // rather than an error.
-                    if (!Value.InWordRange(res.Value.AsInteger))
-                    {
-                        DataRange.Report(context, res.Value.AsInteger, false);
-                        context.Emitter.EmitWord(0);
-                    }
-                    else
-                    {
-                        int fieldOffset = context.Emitter.Length;
-                        context.Emitter.EmitWord(res.Value.ToUInt16());
-                        DataRelocation.Record(context, res.WithRole(ExpressionRole.Data), fieldOffset, 2, res.Value.AsInteger);
-                    }
-                }
-                else
-                {
-                    ushort position = (ushort)(context.Emitter.CurrentAddress - context.Emitter.OriginAddress);
-                    int bufferOffset = context.Emitter.Length;
-                    context.Emitter.EmitWord(0);
-
-                    UnresolvedExpr expr = new UnresolvedExpr
-                    {
-                        Position = position,
-                        BufferOffset = bufferOffset,
-                        Type = SymbolType.Word,
-                        AddrMode = AddressingMode.None,
-                        NbrUndefinedSymb = res.UndefinedSymbols.Count,
-                        Expr = data
-                    };
-                    context.ScopeManager.AddUnresolvedExpression(position, expr);
-
-                    DataRelocation.Record(context, res.WithRole(ExpressionRole.Data), bufferOffset, 2, 0);
-
-                    foreach (string symb in res.UndefinedSymbols)
-                    {
-                        UnresolvedSymbol unResSymb = new UnresolvedSymbol();
-                        unResSymb.ExprList.Add(position);
-                        context.ScopeManager.AddUnresolvedSymbol(symb, unResSymb);
-                    }
-                }
-            }
+            System.Collections.Generic.List<string> entries = SourceText.SplitArguments(argument);
+            context.ListingService.PrintLine(LineType.INST, entries.Count * 2);
+            foreach (string data in entries)
+                DataEmitter.Emit(context, data, 2);
         }
     }
 
@@ -336,7 +259,7 @@ namespace WinASM65.Directives
             string[] paramList;
             if (!string.IsNullOrEmpty(paramsPart))
             {
-                paramList = Regex.Replace(paramsPart, @"\s+", "").Split(',');
+                paramList = SourceText.SplitArguments(paramsPart).ToArray();
             }
             else
             {
@@ -465,7 +388,61 @@ namespace WinASM65.Directives
                 context.Diagnostics.ReportError(context.CurrentLocation, ErrorCodes.NO_CONDITIONAL_ASSEMBLY);
                 return;
             }
-            cAsm.FlipTop();
+            if (!cAsm.Else())
+                context.Diagnostics.ReportError(context.CurrentLocation, ErrorCodes.ELSE_AFTER_ELSE);
+        }
+    }
+
+    /// <summary>
+    /// <c>.elseif expr</c>: the next branch of an .if chain. Its condition is read only
+    /// when no earlier branch was taken and the code around it is assembled.
+    /// </summary>
+    public class ElseIfDirectiveHandler : IDirectiveHandler
+    {
+        public string Name { get { return ".elseif"; } }
+
+        public void Execute(string argument, IAssemblyContext context)
+        {
+            ConditionalState cAsm = context.ConditionState;
+            if (!cAsm.IsActive)
+            {
+                context.Diagnostics.ReportError(context.CurrentLocation, ErrorCodes.NO_CONDITIONAL_ASSEMBLY);
+                return;
+            }
+
+            bool condition = false;
+            if (cAsm.ElseIfNeedsCondition)
+            {
+                ExpressionResult res = context.ResolveExpression(argument != null ? argument.Trim() : string.Empty, AddressingMode.None, true);
+                if (!res.IsResolved)
+                    context.Diagnostics.ReportError(context.CurrentLocation, ErrorCodes.UNDEFINED_SYMBOL);
+                else
+                    condition = res.Value.ToBoolean();
+            }
+
+            if (!cAsm.ElseIf(condition))
+                context.Diagnostics.ReportError(context.CurrentLocation, ErrorCodes.ELSE_AFTER_ELSE);
+        }
+    }
+
+    /// <summary>
+    /// <c>.equ</c> and <c>.set</c> on their own: they only make sense after a name
+    /// (<c>NAME .equ value</c>), a form the line dispatcher handles before any directive.
+    /// </summary>
+    public class NamedValueDirectiveHandler : IDirectiveHandler
+    {
+        private readonly string _name;
+
+        public NamedValueDirectiveHandler(string name)
+        {
+            _name = name;
+        }
+
+        public string Name { get { return _name; } }
+
+        public void Execute(string argument, IAssemblyContext context)
+        {
+            context.Diagnostics.ReportError(context.CurrentLocation, string.Format(ErrorCodes.EQU_WITHOUT_NAME, _name));
         }
     }
 
@@ -534,11 +511,13 @@ namespace WinASM65.Directives
 
             for (int i = 0; i < count; i++)
             {
+                context.BeginExpansion();
                 foreach (string line in linesToRepeat)
                 {
                     context.ListingService.PrintLine(line);
                     context.ParseLine(line, line);
                 }
+                context.EndExpansion();
             }
         }
     }

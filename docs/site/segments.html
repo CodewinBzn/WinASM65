@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projects and segments</title>
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<div class="layout">
+  <nav class="site-nav" aria-label="Pages"></nav>
+
+  <main>
+    <p class="breadcrumb"><a href="index.html">WinASM65</a> › Assembler</p>
+    <header class="page">
+      <h1>Projects and segments</h1>
+      <p class="lede">A <code>config.json</code> describes a program made of several sources: the units to assemble and which names each may take from the others, the files to put end to end into the final image, and optionally the target and the emulator. This page explains the file, the two-phase build behind it, and the classes that run it.</p>
+    </header>
+
+    <aside class="sources">
+      <h4>Source files</h4>
+      <ul>
+        <li><a href="../../WinASM65/src/Segments/SegmentModels.cs"><code>Segments/SegmentModels.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Segments/MultiSegmentOrchestrator.cs"><code>Segments/MultiSegmentOrchestrator.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Segments/BinaryCombiner.cs"><code>Segments/BinaryCombiner.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Segments/MemoryMap.cs"><code>Segments/MemoryMap.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Projects/ProjectSession.cs"><code>Projects/ProjectSession.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Core/SideFiles.cs"><code>Core/SideFiles.cs</code></a></li>
+        <li><a href="../../WinASM65/src/Core/ConfigurationReader.cs"><code>Core/ConfigurationReader.cs</code></a></li>
+        <li><a href="../../WinASM65/src/CommandLineApplication.cs"><code>CommandLineApplication.cs</code></a></li>
+        <li><a href="../../WinASM65.Monitor.Core/EmulatorLauncher.cs"><code>Monitor.Core/EmulatorLauncher.cs</code></a></li>
+        <li><a href="../../WinASM65.Tooling/Dap/DebugEnvironment.cs"><code>Tooling/Dap/DebugEnvironment.cs</code></a></li>
+        <li><a href="../../README.md"><code>README.md</code></a> (Assemble segments, Combine)</li>
+        <li><a href="../pipeline.md"><code>docs/pipeline.md</code></a> (French)</li>
+      </ul>
+    </aside>
+
+    <h2 id="overview">The build at a glance</h2>
+    <p>A project build has two stages that know nothing about each other. The <strong>Input</strong> stage assembles each unit into its own object file, already placed at its real address by its own <code>.org</code>; names cross from one unit to another through small JSON side files. The <strong>Output</strong> stage then concatenates files, object files and plain binaries alike, padding each one to a declared size, and hands the result to the target's format.</p>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 330" role="img" aria-label="Project build of example_rock_patrol: header.asm, data.asm, game.asm and vectors.asm are assembled in declaration order into .o files, data and game also into a .symb that game and vectors read; header.o, data.o, game.o, vectors.o and the CHR files are concatenated with padding into one payload, which the target's format writes as the image">
+        <defs>
+          <marker id="sg-arrow1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <text x="20" y="22" class="muted" font-size="12.5">Input (MultiSegmentOrchestrator)</text>
+        <rect class="box-a" x="20" y="34" width="170" height="44" rx="8"/>
+        <text x="105" y="61" text-anchor="middle" font-weight="600">src/header.asm</text>
+        <rect class="box-a" x="20" y="90" width="170" height="44" rx="8"/>
+        <text x="105" y="117" text-anchor="middle" font-weight="600" font-size="12">src/data.asm, game.asm</text>
+        <rect class="box-a" x="20" y="146" width="170" height="44" rx="8"/>
+        <text x="105" y="173" text-anchor="middle" font-weight="600">src/vectors.asm</text>
+
+        <rect class="box-b" x="250" y="34" width="150" height="44" rx="8"/>
+        <text x="325" y="61" text-anchor="middle">.o</text>
+        <rect class="box-b" x="250" y="90" width="150" height="44" rx="8"/>
+        <text x="325" y="117" text-anchor="middle">.o + .symb</text>
+        <rect class="box-b" x="250" y="146" width="150" height="44" rx="8"/>
+        <text x="325" y="173" text-anchor="middle">.o</text>
+        <path class="line" d="M190,56 L250,56" marker-end="url(#sg-arrow1)"/>
+        <path class="line" d="M190,112 L250,112" marker-end="url(#sg-arrow1)"/>
+        <path class="line" d="M190,168 L250,168" marker-end="url(#sg-arrow1)"/>
+        <path class="line" d="M325,134 L325,146" stroke-dasharray="4 3" marker-end="url(#sg-arrow1)"/>
+        <text x="336" y="143" class="muted" font-size="12">names</text>
+
+        <text x="480" y="22" class="muted" font-size="12.5">Output (BinaryCombiner)</text>
+        <rect class="frame" x="480" y="34" width="400" height="160" rx="8"/>
+        <rect class="box-b" x="495" y="48" width="40" height="130" rx="4"/>
+        <text x="515" y="118" text-anchor="middle" font-size="11" transform="rotate(-90 515 118)">header.o</text>
+        <rect class="box-b" x="540" y="48" width="92" height="130" rx="4"/>
+        <text x="586" y="108" text-anchor="middle" font-size="13">data.o</text>
+        <text x="586" y="126" text-anchor="middle" class="muted" font-size="12">pad → $4000</text>
+        <rect class="box-b" x="638" y="48" width="92" height="130" rx="4"/>
+        <text x="684" y="108" text-anchor="middle" font-size="13">game.o</text>
+        <text x="684" y="126" text-anchor="middle" class="muted" font-size="12">pad → $3FFA</text>
+        <rect class="box-b" x="735" y="48" width="20" height="130" rx="3"/>
+        <rect class="box-d" x="760" y="48" width="52" height="130" rx="4"/>
+        <rect class="box-d" x="813" y="48" width="52" height="130" rx="4" fill-opacity="0.6"/>
+        <text x="786" y="118" text-anchor="middle" font-size="11" transform="rotate(-90 786 118)">tiles.chr</text>
+        <text x="839" y="118" text-anchor="middle" font-size="11" transform="rotate(-90 839 118)">tiles.chr</text>
+        <path class="line" d="M400,168 L480,168" marker-end="url(#sg-arrow1)"/>
+        <path class="line" d="M400,112 L480,112" marker-end="url(#sg-arrow1)"/>
+        <path class="line" d="M400,56 L480,56" marker-end="url(#sg-arrow1)"/>
+
+        <rect class="box-c" x="560" y="240" width="240" height="56" rx="8"/>
+        <text x="680" y="264" text-anchor="middle" font-weight="600">ExecutablePublisher</text>
+        <text x="680" y="283" text-anchor="middle" class="muted" font-size="12">or a plain write when the format is bin</text>
+        <path class="line" d="M680,194 L680,240" marker-end="url(#sg-arrow1)"/>
+        <text x="20" y="250" class="muted" font-size="12.5">Blue: sources. Green: assembled files. Purple: binary files</text>
+        <text x="20" y="268" class="muted" font-size="12.5">taken as they are. header.o takes $10 bytes; the thin box is vectors.o (6 bytes).</text>
+        <text x="20" y="300" class="muted" font-size="12.5">Dashed arrow: vectors.asm reads NMI, RESET and IRQ from game.symb;</text>
+        <text x="20" y="318" class="muted" font-size="12.5">game.asm reads the tables' names from data.symb.</text>
+      </svg>
+    </div>
+
+    <p>The command line runs it as <code>WinASM65 -c config.json</code>, optionally with <code>-l</code> for listings and <code>-t</code>, <code>-cpu</code>, <code>-format</code> to override the target. The editor tools run the same build through <a href="#session"><code>ProjectSession</code></a>. Every key of the file is listed in the <a href="#config">config.json reference</a> below.</p>
+
+    <h2 id="config">config.json reference</h2>
+    <p>This section lists every key the code reads from <code>config.json</code>, with its type, its default and what it does. Two different readers go through the file:</p>
+    <ul>
+      <li><strong><code>Target</code>, <code>Input</code> and <code>Output</code></strong> are read by <code>JsonConfigurationReader</code> with Newtonsoft.Json into a <code>ConfigFile</code> (<code>Segments/SegmentModels.cs</code>). Key names are matched <strong>without regard to case</strong> (<code>"input"</code> works), and a key the classes do not declare is <strong>ignored silently</strong>, so a misspelt key (<code>"Sytem"</code>) is not reported: the field just keeps its default. A value of the wrong type stops the run, for example <code>Could not convert string to boolean: yes. Path 'Target.Ines.Battery'</code>.</li>
+      <li><strong><code>Emulator</code></strong> is not part of <code>ConfigFile</code>. The monitor and the debug adapter read it through one class, <code>EmulatorConfiguration.Read</code> (<code>Monitor.Core/Emulators</code>), with <code>System.Text.Json</code>; its key names are matched <strong>without regard to case</strong> too. The command line still parses the whole file, so a syntax error inside <code>Emulator</code> (an unescaped <code>\</code> in a Windows path, say) fails the build too.</li>
+    </ul>
+    <div class="callout">
+      <p><strong>Relative paths.</strong> On the command line (<code>WinASM65 -c config.json</code>) every path of <code>Input</code> and <code>Output</code> is relative to the <strong>current directory</strong>: run it from the project directory, as <code>compile.bat</code> does. Everything built through <a href="#session"><code>ProjectSession</code></a> (VS Code build task, debug adapter, language server, the monitor's <code>BUILD</code>) resolves them against the <strong>directory of <code>config.json</code></strong>. <code>Emulator.Path</code> is always relative to the directory of <code>config.json</code>.</p>
+    </div>
+
+    <h3 id="config-example">A complete example</h3>
+    <p>Every key of a NES project, for <a href="example.html">Rock Patrol</a> (<code>example_rock_patrol</code>). This configuration builds the same 40,976-byte <code>rock_patrol.nes</code> as the committed one (byte for byte; checked with the Release build), the difference being that the iNES header comes from the <code>Ines</code> section instead of from <code>src/header.asm</code>, which is no longer an input. The regions are declarations only: the three that hold code and data (<code>DATA</code>, <code>PRG</code>, <code>VECTORS</code>) match the <code>.org</code>s of the sources, <code>ZEROPAGE</code> holds the game's variables (<code>.memarea $0000</code> and <code>.res</code>), <code>OAM</code> is the page the game copies to the PPU every frame, and <code>RAMCODE</code>, which the game does not use, shows the <code>rw</code> type and the <code>Load</code> key. JSON has no comments, so the explanations are in the tables below.</p>
+<pre><code>{
+  "Target": {
+    "System": "nes",
+    "Cpu": "6502",
+    "Format": "ines",
+    "LoadAddress": "$8000",
+    "DefineHardwareSymbols": true,
+    "Ines": {
+      "PrgBanks": 2,
+      "ChrBanks": 1,
+      "Mapper": 0,
+      "Mirroring": "horizontal",
+      "Battery": false
+    },
+    "Hardware": {
+      "Model": "nes",
+      "VideoStandard": "ntsc"
+    },
+    "Regions": [
+      { "Name": "ZEROPAGE", "Address": "$0000", "Size": "$100",  "Type": "bss" },
+      { "Name": "OAM",      "Address": "$0200", "Size": "$100",  "Type": "bss" },
+      { "Name": "RAMCODE",  "Address": "$0600", "Size": "$80",   "Type": "rw", "Load": "$E000" },
+      { "Name": "DATA",     "Address": "$8000", "Size": "$4000", "Bank": 0, "Type": "ro" },
+      { "Name": "PRG",      "Address": "$C000", "Size": "$3FFA", "Bank": 1, "Type": "ro" },
+      { "Name": "VECTORS",  "Address": "$FFFA", "Size": "6",     "Type": "ro" }
+    ]
+  },
+  "Input": [
+    {
+      "FileName": "src/data.asm",
+      "Dependencies": []
+    },
+    {
+      "FileName": "src/game.asm",
+      "OutputFile": "src/game.o",
+      "Dependencies": ["src/data.asm"]
+    },
+    {
+      "FileName": "src/vectors.asm",
+      "Dependencies": ["src/game.asm"]
+    }
+  ],
+  "Output": {
+    "ObjectFile": "rock_patrol.nes",
+    "Files": [
+      { "FileName": "src/data.o", "Size": "$4000" },
+      { "FileName": "src/game.o", "Size": "$3FFA" },
+      { "FileName": "src/vectors.o" },
+      { "FileName": "chr/tiles.chr" },
+      { "FileName": "chr/tiles.chr" }
+    ]
+  },
+  "Emulator": {
+    "Name": "mesen2",
+    "Path": "C:\\Emulators\\Mesen2\\Mesen.exe"
+  }
+}</code></pre>
+    <p>Much of the <code>Target</code> section repeats what <code>"System": "nes"</code> already implies (CPU, format, hardware symbols, NTSC); it is spelled out here to show the keys. The banks and the mapper are the game's own: two 16 KB PRG banks, one 8 KB CHR bank, mapper 0 (NROM). <code>Mirroring</code> is the exception: the <code>nes</code> default is vertical, and the game scrolls vertically, which needs horizontal mirroring. The <code>nes</code> system predefines hardware symbols (<code>PPUCTRL</code>, <code>OAMDMA</code>, <code>JOY1</code>…) with the same values as the constants of <code>src/nes.inc</code>; the source's own definitions are accepted over them. <code>Emulator</code> names the emulator to debug with (see <a href="#config-emulator">Emulator</a>).</p>
+
+    <h3 id="config-other">Keys for other systems</h3>
+    <p>A few <code>Target</code> keys only matter to other formats or machines. Three small configurations, each complete and built successfully with a one-unit <code>main.asm</code> that has no <code>.org</code>. A BBC Micro file with its code header:</p>
+<pre><code>{
+  "Target": {
+    "System": "bbc",
+    "LoadAddress": "$1900",
+    "RunAddress": "$1900",
+    "BbcFileType": "code",
+    "Title": "Demo",
+    "Author": "A. Programmer"
+  },
+  "Input": [ { "FileName": "main.asm" } ],
+  "Output": { "ObjectFile": "DEMO", "Files": [ { "FileName": "main.o" } ] }
+}</code></pre>
+    <p>A Commodore 128 in 80 columns, with every <code>Hardware</code> key:</p>
+<pre><code>{
+  "Target": {
+    "System": "c128",
+    "Hardware": {
+      "Model": "c128",
+      "VideoStandard": "pal",
+      "VideoChip": "vdc",
+      "SoundChip": "8580"
+    }
+  },
+  "Input": [ { "FileName": "main.asm" } ],
+  "Output": { "ObjectFile": "demo.prg", "Files": [ { "FileName": "main.o" } ] }
+}</code></pre>
+    <p>An Atari 2600 cartridge padded to 4 KB:</p>
+<pre><code>{
+  "Target": {
+    "System": "atari2600",
+    "LoadAddress": "$F000",
+    "RomSize": "$1000"
+  },
+  "Input": [ { "FileName": "main.asm" } ],
+  "Output": { "ObjectFile": "demo.a26", "Files": [ { "FileName": "main.o" } ] }
+}</code></pre>
+    <p>The first writes <code>DEMO</code> with a header that carries the title, <code>(C) A. Programmer</code> and the load address <code>$1900</code>; the second a PRG whose load address is <code>$1C01</code>, the <code>c128</code> default; the third a 4,096-byte image.</p>
+
+    <h3 id="config-root">The root object</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>Target</code></td><td>object</td><td>absent: the <code>raw</code> target (6502, format <code>bin</code>, no load address, no hardware symbols)</td><td>The machine and the output format. Read by <code>TargetResolver</code>; its <code>Regions</code> by <code>MemoryMap</code>. The command-line flags <code>-t</code>, <code>-cpu</code> and <code>-format</code> override <code>System</code>, <code>Cpu</code> and <code>Format</code>. See <a href="#config-target">Target</a>.</td></tr>
+        <tr><td><code>Input</code></td><td>array of objects</td><td>absent: nothing is assembled</td><td>The units to assemble, read by <code>MultiSegmentOrchestrator</code>. Without it the command line still runs <code>Output</code> on files already on disk; <code>ProjectSession</code> refuses: <code>Nothing to build: the configuration declares no input.</code> See <a href="#config-input">Input</a>.</td></tr>
+        <tr><td><code>Output</code></td><td>object</td><td>absent: no image</td><td>The image and the files it is made of, read by <code>BinaryCombiner</code>, then written by <code>ExecutablePublisher</code> in the target's format. See <a href="#config-output">Output</a>.</td></tr>
+        <tr><td><code>Emulator</code></td><td>object</td><td>absent: no emulator configured</td><td>The emulator the monitor's launch action and the debug adapter start. Not part of <code>ConfigFile</code>. See <a href="#config-emulator">Emulator</a>.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3 id="config-target">Target</h3>
+    <p>Class <code>TargetConf</code>. <code>TargetResolver.Resolve</code> starts from the catalog entry named by <code>System</code> (or by <code>-t</code>) and replaces each field the section sets; <code>-cpu</code> and <code>-format</code> are applied last. “Number” below means a <em>string</em> read by <code>NumericLiteral</code>: <code>"$C000"</code>, <code>"0xC000"</code> and <code>"49152"</code> are the same value. The process is described on <a href="targets.html#resolve">Targets</a>.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>System</code></td><td>string</td><td>none (<code>raw</code>)</td><td>A catalog id: <code>raw</code>, <code>nes</code>, <code>famicom</code>, <code>nes-pal</code>, <code>nes-ntsc</code>, <code>c64</code>, <code>c64c</code>, <code>c64-pal</code>, <code>c64-ntsc</code>, <code>c128</code>, <code>c128-vdc</code>, <code>c128d</code>, <code>vic20</code>, <code>vic20-pal</code>, <code>vic20-ntsc</code>, <code>plus4</code>, <code>c16</code>, <code>pet2001</code>, <code>pet</code>, <code>pet2001n</code>, <code>cbm2-80</code>, <code>cbm2-40</code>, <code>x16</code>, <code>apple2</code>, <code>apple2e</code>, <code>atari8</code>, <code>atari800</code>, <code>atari2600</code>, <code>vcs</code>, <code>bbc</code>, <code>bbcmicro</code>, <code>tube</code>, <code>bbc2p</code>, <code>tube65c02</code>, <code>electron</code>, <code>oric</code>, <code>lynx</code>. Case, <code>-</code> and <code>_</code> are ignored. It presets the CPU, the format, the load address, the hardware symbols and, for some systems, the iNES, hardware, ROM size and BBC values. An unknown id stops the run: <code>Unknown system 'spectrum'. Use -t list.</code> See the <a href="targets.html#catalog">catalog</a>.</td></tr>
+        <tr><td><code>Cpu</code></td><td>string</td><td>the system's (<code>6502</code> for <code>raw</code>)</td><td><code>6502</code>, <code>6502x</code>, <code>65c02</code>, <code>r65c02</code> or <code>w65c02</code>, plus the aliases <code>nmos</code>, <code>nmos6502</code>, <code>nmos6502x</code>, <code>6502illegal</code>, <code>cmos</code>, <code>rockwell</code>, <code>w65c02s</code>, <code>wdc65c02</code>. Unknown: <code>Unknown CPU 'z80'. Use 6502, 6502x, 65c02, r65c02, w65c02.</code> See <a href="cpus.html">CPUs</a>.</td></tr>
+        <tr><td><code>Format</code></td><td>string</td><td>the system's (<code>bin</code> for <code>raw</code>)</td><td><code>bin</code>, <code>ines</code>, <code>prg</code>, <code>xex</code>, <code>a2bin</code>, <code>rom</code>, <code>o65</code>, <code>ihex</code>, <code>srec</code>, <code>bbc</code>, <code>tube</code>, <code>prodos</code>, <code>dos32</code>, <code>dos33</code>, case-insensitive. An unknown name is only reported when the image is written, after assembly: <code>Unknown output format 'nes'</code>. <code>w65</code> works with <code>-f</code> only; in a project it is an unknown format. See <a href="targets.html#formats">Formats</a>.</td></tr>
+        <tr><td><code>LoadAddress</code></td><td>number (string)</td><td>the system's (<code>$0801</code> for <code>c64</code>, <code>$0E00</code> for <code>bbc</code>…; none for <code>nes</code> and <code>raw</code>)</td><td>Two uses. It is the origin of every unit that has no <code>.org</code>. And it is the address that address-carrying formats (<code>prg</code>, <code>xex</code>, <code>a2bin</code>, <code>o65</code>, <code>ihex</code>, <code>srec</code>, <code>bbc</code>, <code>prodos</code>, <code>dos32</code>/<code>dos33</code>) write in a project build: the units' <code>.org</code> is not passed to the format there (only <code>-f</code> does that), so a <code>c64</code> project whose code is at <code>.org $C000</code> still gets a <code>$0801</code> PRG header unless this field says <code>$C000</code>. An unreadable or out-of-range value (above <code>$FFFF</code>) is ignored without a message.</td></tr>
+        <tr><td><code>RunAddress</code></td><td>number (string)</td><td>none</td><td>The entry point: <code>xex</code> adds a run segment at <code>$02E0</code>, <code>ihex</code> and <code>srec</code> write it as their start record (default: the load address). <code>prg</code> and <code>bbc</code> use it, when set, <em>before</em> <code>LoadAddress</code> as the address they write. Other formats ignore it. Unreadable values are ignored.</td></tr>
+        <tr><td><code>RomSize</code></td><td>number (string)</td><td>4096 for <code>atari2600</code> / <code>vcs</code>, otherwise none</td><td>Format <code>rom</code> only: the image is padded with zeros to this size; without it, to the next power of two. A payload larger than it fails: <code>ROM size is smaller than the assembled payload.</code> Zero, negative or unreadable values are ignored.</td></tr>
+        <tr><td><code>DefineHardwareSymbols</code></td><td>boolean</td><td>the system's: true for every catalog system except <code>raw</code> and <code>lynx</code>; false without a system</td><td>When true, the system's register names (<code>PPUSTATUS</code>, <code>OAMDMA</code>… for the NES) are predefined in every unit. Set to false, they are undefined.</td></tr>
+        <tr><td><code>Ines</code></td><td>object</td><td>the system's (for <code>nes</code>: see below)</td><td>The iNES header, used by the <code>ines</code> format only. See <a href="#config-ines">Target.Ines</a>.</td></tr>
+        <tr><td><code>Hardware</code></td><td>object</td><td>the system's options (for <code>nes</code>: model <code>nes</code>, standard <code>ntsc</code>, or <code>pal</code> for <code>nes-pal</code>); none for machines that do not vary</td><td>Machine variant. Validated, but it does not change the symbol table. See <a href="#config-hardware">Target.Hardware</a>.</td></tr>
+        <tr><td><code>Regions</code></td><td>array of objects</td><td>empty: nothing is checked</td><td>Declared memory regions, used to check <code>.org</code> and <code>.res</code> and to define region symbols. See <a href="#config-regions">Target.Regions[]</a> and <a href="#memory-map">the memory map</a>.</td></tr>
+        <tr><td><code>BbcFileType</code></td><td>string</td><td><code>code</code> for <code>bbc</code> / <code>bbcmicro</code>, otherwise none</td><td>Format <code>bbc</code> only. <code>code</code>: a code header, then the code; <code>text</code>: <code>$FF</code>, then the payload; <code>flat</code> (also <code>raw</code>, <code>bin</code>): the payload alone. Any other value is taken as <code>code</code>.</td></tr>
+        <tr><td><code>Title</code></td><td>string</td><td><code>1.00</code></td><td>Format <code>bbc</code>, type <code>code</code>: the title in the code header.</td></tr>
+        <tr><td><code>Author</code></td><td>string</td><td><code>WinASM65</code></td><td>Format <code>bbc</code>, type <code>code</code>: written as <code>(C) Author</code> in the code header.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3 id="config-ines">Target.Ines</h3>
+    <p>Class <code>InesConf</code>, applied by <code>TargetResolver.ApplyInes</code> and written by <code>InesFormat</code>. The defaults below are those of the <code>nes</code> family; a target that is not a NES but uses <code>"Format": "ines"</code> starts from the <code>ResolvedTarget</code> defaults instead, which differ only by 0 CHR banks. <strong>When the payload already starts with <code>NES\x1A</code>, as in the committed <code>example_rock_patrol</code> whose header is assembled by <code>src/header.asm</code>, it is written unchanged and this whole section is ignored.</strong></p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>PrgBanks</code></td><td>integer</td><td>1</td><td>Number of 16 KB PRG banks, header byte 4. Zero or negative counts as 1.</td></tr>
+        <tr><td><code>ChrBanks</code></td><td>integer</td><td>1 (NES systems)</td><td>Number of 8 KB CHR banks, header byte 5. Negative counts as 0. The payload must fit in PRG + CHR (<code>Payload is larger than iNES PRG+CHR size.</code>); a shorter one is padded with zeros.</td></tr>
+        <tr><td><code>Mapper</code></td><td>integer</td><td>0</td><td>Mapper number: low nibble in the high nibble of byte 6, high nibble in byte 7. Only 0–255 can be expressed.</td></tr>
+        <tr><td><code>Mirroring</code></td><td>string</td><td><code>vertical</code></td><td><code>vertical</code> or <code>v</code> sets bit <code>$01</code> of byte 6; <code>four</code>, <code>4</code> or <code>fourscreen</code> sets <code>$08</code>; any other value (<code>horizontal</code>) sets neither.</td></tr>
+        <tr><td><code>Battery</code></td><td>boolean</td><td>false</td><td>Sets bit <code>$02</code> of byte 6 (battery-backed PRG RAM). Not optional like the others: whenever the <code>Ines</code> section is present, an absent <code>Battery</code> means false.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3 id="config-hardware">Target.Hardware</h3>
+    <p>Class <code>HardwareConf</code>. Each key that is set replaces the preset's value (lower-cased), then <code>HardwareRules.Reject</code> refuses combinations the machine cannot have and the run stops with the reason, for example <code>unknown video standard 'secam'. Use pal or ntsc. (Parameter 'config')</code>. See <a href="targets.html#hardware">Hardware variants</a>.</p>
+    <div class="callout">
+      <p>The section is <strong>validated and stored, not applied</strong>: the hardware symbol table is the one the catalog built for the named <code>System</code>. Choosing <code>"VideoChip": "vic"</code> on a <code>cbm2-80</code> does not define <code>VIC</code>; pick the catalog id that preselects the variant instead. The only other effect is in the <code>prg</code> format: a target with <code>Hardware</code> and no address gets an error instead of a guessed <code>$0801</code>.</p>
+    </div>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>Model</code></td><td>string</td><td>the system's</td><td>Known models: <code>c64</code>, <code>c64c</code>, <code>c128</code>, <code>c128d</code>, <code>vic20</code>, <code>plus4</code>, <code>c16</code>, <code>pet2001</code>, <code>pet2001n</code>, <code>cbm2</code>, <code>nes</code>. Not checked against that list: another name is accepted.</td></tr>
+        <tr><td><code>VideoStandard</code></td><td>string</td><td>the system's (<code>ntsc</code> for <code>nes</code>, <code>pal</code> for <code>nes-pal</code>…)</td><td><code>pal</code> or <code>ntsc</code>; anything else is refused.</td></tr>
+        <tr><td><code>VideoChip</code></td><td>string</td><td>the system's</td><td><code>vic</code>, <code>vdc</code>, <code>ted</code> or <code>crtc</code>. Refused: any chip on <code>pet2001</code> / <code>pet2001n</code>; <code>vdc</code> outside <code>c128</code>, <code>c128d</code>, <code>cbm2</code>; <code>ted</code> outside <code>plus4</code>, <code>c16</code>; <code>crtc</code> outside <code>cbm2</code>.</td></tr>
+        <tr><td><code>SoundChip</code></td><td>string</td><td>the system's</td><td><code>6581</code>, <code>8580</code>, <code>ted</code> or <code>vic</code>; anything else is refused, and a SID (<code>6581</code>, <code>8580</code>) is refused on <code>plus4</code> and <code>c16</code>.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3 id="config-regions">Target.Regions[]</h3>
+    <p>Class <code>RegionConf</code>, built into a <code>MemoryMap</code> by <code>MemoryMap.TryBuild</code>. Regions are declarative: they place no byte. What they check, and the symbols they define, are described in <a href="#memory-map">MemoryMap</a>.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>Name</code></td><td>string</td><td><code>#</code> + index</td><td>Used in messages and, when it is a valid identifier, to name the region's symbols (<code>OAM_START</code>, <code>OAM_SIZE</code>…). Duplicates (ignoring case) are refused.</td></tr>
+        <tr><td><code>Address</code></td><td>number (string)</td><td>required</td><td>Base of the region, the address code <em>runs</em> at: what a <code>.org</code> is checked against. Missing: <code>Region 'X' declares no Address.</code></td></tr>
+        <tr><td><code>Size</code></td><td>number (string)</td><td>to <code>$FFFF</code></td><td>Size in bytes, read by <code>NumericLiteral</code> (so <code>"6"</code> is six, unlike <code>Output.Files[].Size</code>). Must not run past <code>$FFFF</code>. A region without a size defines no <code>_END</code> / <code>_SIZE</code> symbol and is not checked for overlap.</td></tr>
+        <tr><td><code>Bank</code></td><td>integer</td><td>none</td><td>Bank number, shown in messages; nothing else uses it. A JSON number (<code>"$1"</code> does not parse); negative values are refused.</td></tr>
+        <tr><td><code>Type</code></td><td>string</td><td><code>ro</code></td><td><code>ro</code> (also <code>r</code>), <code>rw</code> (also <code>r/w</code>) or <code>bss</code>. A <code>.org</code> inside a <code>bss</code> region is an error; a <code>.res</code> that overflows a sized <code>bss</code> region is an error.</td></tr>
+        <tr><td><code>Load</code></td><td>number (string)</td><td>the <code>Address</code></td><td>Where the bytes are stored when that differs from where they run. Its only effect is the <code>NAME_LOAD</code> symbol.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3 id="config-input">Input[]</h3>
+    <p>Class <code>Segment</code>, one per unit, processed by <code>MultiSegmentOrchestrator</code> in the order of the array (see <a href="#order">How units are resolved</a>). <code>.include</code> files are not units: they are read as part of the source that includes them.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>FileName</code></td><td>string</td><td>required</td><td>The source of the unit. Missing: <code>Segment source file is required.</code>; not found: <code>File doesn't exist</code>. Its path without extension is also the base name of the unit's side files (<code>.symb</code>, <code>.Unsolved</code>, <code>.UnsolvedExpr</code>, <code>.lst</code>), which stay beside the source whatever <code>OutputFile</code> says.</td></tr>
+        <tr><td><code>OutputFile</code></td><td>string</td><td>the source path with <code>.o</code> instead of its extension</td><td>Where the unit's object file goes. <code>Output.Files</code> must then name this path.</td></tr>
+        <tr><td><code>Dependencies</code></td><td>array of strings</td><td><code>[]</code></td><td>The sources (as written in their <code>FileName</code>) whose global names this unit uses. For each, the unit reads the <code>.symb</code> beside that source, and only when it has names left to resolve after the first phase. Order of <code>Input</code> does not matter and cycles are allowed, but dependencies are <strong>not transitive</strong>. A missing file fails the build: <code>Dependency symbol file doesn't exist: src/game.symb</code>.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3 id="config-output">Output</h3>
+    <p>Class <code>CombineConf</code>, read by <code>BinaryCombiner</code> (see <a href="#combine">Combining files</a>).</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>ObjectFile</code></td><td>string</td><td>command line: required (<code>An output object file is required.</code>); <code>ProjectSession</code>: <code>out.bin</code></td><td>The image to write, in the target's format. Its directory is created if missing. It is also the ROM the monitor's launch action passes to the emulator.</td></tr>
+        <tr><td><code>Files</code></td><td>array of objects</td><td><code>[]</code></td><td>The files to put end to end, in order. With no entry the image is empty (the command line writes a 0-byte file); an explicit <code>null</code> fails: <code>At least one input file is required.</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3 id="config-files">Output.Files[]</h3>
+    <p>Class <code>FileConf</code>.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>FileName</code></td><td>string</td><td>required</td><td>Any file: a unit's object file or a binary taken as it is (<code>chr/tiles.chr</code>). Missing or not found: <code>Input file doesn't exist: …</code></td></tr>
+        <tr><td><code>Size</code></td><td>string</td><td>the file's own length</td><td>The room the file takes in the image; it is padded with <code>$00</code> up to it. Always read as <strong>hexadecimal</strong>, with or without a leading <code>$</code>: <code>"10"</code> is 16 bytes, and <code>"0x10"</code> does not parse. A file larger than its <code>Size</code>, or an unreadable <code>Size</code>, fails: <code>Invalid target size for: …</code>. Never truncates.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3 id="config-emulator">Emulator</h3>
+    <p>The emulator a project is debugged on, read by <code>EmulatorConfiguration.Read</code> for both the monitor (<code>EmulatorLauncher.FromProjectConfiguration</code>, from the <code>config.json</code> of its current directory when it is started without <code>--emulator-path</code>, with the ROM <code>Output.ObjectFile</code> names) and the debug adapter (<code>DebugEnvironment.ConfiguredEmulator</code>; <code>launch.json</code>'s <code>emulatorPath</code>, <code>emulator</code> and <code>bridge</code> override it, see <a href="tooling.html#launch">the debug adapter</a>). Key names are matched without regard to case; a section without <code>Path</code> counts as none. How each emulator is started, and the contract its bridge answers, are on <a href="bridges.html">Emulator bridges</a>.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>Name</code></td><td>string</td><td><code>mesen2</code> for a <code>Mesen.exe</code>, else custom</td><td>The emulator adapter: <code>mesen2</code> (Mesen2 2.1.1, full debugging), <code>mesence</code> (MesenCE, memory only), or any other name for a custom emulator started with <code>Arguments</code>.</td></tr>
+        <tr><td><code>Path</code></td><td>string</td><td>none: no emulator</td><td>The emulator executable. A relative path is resolved against the directory of <code>config.json</code>. In JSON, a Windows path needs doubled backslashes.</td></tr>
+        <tr><td><code>Bridge</code></td><td>string</td><td>the adapter's own</td><td>The bridge script to load instead: a path (relative to <code>config.json</code>), or the file name of a bridge shipped in <code>Bridge/</code>.</td></tr>
+        <tr><td><code>Arguments</code></td><td>string</td><td><code>{rom}</code></td><td>The command line of a custom emulator, where <code>{rom}</code>, <code>{script}</code> and <code>{port}</code> are replaced; split at spaces outside double quotes. Mesen2 and MesenCE build their own command line and do not read it.</td></tr>
+        <tr><td><code>Port</code></td><td>integer</td><td>45678</td><td>The bridge port the monitor's launch action uses. The debug adapter takes a free port (or <code>launch.json</code>'s <code>port</code>) and passes it in <code>MACHINE_PORT</code>.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3 id="config-committed">The committed example</h3>
+    <p><code>example_rock_patrol/config.json</code> as committed in the repository has no <code>Target</code> section, so the target is <code>raw</code> and the format <code>bin</code>: the image is written exactly as concatenated, and the iNES header is assembled from source:</p>
+<pre><code>{
+	"Input": [
+		{
+			"FileName": "src/header.asm",
+			"Dependencies": []
+		},
+		{
+			"FileName": "src/data.asm",
+			"Dependencies": []
+		},
+		{
+			"FileName": "src/game.asm",
+			"Dependencies": ["src/data.asm"]
+		},
+		{
+			"FileName": "src/vectors.asm",
+			"Dependencies": ["src/game.asm"]
+		}
+	],
+	"Output": {
+		"ObjectFile": "rock_patrol.nes",
+		"Files": [
+			{
+				"FileName": "src/header.o",
+				"Size": "$10"
+			},
+			{
+				"FileName": "src/data.o",
+				"Size": "$4000"
+			},
+			{
+				"FileName": "src/game.o",
+				"Size": "$3FFA"
+			},
+			{
+				"FileName": "src/vectors.o"
+			},
+			{
+				"FileName": "chr/tiles.chr"
+			},
+			{
+				"FileName": "chr/tiles.chr"
+			}
+		]
+	},
+	"Emulator": {
+		"Name": "mesen2",
+		"Path": "C:\\Emulators\\Mesen2\\Mesen.exe"
+	}
+}</code></pre>
+    <p><code>header.asm</code> emits the whole 16-byte header from <code>.org $0000</code> (<code>"NES", $1A</code>, two PRG banks, one CHR bank, flags <code>$00</code> (mapper 0, horizontal mirroring) and <code>$00</code>, then <code>.dsb 8</code> zeros), so <code>"Size": "$10"</code> adds no padding: it only makes the build fail if the header ever grows. <code>data.asm</code> starts at <code>.org $8000</code>; its 2,643 bytes (the palettes, the two 1,024-byte screens and the sky's map of <code>gfx/</code>, and three small tables) are padded to <code>$4000</code>, the first 16 KB of PRG. <code>game.asm</code> starts at <code>.org $C000</code>; its 1,713 bytes (the metasprites and the code) are padded to <code>$3FFA</code>, so that <code>vectors.asm</code>, at <code>.org $FFFA</code>, lands on the last six bytes of PRG. <code>vectors.asm</code> writes the addresses of <code>NMI</code>, <code>RESET</code> and <code>IRQ</code>, which <code>game.asm</code> defines, hence its dependency; <code>game.asm</code> depends on <code>data.asm</code> for the names of the tables. The tile set, drawn by the art script and edited in the <a href="graphics.html">Graphics Designer</a>, is taken as it is, twice: the two 4 KB pattern tables of the one 8 KB CHR bank. The image is 16 + 32,768 + 8,192 = 40,976 bytes. <code>Emulator</code> is for debugging only: Mesen2 at an example path, to point at your own (or override with the <code>winasm65.emulatorPath</code> setting in VS Code). The <a href="example.html#project">Example game</a> page explains the same file from the game's side.</p>
+
+    <h2 id="order">How units are resolved</h2>
+    <p>The name of the section, “dependencies”, suggests a dependency graph sorted before the build. There is none. <code>MultiSegmentOrchestrator.AssembleSegments</code> works in two phases, both in the order the <code>Input</code> array lists the units, and <code>Dependencies</code> only says <em>which</em> symbol files a unit is allowed to read in the second phase.</p>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 360" role="img" aria-label="Two phases. Phase 1: every unit is assembled in declaration order, unknown names become zero placeholders, and each unit writes .o, .symb, .Unsolved and .UnsolvedExpr. Phase 2: for each unit with an .Unsolved file, the .o is reloaded, the pending items are reloaded, the .symb of each declared dependency is merged, pending symbols are resolved, and the .o is saved while the side files are deleted">
+        <defs>
+          <marker id="sg-arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <text x="20" y="24" font-weight="600">Phase 1: assemble every unit</text>
+        <rect class="box-a" x="20" y="40" width="180" height="56" rx="8"/>
+        <text x="110" y="64" text-anchor="middle" font-weight="600">unit (in list order)</text>
+        <text x="110" y="83" text-anchor="middle" class="muted" font-size="12">ReportUndefinedSymbols = false</text>
+        <rect class="box-b" x="250" y="40" width="200" height="56" rx="8"/>
+        <text x="350" y="64" text-anchor="middle" font-weight="600">AssemblerEngine</text>
+        <text x="350" y="83" text-anchor="middle" class="muted" font-size="12">unknown name → $00 placeholder</text>
+        <rect class="box-d" x="500" y="30" width="380" height="76" rx="8"/>
+        <text x="515" y="52" font-size="13"><tspan font-weight="600">.o</tspan>  bytes, placeholders included</text>
+        <text x="515" y="70" font-size="13"><tspan font-weight="600">.symb</tspan>  names it defined</text>
+        <text x="515" y="88" font-size="13"><tspan font-weight="600">.Unsolved / .UnsolvedExpr</tspan>  what it still needs</text>
+        <path class="line" d="M200,68 L250,68" marker-end="url(#sg-arrow2)"/>
+        <path class="line" d="M450,68 L500,68" marker-end="url(#sg-arrow2)"/>
+        <text x="20" y="128" class="muted" font-size="12.5">Any diagnostic in phase 1 stops the build before phase 2.</text>
+
+        <text x="20" y="168" font-weight="600">Phase 2: for each unit that left an .Unsolved file (ResolveSegment)</text>
+        <rect class="box-c" x="20" y="186" width="160" height="66" rx="8"/>
+        <text x="100" y="212" text-anchor="middle" font-size="13">fresh assembler</text>
+        <text x="100" y="232" text-anchor="middle" font-size="13">re-emits the .o</text>
+        <rect class="box-c" x="200" y="186" width="160" height="66" rx="8"/>
+        <text x="280" y="212" text-anchor="middle" font-size="13">reload .Unsolved</text>
+        <text x="280" y="232" text-anchor="middle" font-size="13">and .UnsolvedExpr</text>
+        <rect class="box-c" x="380" y="186" width="190" height="66" rx="8"/>
+        <text x="475" y="212" text-anchor="middle" font-size="13">merge each dependency's</text>
+        <text x="475" y="232" text-anchor="middle" font-size="13">.symb, ResolvePendingSymbols</text>
+        <rect class="box-c" x="590" y="186" width="130" height="66" rx="8"/>
+        <text x="655" y="212" text-anchor="middle" font-size="13">anything left?</text>
+        <text x="655" y="232" text-anchor="middle" class="muted" font-size="12">→ Undefined symbol</text>
+        <rect class="box-b" x="740" y="186" width="140" height="66" rx="8"/>
+        <text x="810" y="212" text-anchor="middle" font-size="13">save the .o,</text>
+        <text x="810" y="232" text-anchor="middle" font-size="13">delete side files</text>
+        <path class="line" d="M180,219 L200,219" marker-end="url(#sg-arrow2)"/>
+        <path class="line" d="M360,219 L380,219" marker-end="url(#sg-arrow2)"/>
+        <path class="line" d="M570,219 L590,219" marker-end="url(#sg-arrow2)"/>
+        <path class="line" d="M720,219 L740,219" marker-end="url(#sg-arrow2)"/>
+        <text x="20" y="290" class="muted" font-size="12.5">A unit with no .Unsolved file is already complete after phase 1 and is skipped.</text>
+        <text x="20" y="310" class="muted" font-size="12.5">A placeholder is patched when every name its expression uses is known: pass 2 of the assembler, run across files.</text>
+        <text x="20" y="330" class="muted" font-size="12.5">The first unit that fails stops phase 2; its .Unsolved and .UnsolvedExpr stay on disk.</text>
+      </svg>
+    </div>
+
+    <h3>Consequences</h3>
+    <ul>
+      <li><strong>The order of <code>Input</code> does not decide whether names resolve.</strong> Every unit is assembled before any is resolved, so a unit may come before the unit it depends on, and two units may depend on each other (the README's own example has a cycle).</li>
+      <li><strong>Every unit whose names you use must be listed.</strong> A name found in no declared dependency fails the build, reported at line 0 of the unit: <code>Line 0 - File main.asm - Type Undefined symbol</code>. A dependency whose <code>.symb</code> is missing (because it defined no global name) fails with <code>Dependency symbol file doesn't exist</code>.</li>
+      <li><strong>Dependencies are not transitive, and a <code>.symb</code> is written once.</strong> It holds the names its unit could define on its own in phase 1. A constant that one unit computes from another unit's label (<code>ALIAS = target + 1</code>) is pending in phase 1, so it never reaches that unit's <code>.symb</code>, and a third unit cannot use it.</li>
+      <li><strong>A placeholder keeps the width it was given.</strong> An operand that is unknown in phase 1 is emitted with a two-byte placeholder, before its value can be compared with <code>$FF</code>, so a reference to another unit's zero-page name keeps the absolute (three-byte) form of the instruction.</li>
+      <li><strong>The address comes from <code>.org</code>.</strong> Each unit is placed by its own <code>.org</code> (or, without one, at the target's load address). Nothing in the project moves a unit; the <code>Output</code> order only has to agree with the addresses.</li>
+    </ul>
+
+    <h3>The side files</h3>
+    <p>The only channel between units is the disk. The naming rule lives in <code>SideFiles</code> so that the writer (<code>AssemblerEngine.ExportSymbolFiles</code>) and the reader (the orchestrator) cannot disagree: the base name is the source path with its extension removed (<code>Path.ChangeExtension(path, null)</code>), and <code>SideFiles.Locate</code> puts the file beside the source unless a side-file directory was given, in which case it creates that directory and puts the file there under its own name.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>File</th><th>Type in JSON</th><th>Content</th></tr></thead>
+      <tbody>
+        <tr><td><code>.symb</code></td><td><code>Dictionary&lt;string, long&gt;</code></td><td>Global names and their values, without generated names (local and anonymous labels). Written only when non-empty.</td></tr>
+        <tr><td><code>.Unsolved</code></td><td><code>Dictionary&lt;string, UnresolvedSymbol&gt;</code></td><td>Names whose value depends on a name still unknown, with a count of what is missing.</td></tr>
+        <tr><td><code>.UnsolvedExpr</code></td><td><code>Dictionary&lt;ushort, UnresolvedExpr&gt;</code></td><td>Placeholders in the object file, keyed by their position relative to the unit's origin, with the expression to evaluate.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Every unit also starts with the same predefined names: the target's hardware symbols (when <code>DefineHardwareSymbols</code> is on) and the region symbols of the <a href="#memory-map">memory map</a>. They are known everywhere without a dependency. Since they sit in the unit's global table, they are also written to its <code>.symb</code>: with the complete example above, even <code>src/vectors.asm</code>, which defines nothing, leaves a <code>vectors.symb</code> holding <code>PPUCTRL</code>, <code>ZEROPAGE_START</code> and the rest.</p>
+
+    <h2 id="orchestrator">MultiSegmentOrchestrator</h2>
+    <p>The class that runs the <code>Input</code> stage. It does not assemble by itself: it is given a factory, <code>Func&lt;IAssembler&gt;</code>, and calls it once per unit in phase 1 and once more per unit resolved in phase 2.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Member</th><th>Role</th></tr></thead>
+      <tbody>
+        <tr><td><code>MultiSegmentOrchestrator(Func&lt;IAssembler&gt;)</code></td><td>Side files beside their sources (the command line).</td></tr>
+        <tr><td><code>MultiSegmentOrchestrator(Func&lt;IAssembler&gt;, string sideFileDirectory)</code></td><td>Side files in a directory of the caller's choosing. It must be the same directory the assemblers were told to write to (<code>AssemblerOptions.SideFileDirectory</code>).</td></tr>
+        <tr><td><code>AssembleSegments(IReadOnlyList&lt;Segment&gt;)</code></td><td>Runs both phases and returns a <code>MultiSegmentResult</code> (an <code>OperationResult</code>: success and diagnostics).</td></tr>
+        <tr><td><code>ResolveSegment</code> (private)</td><td>Phase 2 for one unit, as in the diagram above.</td></tr>
+        <tr><td><code>GetObjectFile</code> (private)</td><td><code>OutputFile</code>, or the source path with <code>.o</code>.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The factory the caller passes sets <code>ReportUndefinedSymbols = false</code>. In single-file mode an unknown name is an error at the end of the file, because no other file can define it; in a project it is the normal case, and the orchestrator asks the question itself once the dependencies are loaded. The factory also carries the CPU, the predefined symbols, the listing switch and the default origin from the resolved target, so every unit is assembled for the same machine.</p>
+
+    <h2 id="combine">Combining files into an image</h2>
+    <p><code>BinaryCombiner</code> implements <code>IBinaryCombiner</code>, which has two methods:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Method</th><th>Does</th><th>Used by</th></tr></thead>
+      <tbody>
+        <tr><td><code>Concatenate(CombineConf, out byte[] payload)</code></td><td>Builds the image in memory.</td><td>the command line when the format is not <code>bin</code>; <code>ProjectSession</code> always</td></tr>
+        <tr><td><code>Combine(CombineConf)</code></td><td>Calls <code>Concatenate</code>, creates the output directory if needed, and writes <code>ObjectFile</code>.</td><td>the command line when the format is <code>bin</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>For each entry of <code>Files</code>, in order, it reads the whole file and, if a <code>Size</code> is given, grows it to that size with zero bytes; then it appends it to the image. That is all: no alignment, no fill value, no overlap check.</p>
+
+    <h3>The Size field</h3>
+    <ul>
+      <li>It is read as <strong>hexadecimal whether or not it starts with <code>$</code></strong>: the code trims a leading <code>$</code> and parses with <code>NumberStyles.HexNumber</code>. <code>"100"</code> means 256 bytes, not 100. Write the <code>$</code> to make that visible.</li>
+      <li>A file larger than its <code>Size</code>, or a <code>Size</code> that does not parse, stops the build: <code>Invalid target size for: main.o</code>. The combiner never truncates.</li>
+      <li>The padding byte is always <code>$00</code>.</li>
+      <li>Without <code>Size</code>, the file takes exactly its own length.</li>
+    </ul>
+    <p>Other failures: a missing file (<code>Input file doesn't exist: …</code>), and a missing <code>ObjectFile</code> (<code>An output object file is required.</code>).</p>
+
+    <h3>Why the sizes matter</h3>
+    <p>Each object file holds only the bytes its unit emitted, from its first <code>.org</code> onwards; the gaps between units do not exist on disk. <code>Size</code> recreates them. In the <code>rock_patrol.nes</code> image, <code>header.o</code> is the 16-byte header; <code>data.o</code> holds 2,643 bytes from <code>$8000</code> to <code>$8A52</code> and is padded to <code>$4000</code>, so <code>game.o</code> starts at the file offset that maps to <code>$C000</code>; <code>game.o</code> holds 1,713 bytes of code and data from <code>$C000</code> to <code>$C6B0</code> and is padded to <code>$3FFA</code>, so <code>vectors.o</code> starts at the file offset that maps to <code>$FFFA</code>:</p>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 170" role="img" aria-label="The rock_patrol.nes image: 16-byte header at offset 0, data.o at offset $10 mapping to $8000 to $BFFF, game.o at offset $4010 mapping to $C000 to $FFF9, vectors.o at $800A mapping to $FFFA to $FFFF, and 8 KB of tiles, tiles.chr twice, from $8010">
+        <rect class="box-b" x="20" y="40" width="30" height="60" rx="3"/>
+        <rect class="box-b" x="50" y="40" width="210" height="60"/>
+        <rect class="box-b" x="260" y="40" width="210" height="60" fill-opacity="0.75"/>
+        <rect class="box-c" x="470" y="40" width="14" height="60"/>
+        <rect class="box-d" x="484" y="40" width="396" height="60" rx="3"/>
+        <text x="35" y="75" text-anchor="middle" font-size="11">H</text>
+        <text x="155" y="66" text-anchor="middle" font-weight="600">data.o</text>
+        <text x="155" y="86" text-anchor="middle" class="muted" font-size="12">$8000–$BFFF, padded to $4000</text>
+        <text x="365" y="66" text-anchor="middle" font-weight="600">game.o</text>
+        <text x="365" y="86" text-anchor="middle" class="muted" font-size="12">$C000–$FFF9, padded to $3FFA</text>
+        <text x="682" y="66" text-anchor="middle" font-weight="600">tiles.chr, tiles.chr</text>
+        <text x="682" y="86" text-anchor="middle" class="muted" font-size="12">one 8 KB CHR bank</text>
+        <text x="20" y="122" class="muted" font-size="12">0</text>
+        <text x="50" y="122" class="muted" font-size="12">$10</text>
+        <text x="260" y="122" class="muted" font-size="12">$4010</text>
+        <text x="380" y="140" class="muted" font-size="12">$800A: vectors.o ($FFFA–$FFFF)</text>
+        <text x="490" y="122" class="muted" font-size="12">$8010</text>
+        <text x="20" y="28" class="muted" font-size="12.5">File offsets below the bar, CPU addresses inside it. The header and 32 KB of PRG make 32,784 bytes; with CHR, 40,976.</text>
+      </svg>
+    </div>
+
+    <h3>After combining: the format</h3>
+    <p>The command line decides by format name. If it is <code>bin</code> (or empty), <code>Combine</code> writes the concatenation as it is. Otherwise <code>Concatenate</code> builds it in memory and <code>ExecutablePublisher.Publish</code> writes it in the target's format, so a project with <code>"Target": { "System": "c64" }</code> becomes a PRG. The iNES format, for one, recognises a payload that already starts with <code>NES\x1A</code> and writes it unchanged, so the committed <code>example_rock_patrol</code>, whose header is assembled from source, gives the same <code>rock_patrol.nes</code> with <code>-t nes</code>. In a project build the format does not see the units' <code>.org</code>: formats that write an address take it from <code>RunAddress</code> or <code>LoadAddress</code> (see <a href="#config-target">Target</a>). See <a href="targets.html#formats">Formats</a>.</p>
+
+    <h2 id="memory-map">MemoryMap: declared regions</h2>
+    <p>A <code>Target</code> section may declare named regions of the address space. They are <strong>declarative</strong>: a region places no byte and replaces no <code>.org</code>, and the output is byte-for-byte the same with or without them. What they add is checking, and symbols.</p>
+    <p>The regions of the <a href="#config-example">complete example</a>, for <code>example_rock_patrol</code>:</p>
+<pre><code>"Regions": [
+  { "Name": "ZEROPAGE", "Address": "$0000", "Size": "$100",  "Type": "bss" },
+  { "Name": "OAM",      "Address": "$0200", "Size": "$100",  "Type": "bss" },
+  { "Name": "RAMCODE",  "Address": "$0600", "Size": "$80",   "Type": "rw", "Load": "$E000" },
+  { "Name": "DATA",     "Address": "$8000", "Size": "$4000", "Bank": 0, "Type": "ro" },
+  { "Name": "PRG",      "Address": "$C000", "Size": "$3FFA", "Bank": 1, "Type": "ro" },
+  { "Name": "VECTORS",  "Address": "$FFFA", "Size": "6",     "Type": "ro" }
+]</code></pre>
+    <p>The fields, their types and defaults are in <a href="#config-regions">Target.Regions[]</a>. Unlike <code>Output.Files[].Size</code>, these addresses and sizes go through <code>NumericLiteral</code>, the assembler's own number parser, so <code>"$C000"</code> and <code>"49152"</code> are the same value.</p>
+
+    <h3>What the map checks</h3>
+    <ul>
+      <li><strong>At load</strong> (<code>MemoryMap.TryBuild</code>): a missing or unreadable <code>Address</code>, an unknown <code>Type</code>, a duplicate name, a region past <code>$FFFF</code>, and two sized regions that overlap. Each is a diagnostic, reported before any source is read.</li>
+      <li><strong>Each <code>.org</code></strong> (<code>ValidateOrigin</code>): an origin outside every region is an error that names the region it probably belongs to (the last one starting at or below the address) and lists all of them; an origin inside a <code>bss</code> region is an error, since that space produces no file bytes.</li>
+      <li><strong>Each <code>.res</code></strong> (<code>ValidateReservation</code>): a reservation that starts in a sized <code>bss</code> region and runs past its end is an error that says how many bytes fall outside. Reservations in <code>ro</code> and <code>rw</code> regions are not checked; a reservation past <code>$FFFF</code> always is.</li>
+    </ul>
+<pre><code>Line 85  - File src/game.asm - Type $C000 lands outside every declared region. Expected region: DATA $8000-$BFFF bank 0 (ro). Declared regions: ZEROPAGE $0000-$00FF (bss), OAM $0200-$02FF (bss), RAMCODE $0600-$067F (rw), DATA $8000-$BFFF bank 0 (ro), VECTORS $FFFA-$FFFF (ro).</code></pre>
+    <p>That is the example above with the <code>PRG</code> region removed: the <code>.org $C000</code> on line 85 of <code>game.asm</code> falls in no region, and the expected one is the last region that starts below it. Shrink <code>ZEROPAGE</code> to <code>"Size": "$6"</code> instead and the game's variables no longer fit: <code>Line 49  - File src/game.asm - Type Reservation of 2 byte(s) at $0005 overflows region 'ZEROPAGE', which ends at $0005. 1 byte(s) fall outside every declared region.</code> (line 49 is <code>ptr .res 2</code>).</p>
+    <p>A write that runs past the end of a region (as opposed to a <code>.res</code>) is not checked.</p>
+
+    <h3>Region symbols</h3>
+    <p><code>BuildPredefinedSymbols</code> gives each region whose name is a valid identifier the symbols <code>NAME_START</code>, <code>NAME_LOAD</code> and <code>NAME_RUN</code>, plus <code>NAME_END</code> (last address) and <code>NAME_SIZE</code> when it has a size. They are merged over the hardware symbols, so a source can write:</p>
+<pre><code>        .memarea OAM_START
+sprites .res OAM_SIZE</code></pre>
+    <p>With the regions above this places <code>sprites</code> at <code>$0200</code>; asking for <code>$101</code> bytes instead fails with <code>Reservation of 257 byte(s) at $0200 overflows region 'OAM', which ends at $02FF. 1 byte(s) fall outside every declared region.</code></p>
+
+    <h3>How the map reaches the assembler</h3>
+    <p>The <code>.org</code> and <code>.res</code> directives are dispatched deep inside <code>AssemblerEngine</code>, so the map is not passed to them as a parameter. The build installs it with <code>using (MemoryMapScope.Activate(map))</code> for the duration of the assembly, and the directives read <code>MemoryMapScope.Current</code>, a <code>[ThreadStatic]</code> field. A configuration without <code>Regions</code> installs <code>null</code>, which checks nothing.</p>
+
+    <h2 id="session">ProjectSession: the build as a library call</h2>
+    <p>The command line resolves every path against the process's current directory and writes everything to disk. That is fine in a terminal and wrong for an editor, whose current directory has nothing to do with the project. <code>WinASM65.Projects.ProjectSession</code> wraps the same pieces (<code>TargetResolver</code>, <code>MemoryMap</code>, <code>MultiSegmentOrchestrator</code>, <code>BinaryCombiner</code>, <code>ExecutablePublisher</code>) behind an explicit base directory, and returns the image and per-unit results in memory.</p>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 230" role="img" aria-label="ProjectSession is opened on a config.json and used by WinASM65.Tooling for --build, the debug adapter and the language server, and by the monitor; it calls TargetResolver, MultiSegmentOrchestrator, BinaryCombiner and ExecutablePublisher">
+        <defs>
+          <marker id="sg-arrow3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <rect class="box-d" x="20" y="20" width="190" height="40" rx="8"/>
+        <text x="115" y="45" text-anchor="middle" font-size="13">Tooling --build</text>
+        <rect class="box-d" x="20" y="70" width="190" height="40" rx="8"/>
+        <text x="115" y="95" text-anchor="middle" font-size="13">Tooling --dap</text>
+        <rect class="box-d" x="20" y="120" width="190" height="40" rx="8"/>
+        <text x="115" y="145" text-anchor="middle" font-size="13">Tooling --lsp</text>
+        <rect class="box-d" x="20" y="170" width="190" height="40" rx="8"/>
+        <text x="115" y="195" text-anchor="middle" font-size="13">Monitor (ProjectBuilder)</text>
+
+        <rect class="box-c" x="320" y="80" width="220" height="70" rx="8"/>
+        <text x="430" y="108" text-anchor="middle" font-weight="600">ProjectSession</text>
+        <text x="430" y="128" text-anchor="middle" class="muted" font-size="12">BaseDirectory = config's dir</text>
+
+        <rect class="box-b" x="650" y="20" width="230" height="40" rx="8"/>
+        <text x="765" y="45" text-anchor="middle" font-size="13">TargetResolver + MemoryMap</text>
+        <rect class="box-b" x="650" y="70" width="230" height="40" rx="8"/>
+        <text x="765" y="95" text-anchor="middle" font-size="13">MultiSegmentOrchestrator</text>
+        <rect class="box-b" x="650" y="120" width="230" height="40" rx="8"/>
+        <text x="765" y="145" text-anchor="middle" font-size="13">BinaryCombiner.Concatenate</text>
+        <rect class="box-b" x="650" y="170" width="230" height="40" rx="8"/>
+        <text x="765" y="195" text-anchor="middle" font-size="13">ExecutablePublisher</text>
+
+        <path class="line" d="M210,40 L320,100" marker-end="url(#sg-arrow3)"/>
+        <path class="line" d="M210,90 L320,108" marker-end="url(#sg-arrow3)"/>
+        <path class="line" d="M210,140 L320,122" marker-end="url(#sg-arrow3)"/>
+        <path class="line" d="M210,190 L320,135" marker-end="url(#sg-arrow3)"/>
+        <path class="line" d="M540,100 L650,40" marker-end="url(#sg-arrow3)"/>
+        <path class="line" d="M540,108 L650,90" marker-end="url(#sg-arrow3)"/>
+        <path class="line" d="M540,122 L650,140" marker-end="url(#sg-arrow3)"/>
+        <path class="line" d="M540,135 L650,190" marker-end="url(#sg-arrow3)"/>
+      </svg>
+    </div>
+
+    <h3>Opening a session</h3>
+    <ul>
+      <li><code>ProjectSession.Open(string configurationPath)</code> reads the file; the base directory is the file's directory.</li>
+      <li><code>ProjectSession.Open(ConfigFile, string baseDirectory)</code> takes a configuration already in memory. The language server uses it with an empty <code>ConfigFile</code> for a source that belongs to no project.</li>
+      <li><code>ProjectSession.Create(…)</code> takes every collaborator (<code>IConfigurationReader</code>, <code>IAssemblerFactory</code>, <code>IBinaryCombiner</code>, <code>IExecutablePublisher</code>), for tests.</li>
+    </ul>
+    <p>Every name of the configuration (sources, dependencies, output files, the image) is made absolute against <code>BaseDirectory</code> before the orchestrator sees it. <code>SourceFiles</code> lists the units, absolute, in declaration order.</p>
+
+    <h3>Build options</h3>
+    <p><code>Build(ProjectBuildOptions)</code>. With every option at its default the bytes are those of <code>WinASM65 -c config.json</code>.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Option</th><th>Default</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>EnableListing</code></td><td>false</td><td>Writes a <code>.lst</code> per unit, as <code>-l</code>.</td></tr>
+        <tr><td><code>SideFileDirectory</code></td><td>null (beside the sources)</td><td>Where <code>.symb</code>, <code>.Unsolved</code> and <code>.UnsolvedExpr</code> go. Object files still follow <code>OutputFile</code> or their source.</td></tr>
+        <tr><td><code>System</code>, <code>Cpu</code>, <code>Format</code></td><td>null</td><td>The same overrides as <code>-t</code>, <code>-cpu</code>, <code>-format</code>.</td></tr>
+        <tr><td><code>WriteImage</code></td><td>false</td><td>Writes the image through <code>ExecutablePublisher</code>. Off, the image only exists in <code>ProjectBuildResult.Image</code>.</td></tr>
+        <tr><td><code>ImagePath</code></td><td>null</td><td>Where to write it; default <code>Output.ObjectFile</code>, or <code>out.bin</code> without one.</td></tr>
+        <tr><td><code>CaptureListing</code></td><td>false</td><td>Keeps each unit's listing rows and origins in memory (an <code>InMemoryListingService</code>) instead of writing <code>.lst</code> files, and computes <code>Placements</code>.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>What a build returns</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Member of <code>ProjectBuildResult</code></th><th>Content</th></tr></thead>
+      <tbody>
+        <tr><td><code>Success</code>, <code>Diagnostics</code></td><td>Whether an image was produced, and every message of the build.</td></tr>
+        <tr><td><code>Image</code></td><td>The concatenated payload. Empty on failure.</td></tr>
+        <tr><td><code>ImagePath</code></td><td>Where it was written, when <code>WriteImage</code> was set.</td></tr>
+        <tr><td><code>Units</code></td><td>One <code>ProjectUnitResult</code> per input: source and object paths, dependencies, the symbol table the unit's assembler ended with, and (when captured) its listing rows, its <code>EmitterOrigin</code>s and its emitted length.</td></tr>
+        <tr><td><code>Placements</code></td><td>When captured: one <code>ImagePlacement</code> per <code>Output</code> file, with its offset and length in the image, padding included, computed by the same rule as the combiner.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Units, origins and placements together are what lets a debugger turn a program counter into a file offset, a unit and a source line: see <a href="tooling.html#dap">the debug adapter</a>.</p>
+
+    <h3>Listing one file against the project</h3>
+    <p>After a successful build the session keeps <code>ProjectSymbols</code>, the union of every unit's names (the first unit to define a name wins). <code>ListSourceFile(path)</code> and <code>ListSourceText(text, name)</code> assemble one source in memory with those names, the target's CPU, load address and hardware symbols predefined. That is how an editor shows the listing of, and the errors in, one file of a multi-file project without reporting every name another file defines as undefined. A name defined by the file itself still wins over a predefined one, and a name no unit defines is still reported. Before the first build, <code>ProjectSymbols</code> is empty and the listing is that of the file alone.</p>
+
+    <h3>Who uses it</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Caller</th><th>How</th></tr></thead>
+      <tbody>
+        <tr><td><code>WinASM65.Tooling --build</code></td><td><code>Build(new ProjectBuildOptions { WriteImage = true })</code>: the VS Code build task.</td></tr>
+        <tr><td>Debug adapter (<code>DebugEnvironment.Build</code>)</td><td><code>CaptureListing = true</code>, and <code>WriteImage</code> as the launch asks.</td></tr>
+        <tr><td>Language server</td><td>One session per <code>config.json</code>, built with <code>CaptureListing = true</code> and a <code>SideFileDirectory</code> in a scratch directory per project, so its builds never touch the side files of a command-line build.</td></tr>
+        <tr><td>Monitor (<code>ProjectBuilder</code>, <code>ProjectConfigLocator</code>)</td><td><code>ProjectBuilder</code> builds the configuration named by the <code>BUILD</code> command, resolved against the session's directory; <code>ProjectConfigLocator</code> opens configurations to find the one that governs a source.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <footer>
+      <p>The behaviour described here was checked against the code and by running the Debug build on small projects; <code>docs/pipeline.md</code> (in French) records how the multi-file mode came to be.</p>
+    </footer>
+  </main>
+
+  <aside class="toc" aria-label="On this page"></aside>
+</div>
+</body>
+</html>

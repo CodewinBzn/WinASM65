@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Example game: Rock Patrol</title>
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<div class="layout">
+  <nav class="site-nav" aria-label="Pages"></nav>
+
+  <main>
+    <p class="breadcrumb"><a href="index.html">WinASM65</a> › Overview</p>
+    <header class="page">
+      <h1>Example game: Rock Patrol</h1>
+      <p class="lede">A small NES game written for this documentation, code and graphics alike: rocks fall through a scrolling starry sky and a ship shoots them, in about 1,000 lines of 6502 assembly, graphics made with the <a href="graphics.html">Graphics Designer</a>, and a <code>config.json</code> that puts them together into a 40,976-byte ROM. The examples on these pages come from it. This page shows how to build and play it, how the project is laid out, how the graphics are made, and walks through the code.</p>
+    </header>
+
+    <aside class="sources">
+      <h4>Source files</h4>
+      <ul>
+        <li><a href="../../example_rock_patrol/README.md"><code>README.md</code></a></li>
+        <li><a href="../../example_rock_patrol/config.json"><code>config.json</code></a></li>
+        <li><a href="../../example_rock_patrol/compile.bat"><code>compile.bat</code></a></li>
+        <li><a href="../../example_rock_patrol/src/header.asm"><code>src/header.asm</code></a></li>
+        <li><a href="../../example_rock_patrol/src/data.asm"><code>src/data.asm</code></a></li>
+        <li><a href="../../example_rock_patrol/src/game.asm"><code>src/game.asm</code></a></li>
+        <li><a href="../../example_rock_patrol/src/nes.inc"><code>src/nes.inc</code></a></li>
+        <li><a href="../../example_rock_patrol/src/vectors.asm"><code>src/vectors.asm</code></a></li>
+        <li><a href="../../example_rock_patrol/chr/tiles.chr"><code>chr/tiles.chr</code></a></li>
+        <li><a href="../../example_rock_patrol/gfx/"><code>gfx/</code></a> (the designer's assets and their exports)</li>
+        <li><a href="../../tools/example_art.py"><code>tools/example_art.py</code></a> (drew the first tiles and assets)</li>
+      </ul>
+    </aside>
+
+    <h2 id="game">The game</h2>
+    <p>Rocks fall through a starry sky that scrolls down past the ship. Fly with the d-pad, fire with A. A rock shot is a point, and every ten points the rocks fall faster and come more often. A rock that hits the ship costs one of its three lives; the ship then blinks for two seconds, and nothing hurts it. After the last life, GAME OVER shows the score, and START goes back to the title. The code and the graphics are original and may be reused freely.</p>
+    <figure class="shot">
+      <a href="img/game-title.png"><img src="img/game-title.png" width="512" height="480" style="image-rendering: pixelated" alt="The title screen: ROCK PATROL, PRESS START, D-PAD MOVES A FIRES and MADE WITH WINASM65 in white on a black starfield of dots and small crosses"></a>
+      <figcaption>The title screen, drawn in the designer's Screen editor. Every word is drawn with the game's own font; the stars are two background tiles.</figcaption>
+    </figure>
+    <figure class="shot">
+      <a href="img/game-play.png"><img src="img/game-play.png" width="512" height="480" style="image-rendering: pixelated" alt="A game in progress: the score at the top left and three red hearts at the top right; brown rocks falling, yellow shots going up, and the white and blue ship near the bottom, over the starry sky"></a>
+      <figcaption>Playing. The sky scrolls, so the score and the lives are sprites like everything that moves.</figcaption>
+    </figure>
+    <figure class="shot">
+      <a href="img/game-over.png"><img src="img/game-over.png" width="512" height="480" style="image-rendering: pixelated" alt="The game over screen: GAME OVER, the score in sprites under it, and PRESS START, on the starfield"></a>
+      <figcaption>Game over, with the score. The pictures are taken by <code>tools/screenshots/shoot-game.ps1</code>: an autopilot written in Lua plays the game in Mesen2, firing all the time and steering under the lowest rock (see <a href="testing.html">Testing</a>).</figcaption>
+    </figure>
+
+    <h2 id="play">Build and play</h2>
+    <p>From the <code>example_rock_patrol</code> folder, either of these builds the ROM, <code>rock_patrol.nes</code>:</p>
+<pre><code>compile.bat                    # exports the graphics, deletes the previous outputs, then WinASM65 -l -c config.json
+WinASM65 -l -c config.json     # the same build by hand; -l also writes src\*.lst</code></pre>
+    <p>Run the command line from the project folder: on the command line the paths of <code>config.json</code> are relative to the current directory (see <a href="segments.html#config">the config.json reference</a>). Open the ROM in Mesen2, or any NES emulator: mapper 0 (NROM), 32 KB of program, 8 KB of tiles. <code>compile.bat</code> first runs <code>WinASM65.Designer export gfx</code> when the designer is on the <code>PATH</code>; without it, the exported graphics committed in <code>gfx/</code> are used.</p>
+    <p>In VS Code with the <a href="vscode.html">WinASM65 extension</a>, open the folder and press <strong>F5</strong>: the extension finds <code>config.json</code>, builds the project and starts Mesen2 with the debugger attached. The committed <code>config.json</code> names the emulator in its <code>Emulator</code> section, <code>mesen2</code> at an example path, <code>C:\Emulators\Mesen2\Mesen.exe</code>: point it at your Mesen2, or set the <code>winasm65.emulatorPath</code> setting (or <code>emulatorPath</code> in <code>launch.json</code>), which takes precedence. A breakpoint on line 139 of <code>src/game.asm</code>, the first instruction of <code>NMI</code>, stops at the start of every frame, as on the <a href="vscode.html#debug">VS Code page</a>.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Button</th><th>Does</th></tr></thead>
+      <tbody>
+        <tr><td>START</td><td>On the title screen, starts a game. On the game over screen, goes back to the title.</td></tr>
+        <tr><td>D-pad</td><td>Moves the ship two pixels a frame, between x = 8 and x = 232 and between y = 120 and y = 200: the lower half of the screen.</td></tr>
+        <tr><td>A</td><td>Fires at once; held, fires again every 10 frames. At most three shots are in the air.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The rules, as the code has them. At most six rocks fall at once. One appears at the top every <code>SpawnGap</code> frames (48 at the start, down to 20), in the next of the 32 places of <code>RockLanes</code>, and falls <code>FallSpeed</code> pixels a frame (1 at the start, up to 3); both tables are read with the score's tens, from 0 to 7. A shot whose middle is inside a rock's 16×16 square breaks it: a burst and a point. A rock within 12 pixels of the ship, across and down, breaks too and costs a life, unless the ship is still blinking from the last one (120 frames). A second and a half after the last life, GAME OVER. The score has four decimal digits.</p>
+
+    <h2 id="project">The project</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>File</th><th>What it is</th></tr></thead>
+      <tbody>
+        <tr><td><code>config.json</code></td><td>The project: four units, combined with the tiles into the ROM.</td></tr>
+        <tr><td><code>compile.bat</code></td><td>Exports the graphics when <code>WinASM65.Designer</code> is on the <code>PATH</code>, deletes <code>src\*.o</code>, <code>src\*.symb</code>, <code>src\*.lst</code>, the <code>src\*.Unsolved</code> files and the ROM, then builds with listings.</td></tr>
+        <tr><td><code>src/header.asm</code></td><td>The 16-byte iNES header: mapper 0, horizontal mirroring for the vertical scrolling.</td></tr>
+        <tr><td><code>src/data.asm</code></td><td>The first 16 KB of program, <code>$8000</code>–<code>$BFFF</code>, a unit of its own: the palettes, the two screens and the sky's map as the designer exports them, and three small tables.</td></tr>
+        <tr><td><code>src/game.asm</code></td><td>The game, <code>$C000</code> up: the metasprites, start-up, main loop, NMI, the title, play and game over, the sky, the sprites, sound.</td></tr>
+        <tr><td><code>src/nes.inc</code></td><td>NES registers, buttons and two macros, included by <code>game.asm</code>. Not a unit of its own.</td></tr>
+        <tr><td><code>src/vectors.asm</code></td><td>The NMI, RESET and IRQ vectors.</td></tr>
+        <tr><td><code>chr/tiles.chr</code></td><td>The 256 tiles, 4 KB: the font, the ship, the shot, the rock, the bursts, the heart, the stars and the moon, drawn by <code>tools/example_art.py</code> and edited in the designer's Tile Set editor. It is both pattern tables.</td></tr>
+        <tr><td><code>gfx/game.pal.json</code></td><td>The 8 palettes.</td></tr>
+        <tr><td><code>gfx/objects.msprite.json</code></td><td>The 7 metasprites (ship, shot, rock and the rock turned, burst and the wide burst, heart) and two animations.</td></tr>
+        <tr><td><code>gfx/title.screen.json</code>, <code>gfx/over.screen.json</code></td><td>The title and game over screens.</td></tr>
+        <tr><td><code>gfx/play.map.json</code></td><td>The sky, a map of 2×2 metatiles two screens high, that scrolls in a loop.</td></tr>
+        <tr><td><code>gfx/*.asm</code>, <code>*.bin</code>, <code>*.nam</code></td><td>What the assets export, included by <code>data.asm</code> and <code>game.asm</code>; committed, so the game builds without the designer.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>config.json</h3>
+<pre><code>{
+	"Input": [
+		{
+			"FileName": "src/header.asm",
+			"Dependencies": []
+		},
+		{
+			"FileName": "src/data.asm",
+			"Dependencies": []
+		},
+		{
+			"FileName": "src/game.asm",
+			"Dependencies": ["src/data.asm"]
+		},
+		{
+			"FileName": "src/vectors.asm",
+			"Dependencies": ["src/game.asm"]
+		}
+	],
+	"Output": {
+		"ObjectFile": "rock_patrol.nes",
+		"Files": [
+			{
+				"FileName": "src/header.o",
+				"Size": "$10"
+			},
+			{
+				"FileName": "src/data.o",
+				"Size": "$4000"
+			},
+			{
+				"FileName": "src/game.o",
+				"Size": "$3FFA"
+			},
+			{
+				"FileName": "src/vectors.o"
+			},
+			{
+				"FileName": "chr/tiles.chr"
+			},
+			{
+				"FileName": "chr/tiles.chr"
+			}
+		]
+	},
+	"Emulator": {
+		"Name": "mesen2",
+		"Path": "C:\\Emulators\\Mesen2\\Mesen.exe"
+	}
+}</code></pre>
+    <ul>
+      <li><strong><code>Input</code></strong> lists the four units. Each is assembled on its own into an object file beside its source: <code>src/header.o</code>, <code>src/data.o</code>, <code>src/game.o</code>, <code>src/vectors.o</code>. <code>data.asm</code> and <code>game.asm</code> also write <code>src/data.symb</code> and <code>src/game.symb</code>, the JSON tables of their global names.</li>
+      <li><strong><code>Output</code></strong> puts six files end to end. <code>header.o</code> is already 16 bytes, so its <code>"Size": "$10"</code> only guards against a header that grows. <code>data.o</code> holds 2,643 bytes, assembled from <code>.org $8000</code>; <code>"Size": "$4000"</code> (always hexadecimal) pads it with zeros to the first 16 KB of program, <code>$8000</code>–<code>$BFFF</code>. <code>game.o</code> holds 1,713 bytes, assembled from <code>.org $C000</code>; <code>"Size": "$3FFA"</code> pads it to 16,378 bytes, so that the six bytes of <code>vectors.o</code> fall on <code>$FFFA</code>–<code>$FFFF</code>, the last six bytes of the program. Then <code>tiles.chr</code> twice, taken as it is: the 8 KB CHR bank, pattern tables 0 and 1. A file may appear several times.</li>
+      <li><strong><code>Emulator</code></strong> is used only to debug: the emulator the VS Code debugger and the monitor start, here Mesen2 at an example path to replace with your own. See <a href="bridges.html">Emulator bridges</a>.</li>
+      <li>There is no <code>Target</code> section: the target is <code>raw</code> and the image is written exactly as concatenated, header included. The <a href="segments.html#config-example">complete config.json example</a> builds the same ROM with a <code>Target</code> section that writes the header instead.</li>
+    </ul>
+    <div class="figure">
+      <svg viewBox="0 0 900 200" role="img" aria-label="The ROM layout: header.o, 16 bytes at file offset $0000; data.o padded to $4000 bytes at offset $0010, the CPU addresses $8000 to $BFFF, of which 2,643 bytes are tables and screens; game.o padded to $3FFA bytes at offset $4010, the CPU addresses $C000 to $FFF9, of which 1,713 bytes are code and data; vectors.o, 6 bytes at offset $800A, CPU addresses $FFFA to $FFFF; then tiles.chr twice from offset $8010, one 8 KB CHR bank. 40,976 bytes in all.">
+        <text x="20" y="22" class="muted" font-size="12.5">rock_patrol.nes: file offsets below the bar, what each part is inside it</text>
+        <rect class="box-a" x="20" y="40" width="26" height="74" rx="3"/>
+        <text x="33" y="81" text-anchor="middle" font-size="12" font-weight="600">H</text>
+        <rect class="box-b" x="46" y="40" width="60" height="74"/>
+        <rect class="box-b" x="106" y="40" width="200" height="74" fill-opacity="0.45"/>
+        <text x="176" y="66" text-anchor="middle" font-size="12" font-weight="600">data.o</text>
+        <text x="176" y="84" text-anchor="middle" class="muted" font-size="11">$8000–$8A52</text>
+        <text x="176" y="100" text-anchor="middle" class="muted" font-size="11">2,643 bytes</text>
+        <rect class="box-c" x="306" y="40" width="50" height="74"/>
+        <rect class="box-c" x="356" y="40" width="210" height="74" fill-opacity="0.45"/>
+        <text x="436" y="66" text-anchor="middle" font-size="12" font-weight="600">game.o</text>
+        <text x="436" y="84" text-anchor="middle" class="muted" font-size="11">$C000–$C6B0</text>
+        <text x="436" y="100" text-anchor="middle" class="muted" font-size="11">1,713 bytes</text>
+        <rect class="box-a" x="566" y="40" width="10" height="74"/>
+        <rect class="box-d" x="576" y="40" width="152" height="74" rx="3"/>
+        <rect class="box-d" x="728" y="40" width="152" height="74" rx="3" fill-opacity="0.6"/>
+        <text x="652" y="72" text-anchor="middle" font-size="11">tiles.chr</text>
+        <text x="804" y="72" text-anchor="middle" font-size="11">tiles.chr</text>
+        <text x="652" y="98" text-anchor="middle" class="muted" font-size="11">pattern table 0</text>
+        <text x="804" y="98" text-anchor="middle" class="muted" font-size="11">pattern table 1</text>
+        <text x="20" y="134" class="muted" font-size="12">$0000</text>
+        <text x="46" y="150" class="muted" font-size="12">$0010</text>
+        <text x="306" y="134" class="muted" font-size="12">$4010</text>
+        <text x="540" y="150" class="muted" font-size="12">$800A</text>
+        <text x="590" y="134" class="muted" font-size="12">$8010</text>
+        <text x="880" y="150" text-anchor="end" class="muted" font-size="12">$A010</text>
+        <text x="20" y="176" font-size="12.5">H: header.o, $10 bytes. Thin box: vectors.o, 6 bytes (DF C0 · 79 C0 · 03 C1: NMI $C0DF, RESET $C079, IRQ $C103).</text>
+        <text x="20" y="194" font-size="12.5">16 + 16,384 + 16,378 + 6 + 2 × 4,096 = 40,976 bytes. Lighter: the zeros of the padding. The bar is not to scale.</text>
+      </svg>
+    </div>
+
+    <h3 id="dependency">Why vectors.asm depends on game.asm</h3>
+<pre><code>        .org $FFFA
+        .word NMI               ; once per frame, at the start of the vertical blank
+        .word RESET             ; at power-on and reset
+        .word IRQ               ; not used</code></pre>
+    <p><code>NMI</code>, <code>RESET</code> and <code>IRQ</code> are labels of <code>game.asm</code>. Units are assembled separately, so while <code>vectors.asm</code> is assembled it does not know them: it emits three placeholder words. Its <code>"Dependencies": ["src/game.asm"]</code> lets it read <code>src/game.symb</code> in the second phase of the build, where it finds <code>"NMI":49375</code>, <code>"RESET":49273</code> and <code>"IRQ":49411</code> and patches the words to <code>DF C0 79 C0 03 C1</code>. Without the dependency the build stops with <code>Line 0  - File src/vectors.asm - Type Undefined symbol</code>. The order of <code>Input</code> does not matter: every unit is assembled before any is resolved. See <a href="segments.html#order">How units are resolved</a>.</p>
+    <p><code>game.asm</code> depends on <code>data.asm</code> the same way: the palettes, the screens, the map's tables and <code>RockLanes</code>, <code>FallSpeed</code> and <code>SpawnGap</code> are labels of the other unit, read from <code>src/data.symb</code>. A name of another unit can be in an expression: <code>lda #&lt;scr_title</code>, the low byte of a screen's address. A name that is not yet known is taken as a 16-bit address, which these are, from <code>$8000</code> up, so <code>adc FallSpeed,y</code> takes the three-byte absolute,Y form.</p>
+    <p><code>header.asm</code> needs nothing from the others: it is the header, byte by byte.</p>
+<pre><code>        .org $0000
+        .byte "NES", $1A
+        .byte 2                 ; 2 x 16 KB of program ROM
+        .byte 1                 ; 1 x 8 KB of character ROM: chr/tiles.chr, twice
+        .byte %00000000         ; mapper 0 (NROM), horizontal mirroring: $2000 and $2800
+                                ; are two screens one above the other, for the scrolling sky
+        .byte 0
+        .dsb 8                  ; unused, zero</code></pre>
+    <p>The PPU has room for two nametables, and the cartridge decides how the four addresses <code>$2000</code>, <code>$2400</code>, <code>$2800</code> and <code>$2C00</code> map onto them. With horizontal mirroring (bit 0 of byte 6 clear), <code>$2000</code> and <code>$2400</code> are the first, <code>$2800</code> and <code>$2C00</code> the second: two different screens stacked vertically, which is what a game that scrolls up or down needs. The high four bits of byte 6 are the low four of the mapper's number: 0, NROM, a board with 32 KB of program and 8 KB of tiles and nothing to switch.</p>
+
+    <h2 id="graphics">The graphics</h2>
+    <p>Every picture of the game is an asset of the <a href="graphics.html">Graphics Designer</a>, edited in VS Code and exported to assembly sources that <code>data.asm</code> and <code>game.asm</code> include. The exports are committed next to the assets, so the game builds with the assembler alone; a test checks they are what an export of the assets gives today.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Asset</th><th>Editor</th><th>Exported as</th><th>Used by</th></tr></thead>
+      <tbody>
+        <tr><td><code>chr/tiles.chr</code></td><td>Tile Set</td><td>itself: 4 KB, taken as it is by <code>config.json</code>, twice</td><td>the PPU's pattern tables 0 and 1</td></tr>
+        <tr><td><code>gfx/game.pal.json</code></td><td>Palettes</td><td><code>game.pal.asm</code> (<code>palettes:</code>), <code>game.pal.bin</code></td><td><code>load_palettes</code></td></tr>
+        <tr><td><code>gfx/objects.msprite.json</code></td><td>Metasprites</td><td><code>objects.msprite.asm</code>: 7 metasprites and two animations</td><td><code>draw_sprite</code>, <code>animate</code></td></tr>
+        <tr><td><code>gfx/title.screen.json</code>, <code>gfx/over.screen.json</code></td><td>Screen</td><td><code>title.nam</code>, <code>over.nam</code> (1,024 bytes each) and their <code>.screen.asm</code></td><td><code>enter_title</code>, <code>enter_over</code>, through <code>load_screen</code></td></tr>
+        <tr><td><code>gfx/play.map.json</code></td><td>Map</td><td><code>play.map.asm</code>: 7 metatiles and a map of 16×30 of them</td><td><code>draw_sky</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The JSON assets name the tile set and the palettes they are drawn with (<code>"../chr/tiles.chr"</code>, <code>"game.pal.json"</code>), and a <code>prefix</code> for their labels: <code>spr_</code> for the metasprites, <code>scr_</code> for the screens, <code>bg_</code> for the map. <code>data.asm</code> includes four exports:</p>
+<pre><code>        .include "../gfx/game.pal.asm"
+        .include "../gfx/title.screen.asm"
+        .include "../gfx/over.screen.asm"
+        .include "../gfx/play.map.asm"</code></pre>
+    <p>and <code>game.asm</code> the metasprites, at <code>$C000</code>, before its code. Saving an asset in VS Code exports it, and the next build uses it; <code>compile.bat</code> also exports them all first when <code>WinASM65.Designer</code> is on the <code>PATH</code> (<code>WinASM65.Designer export gfx</code>).</p>
+    <p><code>tools/example_art.py</code> drew the tiles and wrote the first version of the assets: the pictures are rows of characters in the script, one a pixel. Run it again to start them over; after that, the designer is the place to edit them.</p>
+
+    <h3 id="tiles">Tiles</h3>
+    <p>The NES draws everything from 8×8 tiles stored in the cartridge's character ROM. Each pixel of a tile is a number from 0 to 3; the palette the tile is shown with turns that number into a colour, and 0 is transparent (or the background colour). A tile takes 16 bytes: eight bytes that hold bit 0 of each pixel, one byte per row with the leftmost pixel in bit 7, then eight bytes that hold bit 1. The Tile Set editor reads and writes <code>chr/tiles.chr</code> in that form. Tile <em>n</em> is at offset <em>n</em> × 16. The game draws the background and the sprites from pattern table 0 (<code>PPUCTRL</code> is <code>%10000000</code>: NMI on, both from table 0); the same file fills table 1, unused.</p>
+
+    <h3 id="ascii">Letters at their ASCII codes</h3>
+    <p>The font has 5×7 glyphs for the digits, the capital letters and <code>!</code>, <code>-</code>, <code>.</code>, <code>/</code> and <code>:</code>, each stored at the tile number equal to its ASCII code, with one empty column on the left and one empty row below. <code>"0"</code> is tile <code>$30</code>, <code>"A"</code> tile <code>$41</code>, and the space, <code>$20</code>, is a tile left empty. So a text typed in the Screen editor is already a row of tiles, and the score is drawn by adding <code>'0'</code> to each digit. The other tiles: <code>$01</code>–<code>$04</code> the ship, <code>$05</code> the shot, <code>$06</code>–<code>$07</code> two stars, <code>$08</code>–<code>$0B</code> the rock and <code>$0C</code>–<code>$0F</code> the rock turned a quarter round, <code>$10</code>–<code>$17</code> the two bursts, <code>$18</code> the heart, <code>$19</code>–<code>$1C</code> the moon and <code>$1D</code>–<code>$1F</code> dust.</p>
+    <figure class="shot">
+      <a href="img/game-tiles.png"><img src="img/game-tiles.png" width="512" height="512" style="image-rendering: pixelated" alt="The 256 tiles as 16 by 16, in the ship's colours, white and two blues on black: on the first rows the ship, the shot, the stars, the rocks, the bursts, the heart, the moon and dust; then the punctuation, the digits and the colon, and the letters A to Z at their ASCII positions; the rest empty"></a>
+      <figcaption>The tile set, drawn by <code>WinASM65.Designer render</code> in the colours of the ship's sprite palette (<code>--item ../gfx/game.pal.json#4</code>), so the other pictures show in colours that are not theirs.</figcaption>
+    </figure>
+
+    <h3 id="palettes">Palettes</h3>
+    <p>The game loads 32 bytes into the PPU at <code>$3F00</code>: four palettes for the background, four for the sprites. Each entry is a colour number of the NES's fixed palette, and <code>$0F</code> (black) is the shared colour 0. They are edited in <code>gfx/game.pal.json</code>, where each palette has a name, and exported as:</p>
+<pre><code>palettes:
+        .byte $0F, $30, $10, $00 ; background 0: text
+        .byte $0F, $00, $10, $30 ; background 1: sky
+        .byte $0F, $07, $17, $27 ; background 2: moon
+        .byte $0F, $30, $10, $00 ; background 3: unused
+        .byte $0F, $30, $21, $11 ; sprite 0: ship
+        .byte $0F, $16, $27, $38 ; sprite 1: shot
+        .byte $0F, $07, $17, $27 ; sprite 2: rock
+        .byte $0F, $16, $27, $37 ; sprite 3: burst
+
+PAL_TEXT = 0
+PAL_SKY = 1
+PAL_MOON = 2
+PAL_UNUSED = 3
+PAL_SHIP = 4
+PAL_SHOT = 5
+PAL_ROCK = 6
+PAL_BURST = 7</code></pre>
+
+    <h3 id="metasprites">Metasprites and animations</h3>
+    <p>A metasprite is a picture made of several sprites placed around an origin. The export writes each one as rows of four bytes, <code>y, tile, attributes, x</code>, ended by <code>$80</code>, a table of their addresses split into low and high bytes, and a constant for each number; an animation is pairs of a metasprite's number and a duration in frames, ended by <code>$FF</code> and 1 if it loops:</p>
+<pre><code>spr_ship:
+        .byte $00, $01, $00, $00
+        .byte $00, $02, $00, $08
+        .byte $08, $03, $00, $00
+        .byte $08, $04, $00, $08
+        .byte $80
+
+spr_metasprites_lo:
+        .lobytes spr_ship, spr_shot, spr_rock, …
+
+SPR_MS_SHIP = 0
+SPR_MS_SHOT = 1
+SPR_MS_ROCK = 2
+…
+
+spr_rock_anim:
+        .byte 2, 12
+        .byte 3, 12
+        .byte $FF, 1</code></pre>
+    <p><code>draw_sprite</code> copies a metasprite into the sprite table, adding the position to each row, and <code>animate</code> finds the frame of an animation at a given clock (<a href="#sprites">below</a>).</p>
+
+    <h3 id="screens">Screens and the sky</h3>
+    <p>A screen is 960 tile numbers and 64 attribute bytes, exported as a 1,024-byte <code>.nam</code> that <code>load_screen</code> copies to <code>$2000</code> as it is. The sky is a map: 16×30 metatiles of 2×2 tiles and a palette each, exported as four tables of tiles (<code>bg_metatile_tl</code>, <code>_tr</code>, <code>_bl</code>, <code>_br</code>), a table of palettes and the map, a row of 16 metatile numbers per row. <code>draw_sky</code> writes its top 15 rows into <code>$2000</code> and the bottom 15 into <code>$2800</code>, then the attribute bytes, four metatiles' palettes to a byte.</p>
+
+    <h2 id="tour">A tour of game.asm</h2>
+    <p>The variables come first. <code>.memarea</code> sets where <code>.res</code> starts handing out addresses; nothing is emitted:</p>
+<pre><code>; Variables, in zero page: .res hands out addresses from $0000 on.
+
+        .memarea $0000
+frame_done   .res 1             ; set by NMI, cleared by wait_frame
+frames       .res 1             ; counts frames
+pad          .res 1             ; the buttons held this frame
+pad_new      .res 1             ; and those pressed this frame
+state        .res 1
+ptr          .res 2
+tmp          .res 1
+tmp2         .res 1
+slot         .res 1             ; the object draw_play is at
+tile_pal     .res 1             ; the sprite palette put_tile uses
+ms_x         .res 1             ; where draw_sprite puts a metasprite
+ms_y         .res 1
+oam_at       .res 1             ; the next free entry of OAM
+ctrl         .res 1             ; what NMI writes to PPUCTRL
+scroll_y     .res 1             ; the sky's first line on screen, 0-239 ...
+sky_pos      .res 2             ; ... from the sky's position, 0 to SKY_HEIGHT-1
+…</code></pre>
+    <p>Zero page, <code>$00</code>–<code>$FF</code>, is the fast page: an instruction on an address there takes a byte less and often a cycle less, and the assembler picks that form by itself when the address is known to be below <code>$100</code>. The objects' tables are at <code>$0300</code> and up, after the stack (<code>$0100</code>) and the sprite table (<code>$0200</code>).</p>
+
+    <h3 id="startup">Start-up</h3>
+<pre><code>RESET:
+        sei
+        cld
+        ldx #$40
+        stx APU_FRAME           ; no APU frame interrupt
+        ldx #$FF
+        txs
+        inx                     ; X = 0
+        stx PPUCTRL             ; no NMI yet
+        stx PPUMASK             ; picture off
+        stx DMC_FREQ
+        vblank_wait             ; the PPU needs two frames to wake up
+        txa
+@clear: sta $0000,x
+        sta $0300,x
+        sta $0400,x
+        sta $0500,x
+        sta $0600,x
+        sta $0700,x
+        inx
+        bne @clear
+        jsr clear_sprites
+        vblank_wait
+        jsr load_palettes
+        lda #%00001001          ; pulse 1 and noise on
+        sta APU_STATUS
+        jsr enter_title</code></pre>
+    <p>The PPU needs two frames to wake up, hence two <code>vblank_wait</code>, a macro of <code>nes.inc</code>:</p>
+<pre><code>; Loops until the PPU starts a vertical blank.
+.macro vblank_wait
+-       bit PPUSTATUS
+        bpl -
+.endmacro</code></pre>
+    <p>The anonymous label <code>-</code> is the target of the nearest <code>bpl -</code> above it: a macro can be used many times without its labels clashing.</p>
+
+    <h3 id="loop">Main loop and states</h3>
+<pre><code>Main:
+        jsr wait_frame
+        jsr read_pad
+        jsr clear_sprites
+        lda state
+        cmp #STATE_PLAY
+        beq @play
+        cmp #STATE_OVER
+        beq @over
+        jsr update_title
+        jmp Main
+@play:  jsr update_play
+        jmp Main
+@over:  jsr update_over
+        jmp Main</code></pre>
+    <p>The game is one of three states: the title, play and game over. Each has an <code>enter_</code> routine that draws its screen with the picture off, and an <code>update_</code> routine called once a frame.</p>
+
+    <h3 id="nmi">NMI, the sprite DMA and the scroll</h3>
+    <p>The PPU raises an NMI at the start of every vertical blank, 60 times a second: the only time video memory can be written while the picture is on. <code>NMI</code>, at <code>$C0DF</code>, copies the 256-byte sprite table at <code>OAM = $0200</code> to the PPU with one write to <code>OAMDMA</code>, and sets the scroll for the coming picture:</p>
+<pre><code>; Once a frame, at the start of the vertical blank: the sprites and the scroll.
+NMI:
+        pha
+        lda #0
+        sta OAMADDR
+        lda #&gt;OAM
+        sta OAMDMA              ; the 256 bytes of OAM to the PPU
+        lda ctrl                ; the nametable the sky starts in
+        sta PPUCTRL
+        bit PPUSTATUS
+        lda #0
+        sta PPUSCROLL
+        lda scroll_y
+        sta PPUSCROLL
+        inc frames
+        lda #1
+        sta frame_done
+        pla
+IRQ:    rti
+
+; Waits for the next NMI.
+wait_frame:
+        lda #0
+        sta frame_done
+-       lda frame_done
+        beq -
+        rts</code></pre>
+    <p>The main loop builds the next frame's sprites while this one is drawn; the NMI copies them when it is done.</p>
+
+    <h3 id="scrolling">The scrolling sky</h3>
+<pre><code>; The sky moves one line down a frame: its position goes back by one,
+; from 0 round to SKY_HEIGHT-1; the second screen is $2800.
+scroll_sky:
+        lda sky_pos
+        bne +
+        lda sky_pos+1
+        bne ++
+        lda #&lt;SKY_HEIGHT        ; at 0: on to the bottom of the second screen
+        sta sky_pos
+        lda #&gt;SKY_HEIGHT
+        sta sky_pos+1
+        jmp scroll_sky
+++      dec sky_pos+1
++       dec sky_pos
+        lda sky_pos+1           ; under 240, the first screen
+        bne @low
+        lda sky_pos
+        cmp #240
+        bcs @low
+        sta scroll_y
+        lda #CTRL_NMI
+        sta ctrl
+        rts
+@low:   lda sky_pos
+        sec
+        sbc #240
+        sta scroll_y
+        lda #CTRL_NMI|2         ; nametable 2: $2800
+        sta ctrl
+        rts</code></pre>
+    <p>The sky is two screens, 480 lines, one above the other. Its position goes back by one line a frame, so the picture moves down; above 240 the picture starts in the second nametable, picked by the low bits of <code>PPUCTRL</code>.</p>
+
+    <h3 id="joypad">Reading the joypad</h3>
+<pre><code>; The joypad into pad (A in bit 7 ... right in bit 0), and what went down into pad_new.
+read_pad:
+        lda pad
+        sta tmp
+        lda #1
+        sta JOY1
+        lda #0
+        sta JOY1
+        ldx #8
+-       lda JOY1
+        lsr a                   ; the button into carry
+        rol pad
+        dex
+        bne -
+        lda tmp
+        eor #$FF
+        and pad
+        sta pad_new
+        rts</code></pre>
+    <p>Writing 1 then 0 to <code>JOY1</code> latches the eight buttons; eight reads then give them one by one in bit 0, A first. <code>pad_new</code> is what was not held the frame before: a press, not a hold.</p>
+
+    <h3 id="sprites">Sprites</h3>
+<pre><code>; Metasprite A at (ms_x, ms_y): its tiles into OAM. Each tile of an exported
+; metasprite is four bytes, y, tile, attributes, x; a y of $80 ends it.
+draw_sprite:
+        tax
+        lda spr_metasprites_lo,x
+        sta ptr
+        lda spr_metasprites_hi,x
+        sta ptr+1
+        ldy #0
+        ldx oam_at
+@tile:  lda (ptr),y
+        cmp #$80
+        beq @done
+        clc
+        adc ms_y
+        sta OAM,x
+        iny
+        lda (ptr),y
+        sta OAM+1,x
+        iny
+        lda (ptr),y
+        sta OAM+2,x
+        iny
+        lda (ptr),y
+        clc
+        adc ms_x
+        sta OAM+3,x
+        iny
+        inx
+        inx
+        inx
+        inx
+        bne @tile
+@done:  stx oam_at
+        rts
+
+; Where an animation is after A frames: in A, its metasprite. An exported
+; animation is pairs of (metasprite, frames), then $FF and 1 if it loops.
+; Carry set: it did not loop and is over.
+animate:
+        sta tmp
+@again: ldy #0
+@frame: lda (ptr),y
+        cmp #$FF
+        beq @end
+        sta tmp2
+        iny
+        lda tmp
+        sec
+        sbc (ptr),y
+        bcc @this               ; within this frame's duration
+        sta tmp
+        iny
+        bne @frame
+@this:  lda tmp2
+        clc
+        rts
+@end:   iny
+        lda (ptr),y
+        bne @again              ; it loops: on from its first frame
+        sec
+        rts</code></pre>
+    <p><code>draw_sprite</code> finds the metasprite through the two exported tables of addresses and copies its rows into OAM. <code>animate</code> walks an exported animation, taking each frame's duration off the clock until the clock falls inside one; a looping animation starts over, the others end with the carry set, which <code>draw_play</code> takes as the end of a burst.</p>
+
+    <h3 id="fire">Firing</h3>
+<pre><code>; A fires a shot from the ship's nose; held, another every FIRE_DELAY frames.
+fire:
+        lda fire_wait
+        beq +
+        dec fire_wait
++       lda pad
+        and #PAD_A
+        beq @done
+        lda pad_new
+        and #PAD_A
+        bne @free               ; just pressed: at once
+        lda fire_wait
+        bne @done
+@free:  ldx #MAX_SHOTS-1
+-       lda shot_y,x
+        beq @shoot
+        dex
+        bpl -
+@done:  rts
+@shoot: lda ship_x
+        clc
+        adc #4
+        sta shot_x,x
+        lda ship_y
+        sec
+        sbc #6
+        sta shot_y,x
+        lda #FIRE_DELAY
+        sta fire_wait
+        lda #%10000110          ; a short beep that falls: duty 1/2, decaying
+        sta SQ1_VOL
+        lda #%10111001          ; sweep down
+        sta SQ1_SWEEP
+        lda #$60
+        sta SQ1_LO
+        lda #%00001000
+        sta SQ1_HI
+        rts</code></pre>
+    <p>A shot is two bytes, its place across and down; 0 down is a free slot. The sound is the first pulse channel with a falling sweep.</p>
+
+    <h3 id="rocks">Rocks and hits</h3>
+<pre><code>; The rocks fall FallSpeed pixels a frame, by the score's tens.
+move_rocks:
+        ldx #MAX_ROCKS-1
+@rock:  lda rock_y,x
+        beq @next
+        inc rock_clock,x
+        ldy speed
+        clc
+        adc FallSpeed,y
+        cmp #ROCK_BOTTOM
+        bcc +
+        lda #0                  ; out at the bottom
++       sta rock_y,x
+@next:  dex
+        bpl @rock
+        rts
+
+; A shot within a rock's 16 x 16 square breaks it: a burst, and a point.
+hit_rocks:
+        ldx #MAX_ROCKS-1
+@rock:  lda rock_y,x
+        beq @next
+        ldy #MAX_SHOTS-1
+@shot:  lda shot_y,y
+        beq @miss
+        lda shot_x,y            ; the shot's middle, x + 4, within the rock's 16 pixels
+        clc
+        adc #4
+        sec
+        sbc rock_x,x
+        cmp #16
+        bcs @miss
+        lda shot_y,y
+        clc
+        adc #4
+        sec
+        sbc rock_y,x
+        cmp #16
+        bcs @miss
+        lda #0                  ; hit: both go
+        sta shot_y,y
+        jsr break_rock
+        jsr add_point
+        jmp @next
+@miss:  dey
+        bpl @shot
+@next:  dex
+        bpl @rock
+        rts</code></pre>
+    <p>Both tests are one subtraction and one unsigned comparison: the shot's middle minus the rock's corner is below 16 only when it is inside the rock, since a negative difference is a large unsigned number.</p>
+
+    <h2 id="features">WinASM65 features used</h2>
+    <p>Rock Patrol uses most of what a small NES project needs from the assembler. Where each feature appears, and where it is described:</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Feature</th><th>Where in Rock Patrol</th><th>Reference</th></tr></thead>
+      <tbody>
+        <tr><td><code>.include</code></td><td><code>.include "nes.inc"</code> in <code>game.asm</code>; the designer's exports in <code>data.asm</code> and <code>game.asm</code>.</td><td><a href="syntax.html#directives">Directives</a></td></tr>
+        <tr><td>Macros with and without a parameter</td><td><code>vblank_wait</code> (start-up, <code>picture_on</code>); <code>set_ppu address</code> (<code>load_palettes</code>, <code>load_screen</code>, <code>draw_sky</code>).</td><td><a href="syntax.html#macros">Macros</a></td></tr>
+        <tr><td><code>.memarea</code> and <code>.res</code></td><td>The zero-page variables from <code>$00</code>, and the objects' tables from <code>$0300</code>, of <code>MAX_ROCKS</code>, <code>MAX_SHOTS</code> and <code>MAX_BURSTS</code> bytes.</td><td><a href="syntax.html#directives">Directives</a></td></tr>
+        <tr><td><code>.org</code></td><td><code>$0000</code> in <code>header.asm</code>, <code>$8000</code> in <code>data.asm</code>, <code>$C000</code> in <code>game.asm</code>, <code>$FFFA</code> in <code>vectors.asm</code>.</td><td><a href="syntax.html#directives">Directives › Placement</a></td></tr>
+        <tr><td>Local labels <code>@name</code></td><td><code>@clear</code>, <code>@play</code>, <code>@over</code>, <code>@row</code>, <code>@attr</code>, <code>@tile</code>, <code>@frame</code>, <code>@shoot</code>, <code>@rock</code> in several routines.</td><td><a href="syntax.html#labels">Labels</a></td></tr>
+        <tr><td>Anonymous labels <code>-</code>, <code>+</code> and <code>++</code></td><td><code>vblank_wait</code>, <code>wait_frame</code>, <code>read_pad</code>, <code>move_ship</code>, <code>scroll_sky</code> (with <code>++</code>).</td><td><a href="syntax.html#labels">Labels</a></td></tr>
+        <tr><td><code>.lobytes</code> / <code>.hibytes</code></td><td><code>spr_metasprites_lo</code> and <code>spr_metasprites_hi</code>, exported by the designer.</td><td><a href="syntax.html#directives">Directives › Data</a></td></tr>
+        <tr><td>Strings in <code>.byte</code></td><td><code>"NES"</code> in the header.</td><td><a href="syntax.html#directives">Directives › Data</a></td></tr>
+        <tr><td><code>.incbin</code></td><td>The screens, <code>scr_title: .incbin "title.nam"</code> in the exported <code>title.screen.asm</code>.</td><td><a href="syntax.html#directives">Directives › Data</a></td></tr>
+        <tr><td><code>.word</code></td><td>The three vectors.</td><td><a href="syntax.html#directives">Directives › Data</a></td></tr>
+        <tr><td><code>.dsb</code></td><td><code>.dsb 8</code>: the eight zero bytes that end the header.</td><td><a href="syntax.html#directives">Directives › Data</a></td></tr>
+        <tr><td>Expressions with <code>&lt;</code>, <code>&gt;</code>, <code>|</code>, <code>*</code>, <code>+</code>, <code>-</code> and parentheses</td><td><code>#&lt;scr_title</code>, <code>#&gt;OAM</code>, <code>#CTRL_NMI|2</code>, <code>#&lt;(SKY_ROWS*16)</code>, <code>OAM+1,x</code>.</td><td><a href="syntax.html#expressions">Expressions</a></td></tr>
+        <tr><td>Character constants, binary numbers</td><td><code>adc #'0'</code> in <code>draw_score</code>; <code>%00001001</code>, the <code>PAD_</code> masks.</td><td><a href="syntax.html#numbers">Numbers and characters</a></td></tr>
+        <tr><td>Constants (<code>=</code>)</td><td>The registers of <code>nes.inc</code>, the game's tuning (<code>SHOT_SPEED</code>, <code>FIRE_DELAY</code>, <code>HURT_FRAMES</code>…), the states, and the exported <code>SPR_MS_</code> and <code>PAL_</code> numbers.</td><td><a href="syntax.html#constants">Constants</a></td></tr>
+        <tr><td>Names that differ only in case are the same name</td><td>Why each variable is named apart from every constant: the variable <code>fire_wait</code> sits beside the constant <code>FIRE_DELAY</code>, never beside a <code>FIRE_WAIT</code>, which would be the same name.</td><td><a href="syntax.html#constants">Constants</a>, <a href="assembler.html">Assembly pipeline</a></td></tr>
+        <tr><td>Forward references</td><td><code>jsr enter_title</code>, <code>jsr update_play</code> and the other routines called before they are defined.</td><td><a href="syntax.html#constants">Constants</a>, <a href="assembler.html">Assembly pipeline</a></td></tr>
+        <tr><td>Zero page addressing chosen automatically</td><td><code>lda ship_x</code> and <code>inc score,x</code> take the two-byte zero page forms; <code>lda rock_y,x</code>, at <code>$0300</code> and up, keeps the absolute form (<code>BD 06 03</code>).</td><td><a href="syntax.html#modes">Addressing modes</a></td></tr>
+        <tr><td>Units, <code>Dependencies</code> and <code>.symb</code></td><td><code>vectors.asm</code> takes <code>NMI</code>, <code>RESET</code> and <code>IRQ</code> from <code>game.symb</code>; <code>game.asm</code> takes the screens, the map and the tables from <code>data.symb</code>, in expressions too (<code>#&gt;scr_title</code>).</td><td><a href="segments.html#config-input">Input[]</a>, <a href="segments.html#order">How units are resolved</a></td></tr>
+        <tr><td><code>Size</code> padding in <code>Output</code></td><td><code>"$10"</code> for the header, <code>"$4000"</code> and <code>"$3FFA"</code> for the two halves of the program; <code>tiles.chr</code> taken as it is, twice.</td><td><a href="segments.html#combine">Combining files</a></td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2 id="next">Where to go next</h2>
+    <div class="grid-2">
+      <a class="card" href="graphics.html"><h4>Graphics Designer</h4><p>The editors of every asset of the game, pictures in hovers, and the live preview.</p></a>
+      <a class="card" href="vscode.html"><h4>VS Code</h4><p>Hover cards, the listing column and a debug session, all on Rock Patrol.</p></a>
+      <a class="card" href="segments.html"><h4>Projects and segments</h4><p>Every key of <code>config.json</code>, with a complete example built from this game.</p></a>
+      <a class="card" href="monitor.html"><h4>Monitor</h4><p>The terminal monitor on <code>rock_patrol.nes</code>, live RAM and ROM.</p></a>
+    </div>
+
+    <footer>
+      <p>Addresses and byte counts on this page come from building the game with the Release assembler (<code>src/game.symb</code>); the pictures are taken by <code>tools/screenshots/shoot-game.ps1</code>.</p>
+    </footer>
+  </main>
+
+  <aside class="toc" aria-label="On this page"></aside>
+</div>
+</body>
+</html>
