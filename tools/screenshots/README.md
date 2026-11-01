@@ -19,5 +19,6 @@ powershell -ExecutionPolicy Bypass -File shoot-all.ps1 [-Mesen C:\path\to\Mesen.
 | `capture-window.ps1` | Captures one window to a PNG (used by the two above) |
 | `check-site.mjs` | Opens every page of the site and fails on a broken link, a missing image or a script error |
 
-Mesen2 is optional. Close it before a run: it is a single-instance program, and
-a new launch would be handed to the open window.
+Mesen2 is optional. It is a single-instance program: close it before a run, or pass
+`-Mesen` a portable copy of Mesen2 whose settings turn off "single instance"; the
+scripts then use and capture only that copy.

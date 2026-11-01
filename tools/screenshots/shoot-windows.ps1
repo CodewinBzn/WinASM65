@@ -86,7 +86,7 @@ try {
     Shoot-Console 'cli-errors' @('type errors.asm', 'WinASM65 -f errors.asm') 110 22 4 $work
 
     # The terminal monitor on the project, with Mesen2 when it is installed.
-    if ($Mesen -and (Get-Process Mesen -ErrorAction SilentlyContinue)) {
+    if ($Mesen -and (Get-Process Mesen -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq (Resolve-Path $Mesen).Path })) {
         Write-Output '  Mesen2 is already open: the monitor runs without an emulator.'
         $Mesen = $null
     }

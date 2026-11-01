@@ -9,7 +9,7 @@ import { cleanCopy, command, imageDir, launch, openFile, repo, shot } from './vs
 
 const mesenArg = process.argv.indexOf('--mesen');
 let mesen = mesenArg > 0 ? process.argv[mesenArg + 1] : findMesen();
-if (mesen && powershell("@(Get-Process Mesen -ErrorAction SilentlyContinue).Count").trim() !== '0') {
+if (mesen && powershell(`@(Get-Process Mesen -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq '${path.resolve(mesen)}' }).Count`).trim() !== '0') {
   // Mesen2 runs as a single instance: our launch would be handed to that window.
   console.log('  Mesen2 is already open: close it to get the debug screenshots.');
   mesen = undefined;
@@ -191,7 +191,7 @@ try {
         await shot(page, 'vscode-memory-palettes', await ram.boundingBox());
       }
       execFileSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
-        path.join(import.meta.dirname, 'capture-window.ps1'), '-ProcessName', 'Mesen',
+        path.join(import.meta.dirname, 'capture-window.ps1'), '-ProcessName', 'Mesen', '-ExePath', mesen,
         '-Out', path.join(imageDir, 'mesen2.png')], { stdio: 'inherit' });
 
       await page.keyboard.press('F10');

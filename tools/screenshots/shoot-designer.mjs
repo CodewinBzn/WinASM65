@@ -12,7 +12,7 @@ import { cleanCopy, imageDir, launch, openFile, repo, shot } from './vscode.mjs'
 
 const mesenArg = process.argv.indexOf('--mesen');
 let mesen = mesenArg > 0 ? process.argv[mesenArg + 1] : findMesen();
-if (mesen && powershell("@(Get-Process Mesen -ErrorAction SilentlyContinue).Count").trim() !== '0') {
+if (mesen && powershell(`@(Get-Process Mesen -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq '${path.resolve(mesen)}' }).Count`).trim() !== '0') {
   console.log('  Mesen2 is already open: close it to get the live preview screenshots.');
   mesen = undefined;
 }
@@ -173,7 +173,7 @@ try {
 
 function capture(file) {
   execFileSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
-    path.join(import.meta.dirname, 'capture-window.ps1'), '-ProcessName', 'Mesen', '-Out', file], { stdio: 'inherit' });
+    path.join(import.meta.dirname, 'capture-window.ps1'), '-ProcessName', 'Mesen', '-ExePath', mesen, '-Out', file], { stdio: 'inherit' });
 }
 
 if (failures.length > 0) {

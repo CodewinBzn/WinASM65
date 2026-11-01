@@ -1,11 +1,12 @@
 # Captures the main window of a process to a PNG, even when it is behind others
 # (PrintWindow asks the window to paint itself into our bitmap).
 #   capture-window.ps1 -ProcessId 1234 -Out img.png
-#   capture-window.ps1 -ProcessName Mesen -Out img.png
+#   capture-window.ps1 -ProcessName Mesen [-ExePath C:\path\to\Mesen.exe] -Out img.png
 param(
     [int] $ProcessId,
     [string] $ProcessName,
     [string] $TitleLike,
+    [string] $ExePath,
     [Parameter(Mandatory = $true)] [string] $Out,
     [int] $TimeoutSeconds = 20,
     [switch] $FromScreen
@@ -32,6 +33,7 @@ while ($handle -eq [IntPtr]::Zero -and (Get-Date) -lt $deadline) {
                   elseif ($ProcessName) { Get-Process -Name $ProcessName -ErrorAction SilentlyContinue }
                   else { Get-Process }
     foreach ($p in $candidates) {
+        if ($ExePath -and $p.Path -ne (Resolve-Path $ExePath).Path) { continue }
         if ($p.MainWindowHandle -ne [IntPtr]::Zero -and (-not $TitleLike -or $p.MainWindowTitle -like $TitleLike)) {
             $handle = $p.MainWindowHandle
             break
