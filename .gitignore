@@ -389,3 +389,5 @@ WinASM65_UnitTest/*
 *.UnsolvedExpr
 *.nes
 test_suite.asm
+# Kilo (local plans and worktrees)
+.kilo/
