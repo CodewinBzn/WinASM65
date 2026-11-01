@@ -14,88 +14,94 @@ using WinASM65.Segments;
 namespace WinASM65.Tests
 {
     /// <summary>
-    /// The NES homebrew, built through the library rather than through the command
-    /// line, and what a listing knows once the project has been built.
+    /// The NES example game, built through the library rather than through the
+    /// command line, and what a listing knows once the project has been built.
     ///
     /// <para>
-    /// <c>example_bomberman-nes</c> is the one program in the repository that is
-    /// genuinely multi-file without being told to be: its bank 1, its bank 2 and
-    /// its vectors each use names the others define, and nothing in them declares
-    /// an import. The vectors file is three words, <c>NMI</c>, <c>RESET</c> and
-    /// <c>IRQ</c>, and all three are defined in the other two. It is therefore the
-    /// only workload in the tree that can tell a working multi-file build from one
-    /// that quietly assembled to zero.
+    /// <c>example_rock_patrol</c> is genuinely multi-file: <c>game.asm</c> uses the
+    /// tables and the designer's exports <c>data.asm</c> defines, and
+    /// <c>vectors.asm</c> is three words, <c>NMI</c>, <c>RESET</c> and <c>IRQ</c>,
+    /// all defined in <c>game.asm</c>. Nothing in them declares an import, so it can
+    /// tell a working multi-file build from one that quietly assembled to zero.
     /// </para>
     ///
     /// <para>
-    /// The reference image is the file the original toolchain produced, and it is
-    /// not in version control -- a <c>.nes</c> is build output. So the comparison is
-    /// skipped, never faked, when it is absent, and the tests that do not need it
-    /// still run.
+    /// Each test builds a copy of the example in a temporary directory, so the side
+    /// files a build writes beside its sources never reach the working tree. The
+    /// image is pinned by its SHA-256, the value <see cref="GoldenOutputTests"/>
+    /// pins too.
     /// </para>
     /// </summary>
     [TestClass]
     public class ProjectSessionTests
     {
-        #region The real homebrew, end to end
+        /// <summary>The SHA-256 of the Rock Patrol image (GoldenOutputTests pins the same).</summary>
+        private const string ExampleGameHash =
+            "F99BB587D623D0B88523424771359E6D94CE58622D69DF51F512CC4276EE0B25";
+
+        #region The example game, end to end
 
         [TestMethod]
-        public void TheHomebrewAssemblesIntoTheImageTheOriginalToolchainProduced()
+        public void TheExampleGameAssemblesIntoItsPinnedImage()
         {
-            string project = HomebrewDirectory();
-            byte[] reference = HomebrewReference();
-            if (reference == null)
-                return;
+            using (TemporaryDirectory project = ExampleGameCopy())
+            {
+                ProjectBuildResult build = BuildExampleGame(project.Path);
 
-            ProjectBuildResult build = BuildHomebrew(project);
-
-            Assert.IsTrue(build.Success, "the homebrew must build: " + Describe(build.Diagnostics));
-            Assert.AreEqual(reference.Length, build.Image.Length,
-                "the image is the header, both banks, the vectors and the character data");
-            CollectionAssert.AreEqual(reference, build.Image,
-                "the library must produce the bytes the original toolchain produced");
-            Assert.AreEqual("4E57F08754A2FF7EC788245629FB70F99D4E003F66F86742566BCA99C810A244",
-                HashOf(build.Image), "the golden NES image has changed");
+                Assert.IsTrue(build.Success, "the example game must build: " + Describe(build.Diagnostics));
+                Assert.AreEqual(40976, build.Image.Length,
+                    "the image is the header, both halves of the program, the vectors and the tiles");
+                Assert.AreEqual(ExampleGameHash, HashOf(build.Image), "the golden NES image has changed");
+            }
         }
 
         [TestMethod]
-        public void TheHomebrewIsBuiltFromItsSourcesInTheOrderTheConfigurationDeclares()
+        public void TheExampleGameIsBuiltFromItsSourcesInTheOrderTheConfigurationDeclares()
         {
-            string project = HomebrewDirectory();
+            using (TemporaryDirectory project = ExampleGameCopy())
+            {
+                ProjectBuildResult build = BuildExampleGame(project.Path);
 
-            ProjectBuildResult build = BuildHomebrew(project);
+                Assert.IsTrue(build.Success, Describe(build.Diagnostics));
+                Assert.AreEqual(4, build.Units.Count, "one unit per declared input");
+                Assert.AreEqual("header.asm", Path.GetFileName(build.Units[0].SourceFile));
+                Assert.AreEqual("data.asm", Path.GetFileName(build.Units[1].SourceFile));
+                Assert.AreEqual("game.asm", Path.GetFileName(build.Units[2].SourceFile));
+                Assert.AreEqual("vectors.asm", Path.GetFileName(build.Units[3].SourceFile));
 
-            Assert.IsTrue(build.Success, Describe(build.Diagnostics));
-            Assert.AreEqual(3, build.Units.Count, "one unit per declared input");
-            Assert.AreEqual("BMAN_BANK1.NAS", Path.GetFileName(build.Units[0].SourceFile));
-            Assert.AreEqual("BMAN_BANK2.NAS", Path.GetFileName(build.Units[1].SourceFile));
-            Assert.AreEqual("vectors.NAS", Path.GetFileName(build.Units[2].SourceFile));
+                // The vectors are the unit that proves the order: they name three
+                // routines the game defines, and they are declared last.
+                Assert.AreEqual(0, build.Units[0].Dependencies.Count, "the header depends on nothing");
+                Assert.AreEqual(0, build.Units[1].Dependencies.Count, "the data depends on nothing");
+                Assert.AreEqual(1, build.Units[2].Dependencies.Count, "the game depends on the data");
+                Assert.AreEqual(1, build.Units[3].Dependencies.Count, "the vectors depend on the game");
 
-            // The vectors are the unit that proves the order: they name three
-            // routines the two banks define, and they are declared last.
-            Assert.AreEqual(0, build.Units[0].Dependencies.Count,
-                "the first bank depends on nothing");
-            Assert.AreEqual(1, build.Units[1].Dependencies.Count);
-            Assert.AreEqual(2, build.Units[2].Dependencies.Count);
-
-            // And the names the banks defined are what the session now knows.
-            Assert.IsTrue(build.Units[0].Symbols.Count > 0, "bank 1 defines the labels");
-            Assert.IsTrue(build.Success, "a build that produced no names resolved nothing");
+                // And the names the units defined are what the session now knows.
+                Assert.IsTrue(build.Units[1].Symbols.Count > 0, "the data defines the tables");
+                Assert.IsTrue(build.Units[2].Symbols.Count > 0, "the game defines the routines");
+            }
         }
 
         [TestMethod]
-        public void TheVectorsGetTheAddressesTheBanksDefined()
+        public void TheVectorsGetTheAddressesTheGameDefined()
         {
-            string project = HomebrewDirectory();
+            using (TemporaryDirectory project = ExampleGameCopy())
+            {
+                ExampleGameBuild build = BuildExampleGameAndKeepSession(project.Path, null);
 
-            HomebrewBuild build = BuildHomebrewAndKeepSession(project, null);
+                Assert.IsTrue(build.Result.Success, Describe(build.Result.Diagnostics));
+                Assert.AreEqual(0xC0DF, build.SymbolOr("NMI"), "NMI is a label of game.asm");
+                Assert.AreEqual(0xC079, build.SymbolOr("RESET"),
+                    "RESET follows the metasprites at the start of the $C000 half");
+                Assert.AreEqual(0xC103, build.SymbolOr("IRQ"), "IRQ is the rti that ends the NMI");
 
-            Assert.IsTrue(build.Result.Success, Describe(build.Result.Diagnostics));
-            Assert.IsTrue(build.SymbolOr("NMI") > 0, "NMI is a label in bank 1");
-            Assert.AreEqual(0xC000, build.SymbolOr("RESET"),
-                "RESET is the first instruction of bank 1, and the vector has to say so");
-            Assert.IsTrue(build.SymbolOr("IRQ") >= 0xF000,
-                "IRQ is in the bank 2 module, not in bank 1");
+                // The last six program bytes of the image are those three addresses.
+                byte[] image = build.Result.Image;
+                int vectors = 16 + 0x8000 - 6;
+                Assert.AreEqual(build.SymbolOr("NMI"), image[vectors] | (image[vectors + 1] << 8));
+                Assert.AreEqual(build.SymbolOr("RESET"), image[vectors + 2] | (image[vectors + 3] << 8));
+                Assert.AreEqual(build.SymbolOr("IRQ"), image[vectors + 4] | (image[vectors + 5] << 8));
+            }
         }
 
         #endregion
@@ -105,48 +111,51 @@ namespace WinASM65.Tests
         [TestMethod]
         public void AListingSeesTheNamesAnotherUnitOfTheProjectDefines()
         {
-            string project = HomebrewDirectory();
-            string bman = Path.Combine(project, "BMAN.NAS");
-            ProjectSession session = ProjectSession.Open(Path.Combine(project, "config.json"));
+            using (TemporaryDirectory project = ExampleGameCopy())
+            {
+                string game = Path.Combine(project.Path, "src", "game.asm");
+                ProjectSession session = ProjectSession.Open(Path.Combine(project.Path, "config.json"));
 
-            // Before the build the session knows nothing, so the four names these
-            // lines use and no line in this file defines are reported.
-            SourceListing before = session.ListSourceFile(bman);
-            Assert.IsTrue(ReportsUndefinedSymbol(before, "VRAMADDRZ"),
-                "without the project's names a name another unit defines reads as undefined");
-            Assert.IsTrue(ReportsUndefinedSymbol(before, "APU_MELODIES_TAB"), "APU_MELODIES_TAB");
-            Assert.IsTrue(ReportsUndefinedSymbol(before, "_pass_data_vars"), "_pass_data_vars");
-            Assert.IsTrue(ReportsUndefinedSymbol(before, "aAofkcpgelbhmjd"), "aAofkcpgelbhmjd");
+                // Before the build the session knows nothing, so the names game.asm
+                // uses and data.asm defines are reported.
+                SourceListing before = session.ListSourceFile(game);
+                Assert.IsTrue(ReportsUndefinedSymbol(before, "RockLanes"),
+                    "without the project's names a name another unit defines reads as undefined");
+                Assert.IsTrue(ReportsUndefinedSymbol(before, "FallSpeed"), "FallSpeed");
+                Assert.IsTrue(ReportsUndefinedSymbol(before, "SpawnGap"), "SpawnGap");
+                Assert.IsTrue(ReportsUndefinedSymbol(before, "palettes"), "palettes");
 
-            // The helper builds and then tidies the artifacts away. The session keeps
-            // the names in memory, which is the point: what the listing below reads is
-            // what the build learned, not a file it re-read.
-            BuildHomebrewAndKeepSession(project, session);
+                // The session keeps the names in memory, which is the point: what the
+                // listing below reads is what the build learned, not a file it re-read.
+                BuildExampleGameAndKeepSession(project.Path, session);
 
-            SourceListing after = session.ListSourceFile(bman);
-            Assert.IsFalse(ReportsUndefinedSymbol(after, "VRAMADDRZ"),
-                "VRAMADDRZ is defined in BMAN_BANK1.NAS, and the project says so");
-            Assert.IsFalse(ReportsUndefinedSymbol(after, "APU_MELODIES_TAB"), "APU_MELODIES_TAB");
-            Assert.IsFalse(ReportsUndefinedSymbol(after, "_pass_data_vars"), "_pass_data_vars");
-            Assert.IsFalse(ReportsUndefinedSymbol(after, "aAofkcpgelbhmjd"), "aAofkcpgelbhmjd");
+                SourceListing after = session.ListSourceFile(game);
+                Assert.IsFalse(ReportsUndefinedSymbol(after, "RockLanes"),
+                    "RockLanes is defined in data.asm, and the project says so");
+                Assert.IsFalse(ReportsUndefinedSymbol(after, "FallSpeed"), "FallSpeed");
+                Assert.IsFalse(ReportsUndefinedSymbol(after, "SpawnGap"), "SpawnGap");
+                Assert.IsFalse(ReportsUndefinedSymbol(after, "palettes"), "palettes");
+            }
         }
 
         [TestMethod]
         public void AListingAfterABuildStillReportsTheDefectInTheFileItself()
         {
-            // Line 536 of BMAN.NAS is "VRAMADDRZ" with no colon: a label written
-            // without one, which the assembler reads as a call to a macro of that
-            // name. No amount of cross-file knowledge makes that line right, and a
+            // "RESET" alone on a line is a label written without its colon, which the
+            // assembler reads as a call to a macro of that name. The project defines
+            // RESET, but no amount of cross-file knowledge makes that line right, and a
             // session that hid it would be hiding a real defect -- so the diagnostic
             // has to survive the widening.
-            string project = HomebrewDirectory();
-            ProjectSession session = ProjectSession.Open(Path.Combine(project, "config.json"));
-            BuildHomebrewAndKeepSession(project, session);
+            using (TemporaryDirectory project = ExampleGameCopy())
+            {
+                ProjectSession session = ProjectSession.Open(Path.Combine(project.Path, "config.json"));
+                BuildExampleGameAndKeepSession(project.Path, session);
 
-            SourceListing listing = session.ListSourceFile(Path.Combine(project, "BMAN.NAS"));
+                SourceListing listing = session.ListSourceText(".org $C000\nRESET\n", "probe.asm");
 
-            Assert.IsTrue(Reports(listing, ErrorCodes.MACRO_NOT_EXISTS),
-                "a label written without its colon is a defect of the file, and stays reported");
+                Assert.IsTrue(Reports(listing, ErrorCodes.MACRO_NOT_EXISTS),
+                    "a label written without its colon is a defect of the file, and stays reported");
+            }
         }
 
         [TestMethod]
@@ -155,33 +164,37 @@ namespace WinASM65.Tests
             // The other half of the same guarantee. A project listing knows more
             // names than a single-file one; it must not have become a listing that
             // reports nothing.
-            string project = HomebrewDirectory();
-            ProjectSession session = ProjectSession.Open(Path.Combine(project, "config.json"));
-            BuildHomebrewAndKeepSession(project, session);
+            using (TemporaryDirectory project = ExampleGameCopy())
+            {
+                ProjectSession session = ProjectSession.Open(Path.Combine(project.Path, "config.json"));
+                BuildExampleGameAndKeepSession(project.Path, session);
 
-            SourceListing listing = session.ListSourceText(
-                ".org $C000\nJMP NEVER_DEFINED_IN_THIS_PROJECT\n", "probe.asm");
+                SourceListing listing = session.ListSourceText(
+                    ".org $C000\nJMP NEVER_DEFINED_IN_THIS_PROJECT\n", "probe.asm");
 
-            Assert.IsFalse(listing.Success, "a name no unit of the project defines must be reported");
-            Assert.IsTrue(ReportsUndefinedSymbol(listing, "NEVER_DEFINED_IN_THIS_PROJECT"),
-                "and it must be reported by name");
+                Assert.IsFalse(listing.Success, "a name no unit of the project defines must be reported");
+                Assert.IsTrue(ReportsUndefinedSymbol(listing, "NEVER_DEFINED_IN_THIS_PROJECT"),
+                    "and it must be reported by name");
+            }
         }
 
         [TestMethod]
         public void AProjectListingStillResolvesAForwardReference()
         {
-            string project = HomebrewDirectory();
-            ProjectSession session = ProjectSession.Open(Path.Combine(project, "config.json"));
-            BuildHomebrewAndKeepSession(project, session);
+            using (TemporaryDirectory project = ExampleGameCopy())
+            {
+                ProjectSession session = ProjectSession.Open(Path.Combine(project.Path, "config.json"));
+                BuildExampleGameAndKeepSession(project.Path, session);
 
-            SourceListing listing = session.ListSourceText(
-                ".org $C000\n        jmp Later\nLater:\n        nop\n", "probe.asm");
+                SourceListing listing = session.ListSourceText(
+                    ".org $C000\n        jmp Later\nLater:\n        nop\n", "probe.asm");
 
-            Assert.IsTrue(listing.Success, Describe(listing.Assembly.Diagnostics));
-            Assert.AreEqual(0, listing.Assembly.Diagnostics.Count, Describe(listing.Assembly.Diagnostics));
-            CollectionAssert.AreEqual(new byte[] { 0x4C, 0x03, 0xC0, 0xEA },
-                listing.Assembly.OutputBytes,
-                "knowing the project's names must not stop a forward reference resolving");
+                Assert.IsTrue(listing.Success, Describe(listing.Assembly.Diagnostics));
+                Assert.AreEqual(0, listing.Assembly.Diagnostics.Count, Describe(listing.Assembly.Diagnostics));
+                CollectionAssert.AreEqual(new byte[] { 0x4C, 0x03, 0xC0, 0xEA },
+                    listing.Assembly.OutputBytes,
+                    "knowing the project's names must not stop a forward reference resolving");
+            }
         }
 
         [TestMethod]
@@ -204,14 +217,16 @@ namespace WinASM65.Tests
         [TestMethod]
         public void AListingOfAFileThatIsNotThereSaysSo()
         {
-            string project = HomebrewDirectory();
-            ProjectSession session = ProjectSession.Open(Path.Combine(project, "config.json"));
+            using (TemporaryDirectory project = ExampleGameCopy())
+            {
+                ProjectSession session = ProjectSession.Open(Path.Combine(project.Path, "config.json"));
 
-            SourceListing listing = session.ListSourceFile(Path.Combine(project, "no-such-file.asm"));
+                SourceListing listing = session.ListSourceFile(Path.Combine(project.Path, "no-such-file.asm"));
 
-            Assert.IsFalse(listing.Success);
-            Assert.IsTrue(Reports(listing, ErrorCodes.FILE_NOT_EXISTS),
-                "reported the way the assembler reports a missing source");
+                Assert.IsFalse(listing.Success);
+                Assert.IsTrue(Reports(listing, ErrorCodes.FILE_NOT_EXISTS),
+                    "reported the way the assembler reports a missing source");
+            }
         }
 
         #endregion
@@ -513,65 +528,49 @@ namespace WinASM65.Tests
         // ------------------------------------------------------------------ setup
 
         /// <summary>
-        /// The homebrew, built with its side files beside it and every artifact this
-        /// run created removed afterwards, so a test run leaves the tree as it found
-        /// it.
+        /// A copy of <c>example_rock_patrol</c> in a temporary directory. A build
+        /// writes its side files beside the sources, so the tests build the copy and
+        /// the working tree is never touched.
         /// </summary>
-        private static ProjectBuildResult BuildHomebrew(string project)
+        private static TemporaryDirectory ExampleGameCopy()
         {
-            return BuildHomebrewAndKeepSession(project, null).Result;
+            string source = Path.Combine(FindRepositoryRoot(), "example_rock_patrol");
+            if (!File.Exists(Path.Combine(source, "config.json")))
+                Assert.Inconclusive("example_rock_patrol is not in the built tree");
+            TemporaryDirectory copy = new TemporaryDirectory();
+            CopyTree(source, copy.Path);
+            return copy;
+        }
+
+        private static void CopyTree(string source, string target)
+        {
+            Directory.CreateDirectory(target);
+            foreach (string file in Directory.GetFiles(source))
+                File.Copy(file, Path.Combine(target, Path.GetFileName(file)));
+            foreach (string dir in Directory.GetDirectories(source))
+                CopyTree(dir, Path.Combine(target, Path.GetFileName(dir)));
+        }
+
+        private static ProjectBuildResult BuildExampleGame(string project)
+        {
+            return BuildExampleGameAndKeepSession(project, null).Result;
         }
 
         /// <summary>
-        /// The homebrew, built with its side files beside it and every artifact this
-        /// run created removed afterwards, so a test run leaves the tree as it found
-        /// it.
-        /// <para>
-        /// <paramref name="session"/> is the session to build through, and null for a
-        /// new one. It matters which: the names a listing afterwards knows are the
-        /// ones <em>that</em> session's build collected, so a listing and the build it
-        /// depends on have to be the same session.
-        /// </para>
+        /// Builds the example game through <paramref name="session"/>, or through a new
+        /// session when it is null. It matters which: the names a listing afterwards
+        /// knows are the ones <em>that</em> session's build collected, so a listing and
+        /// the build it depends on have to be the same session.
         /// </summary>
-        private static HomebrewBuild BuildHomebrewAndKeepSession(string project, ProjectSession session)
+        private static ExampleGameBuild BuildExampleGameAndKeepSession(string project, ProjectSession session)
         {
-            HomebrewBuild outcome = new HomebrewBuild();
-            List<string> created = new List<string>();
-            try
-            {
-                outcome.Session = session
-                    ?? ProjectSession.Open(Path.Combine(project, "config.json"));
-                outcome.Result = outcome.Session.Build();
-                foreach (string extension in new[] { ".o", ".lst" })
-                {
-                    foreach (string file in Directory.GetFiles(project, "*" + extension))
-                        created.Add(file);
-                }
-                foreach (string extension in SideFiles.Extensions)
-                {
-                    foreach (string file in Directory.GetFiles(project, "*" + extension))
-                        created.Add(file);
-                }
-                return outcome;
-            }
-            finally
-            {
-                foreach (string file in created)
-                {
-                    try
-                    {
-                        // bomber.nes is the reference image, not an artifact of this run.
-                        if (Path.GetFileName(file) != "bomber.nes")
-                            File.Delete(file);
-                    }
-                    catch (IOException)
-                    {
-                    }
-                }
-            }
+            ExampleGameBuild outcome = new ExampleGameBuild();
+            outcome.Session = session ?? ProjectSession.Open(Path.Combine(project, "config.json"));
+            outcome.Result = outcome.Session.Build();
+            return outcome;
         }
 
-        private sealed class HomebrewBuild
+        private sealed class ExampleGameBuild
         {
             public ProjectSession Session { get; set; }
             public ProjectBuildResult Result { get; set; }
@@ -581,33 +580,6 @@ namespace WinASM65.Tests
                 long value;
                 return Session.ProjectSymbols.TryGetValue(name, out value) ? value : -1;
             }
-        }
-
-        private static string HomebrewDirectory()
-        {
-            string project = Path.Combine(FindRepositoryRoot(), "example_bomberman-nes");
-            if (!Directory.Exists(project))
-                Assert.Inconclusive("example_bomberman-nes is not in the built tree");
-            foreach (string source in new[] { "BMAN_BANK1.NAS", "BMAN_BANK2.NAS", "vectors.NAS", "config.json" })
-            {
-                if (!File.Exists(Path.Combine(project, source)))
-                    Assert.Inconclusive("example_bomberman-nes/" + source + " is missing");
-            }
-            return project;
-        }
-
-        /// <summary>
-        /// The image the original toolchain produced, or null when it is absent. A
-        /// <c>.nes</c> is build output and is not in version control, so its absence
-        /// skips the comparison instead of inventing a value to compare against.
-        /// </summary>
-        private static byte[] HomebrewReference()
-        {
-            string reference = Path.Combine(FindRepositoryRoot(), "example_bomberman-nes", "bomber.nes");
-            if (!File.Exists(reference))
-                Assert.Inconclusive("bomber.nes is not in the built tree: the reference image is build "
-                    + "output and is not in version control, so there is nothing to compare against");
-            return File.ReadAllBytes(reference);
         }
 
         private static void WriteConfiguration(string directory, Segment[] inputs, FileConf[] files)

@@ -12,7 +12,7 @@ namespace WinASM65.Monitor.Tests
     /// than assumed from documentation.
     ///
     /// A0 was closed on the assumption that MAME could not run a WinASM65 homebrew
-    /// ROM at all. That was wrong on both counts: <c>mame famicom -cart bomber.nes</c>
+    /// ROM at all. That was wrong on both counts: <c>mame famicom -cart game.nes</c>
     /// runs the cartridge, and the installed <c>mame.exe</c> is byte-identical to the
     /// official 0.289 build, so nothing was missing from the installation. These
     /// tests pin that down so the assumption cannot creep back.
@@ -261,9 +261,35 @@ string pair = trimmed.Substring(ProbePrefix.Length);
             string configured = Environment.GetEnvironmentVariable("WINASM65_NES_ROM");
             if (!string.IsNullOrEmpty(configured) && File.Exists(configured)) return configured;
 
-            string path = Path.Combine(RepositoryRoot(), "example_bomberman-nes", "bomber.nes");
-            Assert.IsTrue(File.Exists(path), "the sample ROM is missing: " + path);
-            return path;
+            return BuiltRom.Value;
+        }
+
+        // The sample ROM is the example game, built from its sources into a temporary
+        // copy: a .nes is build output and is not in version control. Built once per
+        // run, so a test reading the file never races MAME reading it.
+        private static readonly Lazy<string> BuiltRom = new Lazy<string>(BuildExampleRom);
+
+        private static string BuildExampleRom()
+        {
+            string source = Path.Combine(RepositoryRoot(), "example_rock_patrol");
+            Assert.IsTrue(File.Exists(Path.Combine(source, "config.json")), "the example game is missing: " + source);
+            string copy = Path.Combine(Path.GetTempPath(), "winasm65-mame-rom-" + Guid.NewGuid().ToString("N"));
+            CopyTree(source, copy);
+            WinASM65.Projects.ProjectBuildResult build = WinASM65.Projects.ProjectSession
+                .Open(Path.Combine(copy, "config.json"))
+                .Build(new WinASM65.Projects.ProjectBuildOptions { WriteImage = true });
+            Assert.IsTrue(build.Success, "the example game did not build: " + string.Join(" | ", build.Diagnostics));
+            Assert.IsTrue(File.Exists(build.ImagePath), "the sample ROM was not written: " + build.ImagePath);
+            return build.ImagePath;
+        }
+
+        private static void CopyTree(string source, string target)
+        {
+            Directory.CreateDirectory(target);
+            foreach (string file in Directory.GetFiles(source))
+                File.Copy(file, Path.Combine(target, Path.GetFileName(file)));
+            foreach (string dir in Directory.GetDirectories(source))
+                CopyTree(dir, Path.Combine(target, Path.GetFileName(dir)));
         }
 
         private static string FindProbe()

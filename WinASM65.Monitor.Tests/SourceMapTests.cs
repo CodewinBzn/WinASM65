@@ -38,16 +38,20 @@ namespace WinASM65.Monitor.Tests
         [TestMethod]
         public void EveryMappedLineFindsItsOwnOpcodeInTheImage()
         {
-            using (TemporaryDirectory temp = TemporaryDirectory.CopyOf(Path.Combine(RepositoryRoot(), "example_bomberman-nes")))
+            using (TemporaryDirectory temp = TemporaryDirectory.CopyOf(Path.Combine(RepositoryRoot(), "example_rock_patrol")))
             {
                 ProjectBuildResult result = Build(Path.Combine(temp.Path, "config.json"));
                 SourceMap map = SourceMapBuilder.Build(result);
                 int header = SourceMapBuilder.PrgStart(result.Image);
-                Assert.AreEqual(16, header, "the bomberman image is iNES");
+                Assert.AreEqual(16, header, "the Rock Patrol image is iNES");
 
                 int checkedRows = 0;
                 foreach (ProjectUnitResult unit in result.Units)
                 {
+                    // header.asm is the iNES header, assembled at $0000: it is the 16
+                    // bytes before the program, so none of its lines has a PRG offset.
+                    if (System.IO.Path.GetFileName(unit.SourceFile) == "header.asm")
+                        continue;
                     foreach (ListingRow row in unit.Listing)
                     {
                         if (row.Kind != ListingRowKind.Instruction || !row.Address.HasValue || row.Bytes.Count == 0)
@@ -67,38 +71,38 @@ namespace WinASM65.Monitor.Tests
                         checkedRows++;
                     }
                 }
-                Assert.IsTrue(checkedRows > 1000, "only " + checkedRows + " rows were checked");
+                Assert.IsTrue(checkedRows > 800, "only " + checkedRows + " rows were checked");
             }
         }
 
         [TestMethod]
         public void TheNmiHandlerMapsBothWays()
         {
-            using (TemporaryDirectory temp = TemporaryDirectory.CopyOf(Path.Combine(RepositoryRoot(), "example_bomberman-nes")))
+            using (TemporaryDirectory temp = TemporaryDirectory.CopyOf(Path.Combine(RepositoryRoot(), "example_rock_patrol")))
             {
                 SourceMap map = SourceMapBuilder.Build(Build(Path.Combine(temp.Path, "config.json")));
-                string bank1 = Path.Combine(temp.Path, "BMAN_BANK1.NAS");
-                int labelLine = File.ReadAllLines(bank1).ToList().FindIndex(l => l.TrimEnd() == "NMI:") + 1;
+                string game = Path.Combine(temp.Path, "src", "game.asm");
+                int labelLine = File.ReadAllLines(game).ToList().FindIndex(l => l.TrimEnd() == "NMI:") + 1;
                 Assert.IsTrue(labelLine > 0, "the NMI label was not found");
 
                 // The label emits nothing; a breakpoint on it lands on its first instruction.
                 int emitting;
-                Assert.IsTrue(map.TryNearestEmittingLine(bank1, labelLine, out emitting));
+                Assert.IsTrue(map.TryNearestEmittingLine(game, labelLine, out emitting));
                 Assert.AreEqual(labelLine + 1, emitting);
 
-                MappedLine pha = map.AtLine(bank1, emitting).Single();
-                Assert.AreEqual(0xC01A, pha.Address);
-                Assert.AreEqual(0x1A, pha.PrgOffset);
+                MappedLine pha = map.AtLine(game, emitting).Single();
+                Assert.AreEqual(0xC0DF, pha.Address);
+                Assert.AreEqual(0x40DF, pha.PrgOffset, "32 KB of program from $8000: $C0DF is $40DF in");
 
                 bool ambiguous;
-                MappedLine resolved = map.Resolve(0xC01A, 0x1A, out ambiguous);
+                MappedLine resolved = map.Resolve(0xC0DF, 0x40DF, out ambiguous);
                 Assert.AreSame(pha, resolved);
                 Assert.IsFalse(ambiguous);
 
                 int offset;
-                Assert.AreEqual("NMI", map.NearestLabel(0xC01C, out offset));
+                Assert.AreEqual("NMI", map.NearestLabel(0xC0E1, out offset));
                 Assert.AreEqual(2, offset);
-                Assert.AreEqual(0xC01A, map.Symbols["NMI"]);
+                Assert.AreEqual(0xC0DF, map.Symbols["NMI"]);
             }
         }
 
@@ -165,9 +169,17 @@ namespace WinASM65.Monitor.Tests
             public static TemporaryDirectory CopyOf(string source)
             {
                 TemporaryDirectory copy = new TemporaryDirectory();
-                foreach (string file in Directory.GetFiles(source))
-                    File.Copy(file, System.IO.Path.Combine(copy.Path, System.IO.Path.GetFileName(file)));
+                CopyTree(source, copy.Path);
                 return copy;
+            }
+
+            private static void CopyTree(string source, string target)
+            {
+                Directory.CreateDirectory(target);
+                foreach (string file in Directory.GetFiles(source))
+                    File.Copy(file, System.IO.Path.Combine(target, System.IO.Path.GetFileName(file)));
+                foreach (string dir in Directory.GetDirectories(source))
+                    CopyTree(dir, System.IO.Path.Combine(target, System.IO.Path.GetFileName(dir)));
             }
 
             public void Dispose()

@@ -16,7 +16,7 @@ namespace WinASM65.Tests
     /// <summary>
     /// The bytes real sources assemble to, pinned. A change to the parser that
     /// alters one byte of these is a regression until proven otherwise; the
-    /// Bomberman image is pinned the same way in ProjectSessionTests.
+    /// Rock Patrol image is also pinned by ProjectSessionTests and NesEmulatorTests.
     /// </summary>
     [TestClass]
     public class GoldenOutputTests
