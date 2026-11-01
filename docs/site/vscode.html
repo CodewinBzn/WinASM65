@@ -366,7 +366,7 @@ code --install-extension winasm65-win32-x64-0.4.2.vsix --force</code></pre>
 
     <h2 id="develop">Developing the extension</h2>
     <ul>
-      <li><strong>Run from source.</strong> Open <code>vscode-extension/</code> in VS Code and press F5. The <em>Run the extension</em> configuration runs the <code>compile</code> task (<code>npm run compile &amp;&amp; dotnet build ../WinASM65.Tooling</code>) and opens <code>example_bomberman-nes</code> in an Extension Development Host (replace that folder in <code>.vscode/launch.json</code> with <code>example_rock_patrol</code> to work on the <a href="example.html">example game</a>). No package is needed: <code>resolveTooling</code> finds the debug build of the Tooling.</li>
+      <li><strong>Run from source.</strong> Open <code>vscode-extension/</code> in VS Code and press F5. The <em>Run the extension</em> configuration runs the <code>compile</code> task (<code>npm run compile &amp;&amp; dotnet build ../WinASM65.Tooling</code>) and opens <code>example_rock_patrol</code>, the <a href="example.html">example game</a>, in an Extension Development Host (replace that folder in <code>.vscode/launch.json</code> to work on another project). No package is needed: <code>resolveTooling</code> finds the debug build of the Tooling.</li>
       <li><strong>Tests.</strong> <code>npm test</code> compiles, then <code>@vscode/test-electron</code> starts VS Code with the extension on <code>example_nes_game</code> and runs <code>src/test/suite.ts</code> inside it. Set <code>VSCODE_EXECUTABLE</code> to an installed VS Code to avoid a download.</li>
       <li><strong>Screenshots.</strong> The images on this page come from <code>tools/screenshots/shoot-all.ps1</code>.</li>
     </ul>

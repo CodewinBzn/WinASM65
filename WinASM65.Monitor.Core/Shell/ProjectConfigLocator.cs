@@ -225,8 +225,8 @@ namespace WinASM65.Monitor.Shell
 
             // Windows file names are case-insensitive and the paths come from two
             // different places — a configuration's own text and the tree the user
-            // clicked — so an ordinal comparison would call "bman.nas" and
-            // "BMAN.NAS" different files and F5 would fall through to the
+            // clicked — so an ordinal comparison would call "game.nas" and
+            // "GAME.NAS" different files and F5 would fall through to the
             // single-file path for a source the project plainly declares.
             return string.Equals(Full(left, null), Full(right, null), StringComparison.OrdinalIgnoreCase);
         }

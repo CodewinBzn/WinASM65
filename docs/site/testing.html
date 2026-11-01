@@ -78,8 +78,7 @@ dotnet test WinASM65.sln --filter "FullyQualifiedName~ProjectSession"</code></pr
       <thead><tr><th>Test</th><th>Needs</th><th>How it finds it</th></tr></thead>
       <tbody>
         <tr><td><code>NesEmulatorTests</code> (2 of its 3)</td><td>Mesen, run with <code>--testrunner</code></td><td><code>WINASM65_MESEN</code>, then a few fixed paths</td></tr>
-        <tr><td><code>MameCapabilityTests</code></td><td>MAME and <code>probe_mame.lua</code></td><td><code>WINASM65_MAME</code>, then <code>C:\Mame289\mame.exe</code>, <code>C:\Mame\mame.exe</code>, <code>C:\Program Files\MAME\mame.exe</code>; the ROM from <code>WINASM65_NES_ROM</code> or <code>example_bomberman-nes/bomber.nes</code></td></tr>
-        <tr><td><code>ProjectSessionTests</code>, <code>NesEmulatorTests</code> (golden comparisons)</td><td><code>example_bomberman-nes/bomber.nes</code>, a build output that is not in version control</td><td>the repository tree</td></tr>
+        <tr><td><code>MameCapabilityTests</code></td><td>MAME and <code>probe_mame.lua</code></td><td><code>WINASM65_MAME</code>, then <code>C:\Mame289\mame.exe</code>, <code>C:\Mame\mame.exe</code>, <code>C:\Program Files\MAME\mame.exe</code>; the ROM from <code>WINASM65_NES_ROM</code>, or else <code>example_rock_patrol</code> built into a temporary directory</td></tr>
         <tr><td><code>HexRecordFormatTests</code> (one test)</td><td><code>objcopy</code></td><td><code>PATH</code></td></tr>
       </tbody>
     </table>
@@ -170,9 +169,8 @@ dotnet test WinASM65.sln --filter "FullyQualifiedName~ProjectSession"</code></pr
     <table>
       <thead><tr><th>What</th><th>Where</th><th>How</th></tr></thead>
       <tbody>
-        <tr><td>The Bomberman NES image (<code>4E57F087…C810A244</code>)</td><td><code>ProjectSessionTests</code>, <code>ProjectBuildVerbTests</code>, <code>NesEmulatorTests</code></td><td><code>ProjectSessionTests</code> builds <code>example_bomberman-nes</code> through the library, compares it byte for byte with the image the original toolchain produced, then checks the hash. The comparison is Inconclusive when <code>bomber.nes</code> is absent.</td></tr>
         <tr><td>The <code>example_nes_game</code> image</td><td><code>GoldenOutputTests</code></td><td>Copies the example to a temporary directory, builds it with <code>ProjectSession</code>, hashes the image.</td></tr>
-        <tr><td>The <a href="example.html">Rock Patrol</a> image (<code>F99BB587…76EE0B25</code>)</td><td><code>GoldenOutputTests.TheExampleGameImageIsUnchanged</code></td><td>The same for <code>example_rock_patrol</code>, the documentation's example game: four units, a CHR file, the designer's exported graphics and most of the syntax the pages show. It also checks the length, 40,976 bytes (a 16-byte header, 32 KB of program, 8 KB of tiles).</td></tr>
+        <tr><td>The <a href="example.html">Rock Patrol</a> image (<code>F99BB587…76EE0B25</code>)</td><td><code>GoldenOutputTests.TheExampleGameImageIsUnchanged</code>; also <code>ProjectSessionTests</code>, <code>ProjectBuildVerbTests</code> (through the monitor's <code>BUILD</code>) and <code>NesEmulatorTests</code></td><td>The same for <code>example_rock_patrol</code>, the documentation's example game: four units, a CHR file, the designer's exported graphics and most of the syntax the pages show. It also checks the length, 40,976 bytes (a 16-byte header, 32 KB of program, 8 KB of tiles).</td></tr>
         <tr><td>The GEOS relocation stub, the runtime stub</td><td><code>GoldenOutputTests</code></td><td><code>GeosStub.Assemble(0x4000, 32, …)</code> and <code>RuntimeBlock.Build</code> on a one-byte module.</td></tr>
         <tr><td>The eight direct-burn output formats</td><td><code>DirectBurnGoldenTests</code></td><td>Byte-for-byte expectations derived from the format specifications (headers, endianness, bank sizes), not from observed output.</td></tr>
       </tbody>
@@ -191,7 +189,7 @@ dotnet test WinASM65.sln --filter "FullyQualifiedName~ProjectSession"</code></pr
       <li><strong>The real executable.</strong> <code>MonitorProgramTests</code> starts <code>WinASM65.Monitor</code>, writes commands to its standard input and checks what it prints: argument parsing, the handshake, the prompt, and that a typo does not end the process.</li>
       <li><strong>A headless terminal.</strong> The shell tests build the real <code>ShellWindow</code> on SharpConsoleUI's <code>HeadlessConsoleDriver</code>; the lifecycle tests go through <code>ShellRunner.Run</code>'s overload that stops after a given number of frames. <code>ShellChromeRenderTests</code> reads the screen buffer the driver was left holding. <code>ShellLifecycleTests</code> also starts a real child process to check that no emulator is left orphaned.</li>
       <li><strong>Pure functions where a UI would be.</strong> <code>ShellLayout</code>, <code>ShellStatus</code>, <code>ShellCapabilities</code>, <code>EditorCommands</code> and <code>StateCommands</code> contain no UI types, so the tests assert exact widths, status lines, refusal wording and the command line each key sends.</li>
-      <li><strong>The real workload.</strong> <code>NesSourceReachabilityTests</code> opens the Bomberman sources in the editor's listing. It found two real defects: <code>.nas</code> was not a recognised source extension, and a source that failed to assemble showed an empty pane with a misleading reason.</li>
+      <li><strong>The real workload.</strong> <code>NesSourceReachabilityTests</code> opens a project written the way older NES homebrew is (<code>.nas</code> sources, a label without its colon) in the editor's listing. It found two real defects: <code>.nas</code> was not a recognised source extension, and a source that failed to assemble showed an empty pane with a misleading reason.</li>
     </ul>
 
     <h3>A fake debug machine for the DAP</h3>
