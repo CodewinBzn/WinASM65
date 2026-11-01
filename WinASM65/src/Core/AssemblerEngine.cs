@@ -1910,17 +1910,20 @@ namespace WinASM65.Core
                 File.WriteAllText(symbPath, JsonConvert.SerializeObject(exported));
             }
 
+            // A unit with nothing left to resolve writes no such file, and must not
+            // leave one behind either: the orchestrator reads whatever it finds, so a
+            // failed build's files would fail the next build of the corrected source.
+            string unsolvedPath = SideFile(baseName, ".Unsolved");
             if (_scopeManager.GlobalScope.UnsolvedSymbols.Count > 0)
-            {
-                string unsolvedPath = SideFile(baseName, ".Unsolved");
                 File.WriteAllText(unsolvedPath, JsonConvert.SerializeObject(_scopeManager.GlobalScope.UnsolvedSymbols));
-            }
+            else
+                File.Delete(unsolvedPath);
 
+            string exprPath = SideFile(baseName, ".UnsolvedExpr");
             if (_scopeManager.UnsolvedExprList.Count > 0)
-            {
-                string exprPath = SideFile(baseName, ".UnsolvedExpr");
                 File.WriteAllText(exprPath, JsonConvert.SerializeObject(_scopeManager.UnsolvedExprList));
-            }
+            else
+                File.Delete(exprPath);
         }
 
         /// <summary>

@@ -280,6 +280,45 @@ namespace WinASM65.Tests
         }
 
         [TestMethod]
+        public void AFailedBuildLeavesNothingBehindThatFailsTheNextOne()
+        {
+            // A unit that named something nobody defined leaves its .Unsolved and
+            // .UnsolvedExpr files on disk. Once the name is fixed the unit has
+            // nothing left to resolve, so it writes no such files -- and the stale
+            // ones used to stay, be read back by the orchestrator, and fail a build
+            // that had nothing wrong with it.
+            using (TemporaryDirectory temp = new TemporaryDirectory())
+            {
+                string provider = temp.File("provider.asm");
+                string consumer = temp.File("consumer.asm");
+                File.WriteAllText(provider, ".org $8000\nRoutine:\n        rts\n");
+                File.WriteAllText(consumer, ".org $8000\n        jsr Misspelt\n        rts\n");
+                WriteConfiguration(temp.Path, new[]
+                {
+                    new Segment { FileName = "provider.asm", Dependencies = new string[0] },
+                    new Segment { FileName = "consumer.asm", Dependencies = new[] { "provider.asm" } }
+                }, new[]
+                {
+                    new FileConf { FileName = "consumer.o" }
+                });
+                Assert.IsFalse(ProjectSession.Open(temp.File("config.json")).Build().Success,
+                    "the first build names something nobody defines");
+                Assert.IsTrue(File.Exists(temp.File("consumer.Unsolved")),
+                    "and leaves the name it could not resolve on disk");
+
+                // Fixed by defining the name in the unit itself: nothing is left for
+                // the orchestrator to resolve, so the unit writes no .Unsolved at all.
+                File.WriteAllText(consumer, ".org $8000\nMisspelt:\n        jsr Misspelt\n        rts\n");
+                ProjectBuildResult build = ProjectSession.Open(temp.File("config.json")).Build();
+
+                Assert.IsTrue(build.Success, Describe(build.Diagnostics));
+                CollectionAssert.AreEqual(new byte[] { 0x20, 0x00, 0x80, 0x60 }, build.Image);
+                Assert.IsFalse(File.Exists(temp.File("consumer.Unsolved")), "no stale .Unsolved is left");
+                Assert.IsFalse(File.Exists(temp.File("consumer.UnsolvedExpr")), "no stale .UnsolvedExpr is left");
+            }
+        }
+
+        [TestMethod]
         public void AProjectInADirectoryWhosePathHasADotInItStillBuilds()
         {
             // Every side file of a build is named after its source. The name used to
